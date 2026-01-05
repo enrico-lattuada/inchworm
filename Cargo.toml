@@ -12,3 +12,4 @@ version = "0.1.0"
 
 [workspace.dependencies]
 inchworm = { path = "crates/inchworm" }
+inchworm-py = { path = "crates/inchworm-py" }
