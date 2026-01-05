@@ -15,13 +15,15 @@ repos:
     rev: v0.14.10
     hooks:
     -   id: ruff-format
-    -   id: ruff
--   repo: https://github.com/doublify/pre-commit-rust
-    rev: v1.0
+    -   id: ruff-check
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+        require_serial: true
+-   repo: local
     hooks:
-    -   id: cargo-check
-        args: ["--workspace"]
-    -   id: fmt
-        args: ["--", "--check"]
-    -   id: clippy
-        args: ["--", "-D", "warnings"]
+    -   id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --
+        language: system
+        types: [rust]
+        pass_filenames: false # This makes it a lot faster
