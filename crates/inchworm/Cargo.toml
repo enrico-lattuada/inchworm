@@ -1,0 +1,10 @@
+[package]
+name = "inchworm"
+edition.workspace = true
+homepage.workspace = true
+repository.workspace = true
+authors.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
