@@ -1,4 +1,3 @@
-use inchworm;
 use pyo3::prelude::*;
 
 /// Adds two unsigned 64-bit integers.
