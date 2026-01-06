@@ -24,6 +24,11 @@ dynamic = ["version"]
 
 [project.optional-dependencies]
 tests = ["pytest"]
+dev = [
+    "inchworm[tests]",
+    "maturin>=1.10,<2.0",
+    "mypy",
+]
 
 [project.urls]
 Source = "https://github.com/enrico-lattuada/inchworm"

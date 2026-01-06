@@ -71,5 +71,8 @@ docs/_build/
 # Pyenv
 .python-version
 
+# mypy
+.mypy_cache/
+
 # Misc
 doc.md
