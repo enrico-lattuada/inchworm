@@ -1,0 +1,32 @@
+name: Lint Rust
+
+on:
+  push:
+      branches:
+          - main
+  pull_request:
+      branches:
+          - main
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUSTFLAGS: -C debuginfo=0  # Do not produce debug symbols to keep memory usage down
+
+jobs:
+  clippy:
+    name: Clippy Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        run: rustup component add clippy
+
+      - name: Clippy Check
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+  

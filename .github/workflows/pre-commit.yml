@@ -1,0 +1,46 @@
+name: Pre-commit Checks
+
+on:
+  push:
+      branches:
+          - main
+  pull_request:
+      branches:
+          - main
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_SYSTEM_PYTHON: 1
+
+jobs:
+  pre-commit:
+    name: Pre-commit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.13']
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        run: rustup component add rustfmt
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+    
+      - name: Run Pre-commit
+        run: |
+          uv tool install pre-commit
+          uv pre-commit run --all-files --show-diff-on-failure
