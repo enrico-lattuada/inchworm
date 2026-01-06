@@ -22,6 +22,7 @@ version = "0.1.0"
 name = "inchworm-py"
 version = "0.1.0"
 dependencies = [
+ "inchworm",
  "pyo3",
 ]
 

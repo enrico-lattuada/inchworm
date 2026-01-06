@@ -1,13 +1,17 @@
+use inchworm;
 use pyo3::prelude::*;
+
+/// Adds two unsigned 64-bit integers.
+#[pyfunction]
+fn add(left: u64, right: u64) -> u64 {
+    inchworm::add(left, right)
+}
 
 /// A Python module implemented in Rust.
 #[pymodule(name = "inchworm")]
 mod inchworm_py {
-    use pyo3::prelude::*;
 
     /// Formats the sum of two numbers as string.
-    #[pyfunction]
-    fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
-        Ok((a + b).to_string())
-    }
+    #[pymodule_export]
+    use super::add;
 }
