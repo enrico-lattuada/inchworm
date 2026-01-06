@@ -39,7 +39,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-    
+
       - name: Run Pre-commit
         run: |
           uv pip install pre-commit

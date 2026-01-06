@@ -29,4 +29,3 @@ jobs:
 
       - name: Clippy Check
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-  
