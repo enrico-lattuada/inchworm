@@ -42,5 +42,5 @@ jobs:
     
       - name: Run Pre-commit
         run: |
-          uv tool install pre-commit
+          uv pip install pre-commit
           pre-commit run --all-files --show-diff-on-failure
