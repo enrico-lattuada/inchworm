@@ -1,6 +1,7 @@
 from .inchworm import add
 from importlib.metadata import version, metadata, PackageNotFoundError
 
+
 try:
     __version__ = version("inchworm")
     _metadata = metadata("inchworm")
