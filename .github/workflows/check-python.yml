@@ -37,7 +37,7 @@ jobs:
 
       - name: 🏗️ Install Dependencies
         run: |
-          uv pip install mypy
+          uv pip install --upgrade pip mypy
           mypy --version
 
       - name: 🧪 Run Mypy
