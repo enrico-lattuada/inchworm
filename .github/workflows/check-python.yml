@@ -1,14 +1,14 @@
 name: Static Checks Python
 
 on:
-  push:
-      branches:
-          - main
-  pull_request:
-      branches:
-          - main
+  # push:
+      # branches:
+          # - main
+  # pull_request:
+      # branches:
+          # - main
+  # workflow_call:
   workflow_dispatch:
-  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
