@@ -46,4 +46,11 @@ jobs:
 
       - name: 🧪 Run Tests
         run: |
-          pytest -vvv --color=yes
+          pytest -vvv --color=yes --junitxml=junit/test-results-${{ inputs.os }}-${{ inputs.python-version }}.xml
+
+      - name: 📂 Upload Test Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ inputs.os }}-${{ inputs.python-version }}
+          path: junit/test-results-${{ inputs.os }}-${{ inputs.python-version }}.xml
+        if: ${{ always() }}
