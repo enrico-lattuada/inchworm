@@ -23,7 +23,7 @@ jobs:
     steps:
       - name: 🔎 Checkout Code
         uses: actions/checkout@v6
-    
+
       - name: 🦀 Set up Rust
         run: rustup show
 
@@ -32,4 +32,3 @@ jobs:
 
       - name: 🧪 Run Tests
         run: cargo test --workspace --all-features --no-fail-fast --color=always
- 
