@@ -20,6 +20,10 @@ jobs:
     with:
       python-version: '3.9'
 
+  lint-rust:
+    needs: pre-commit
+    uses: ./.github/workflows/check-rust.yml
+
   python-static-checks:
     needs: pre-commit
     uses: ./.github/workflows/check-python.yml
