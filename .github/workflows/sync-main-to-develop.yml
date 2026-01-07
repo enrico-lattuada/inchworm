@@ -1,0 +1,76 @@
+name: Sync main to develop
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch branches
+        run: |
+          git fetch origin main
+          git fetch origin develop
+
+      - name: Attempt merge
+        id: merge
+        run: |
+          git checkout develop
+          if git merge origin/main --no-edit; then
+            echo "merge_status=success" >> $GITHUB_OUTPUT
+          else
+            git merge --abort
+            echo "merge_status=conflict" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push changes
+        if: steps.merge.outputs.merge_status == 'success'
+        run: git push origin develop
+
+      - name: Create Pull Request for manual merge
+        if: steps.merge.outputs.merge_status == 'conflict'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if a PR already exists
+          EXISTING_PR=$(gh pr list --base develop --head main --state open --json number --jq '.[0].number')
+
+          if [ -z "$EXISTING_PR" ]; then
+            gh pr create \
+              --base develop \
+              --head main \
+              --title "🔄 Sync main into develop (manual merge required)" \
+              --body "## Automatic merge failed
+
+          This pull request was automatically created because the merge from \`main\` into \`develop\` resulted in conflicts that require manual resolution.
+
+          ### What happened?
+          A hotfix or change was merged directly into \`main\`, and now \`develop\` needs to be updated to include those changes. However, there are conflicting changes between the branches.
+
+          ### What to do?
+          1. Check out this PR locally
+          2. Resolve the merge conflicts
+          3. Push the resolved changes
+          4. Merge this PR
+
+          cc @${{ github.repository_owner }}"
+            echo "Created new PR for manual merge"
+          else
+            echo "PR #$EXISTING_PR already exists for this merge"
+          fi
