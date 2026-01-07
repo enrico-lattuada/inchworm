@@ -1,4 +1,4 @@
-name: Static Checks Python
+name: PyTest
 
 on:
   # Run on call from other workflows
@@ -9,6 +9,11 @@ on:
         description: 'Python version to use'
         required: false
         default: '3.9'
+      os:
+        type: string
+        description: 'Operating system to use'
+        required: false
+        default: 'ubuntu-latest'
   # Manual trigger
   workflow_dispatch:
 
@@ -16,11 +21,9 @@ env:
   UV_SYSTEM_PYTHON: 1
 
 jobs:
-  mypy:
-    name: Static Analysis Python Code
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
+  build:
+    name: Build Project
+    runs-on: ${{ inputs.os }}
     steps:
       - name: 🔎 Checkout Code
         uses: actions/checkout@v6
@@ -35,10 +38,12 @@ jobs:
         with:
           enable-cache: true
 
-      - name: 🏗️ Install Dependencies
+      - name: 🏗️ Build Project
         run: |
-          uv pip install --upgrade pip mypy
-          mypy --version
+          uv pip install --upgrade pip
+          uv pip install .[dev]
+          pytest --version
 
-      - name: 🧪 Run Mypy
-        run: mypy python
+      - name: 🧪 Run Tests
+        run: |
+          pytest -vvv --color=yes

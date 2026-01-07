@@ -4,18 +4,39 @@ on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
-  placeholder:
-    name: Placeholder Job
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+  pre-commit:
+    uses: ./.github/workflows/pre-commit.yml
+    with:
+      python-version: '3.9'
+
+  lint-rust:
+    needs: pre-commit
+    uses: ./.github/workflows/check-rust.yml
+
+  python-static-checks:
+    needs: pre-commit
+    uses: ./.github/workflows/check-python.yml
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.13']
+    with:
+      python-version: ${{ matrix.python-version }}
+
+  test-rust:
+    needs: [pre-commit, lint-rust]
+    uses: ./.github/workflows/test-rust.yml
+
+  test-python:
+    needs: [pre-commit, lint-rust, python-static-checks]
+    uses: ./.github/workflows/test-python.yml

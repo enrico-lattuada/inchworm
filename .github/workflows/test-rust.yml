@@ -1,0 +1,34 @@
+name: Test Rust
+
+on:
+  # Run on call from other workflows
+  workflow_call:
+    inputs:
+      os:
+        type: string
+        description: 'Operating system to use'
+        required: false
+        default: 'ubuntu-latest'
+  # Manual trigger
+  workflow_dispatch:
+
+env:
+  RUSTFLAGS: -C debuginfo=0  # Do not produce debug symbols
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Run Cargo Tests
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: 🔎 Checkout Code
+        uses: actions/checkout@v6
+
+      - name: 🦀 Set up Rust
+        run: rustup show
+
+      - name: 🏗️ Compile Tests
+        run: cargo test --workspace --all-features --no-run
+
+      - name: 🧪 Run Tests
+        run: cargo test --workspace --all-features --no-fail-fast --color=always

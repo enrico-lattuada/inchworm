@@ -1,18 +1,16 @@
 name: Pre-commit Checks
 
 on:
-  # push:
-      # branches:
-          # - main
-  # pull_request:
-      # branches:
-          # - main
-  # workflow_call:
+  # Run on call from other workflows
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        description: 'Python version to use'
+        required: false
+        default: '3.9'
+  # Manual trigger
   workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 env:
   UV_SYSTEM_PYTHON: 1
@@ -21,27 +19,24 @@ jobs:
   pre-commit:
     name: Pre-commit
     runs-on: ubuntu-latest
-    # strategy:
-    #   matrix:
-    #     python-version: ['3.9', '3.13']
     steps:
-      - uses: actions/checkout@v6
+      - name: 🔎 Checkout Code
+        uses: actions/checkout@v6
 
-      - name: Set up Rust
+      - name: 🦀 Set up Rust
         run: rustup component add rustfmt
 
-      - name: Set up Python
+      - name: 🐍 Set up Python ${{ inputs.python-version }}
         uses: actions/setup-python@v6
         with:
-          python-version: '3.9'
-          # python-version: ${{ matrix.python-version }}
+          python-version: ${{ inputs.python-version }}
 
-      - name: Install uv
+      - name: ⚡️ Install uv
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
-      - name: Run Pre-commit
+      - name: ☑️ Run Pre-commit Checks
         run: |
-          uv pip install pre-commit
+          uv pip install --upgrade pip pre-commit
           pre-commit run --all-files --show-diff-on-failure --verbose --color=always
