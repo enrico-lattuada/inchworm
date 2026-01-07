@@ -32,3 +32,7 @@ jobs:
         python-version: ['3.9', '3.13']
     with:
       python-version: ${{ matrix.python-version }}
+
+  test-python:
+    needs: [pre-commit, lint-rust, python-static-checks]
+    uses: ./.github/workflows/test-python.yml

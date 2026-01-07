@@ -1,0 +1,49 @@
+name: PyTest
+
+on:
+  # Run on call from other workflows
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        description: 'Python version to use'
+        required: false
+        default: '3.9'
+      os:
+        type: string
+        description: 'Operating system to use'
+        required: false
+        default: 'ubuntu-latest'
+  # Manual trigger
+  workflow_dispatch:
+
+env:
+  UV_SYSTEM_PYTHON: 1
+
+jobs:
+  build:
+    name: Build Project
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: 🔎 Checkout Code
+        uses: actions/checkout@v6
+
+      - name: 🐍 Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: ⚡️ Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: 🏗️ Build Project
+        run: |
+          uv pip install --upgrade pip
+          uv pip install .[dev]
+          pytest --version
+
+      - name: 🧪 Run Tests
+        run: |
+          pytest -vvv --color=yes
