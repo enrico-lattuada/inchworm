@@ -33,6 +33,10 @@ jobs:
     with:
       python-version: ${{ matrix.python-version }}
 
+  test-rust:
+    needs: [pre-commit, lint-rust]
+    uses: ./.github/workflows/test-rust.yml
+
   test-python:
     needs: [pre-commit, lint-rust, python-static-checks]
     uses: ./.github/workflows/test-python.yml
