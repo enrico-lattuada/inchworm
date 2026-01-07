@@ -1,5 +1,6 @@
 [package]
 name = "inchworm"
+description = "A units-and-quantities library"
 edition.workspace = true
 homepage.workspace = true
 repository.workspace = true
