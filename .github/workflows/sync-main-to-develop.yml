@@ -1,0 +1,135 @@
+name: Sync main to develop
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch Branches
+        run: |
+          git fetch origin main
+          git fetch origin develop
+
+      - name: Check for Merge Conflicts
+        id: check_conflicts
+        run: |
+          git checkout develop
+          if git merge --no-commit --no-ff origin/main; then
+            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+            git merge --abort || true
+          else
+            echo "has_conflicts=true" >> $GITHUB_OUTPUT
+            git merge --abort || true
+          fi
+
+      - name: Check for existing PR
+        id: check_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING_PR=$(gh pr list --base develop --head main --state open --json number --jq '.[0].number')
+          if [ -z "$EXISTING_PR" ]; then
+            echo "pr_exists=false" >> $GITHUB_OUTPUT
+            echo "pr_number=" >> $GITHUB_OUTPUT
+          else
+            echo "pr_exists=true" >> $GITHUB_OUTPUT
+            echo "pr_number=$EXISTING_PR" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or update PR (no conflicts)
+        if: steps.check_conflicts.outputs.has_conflicts == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_TITLE="🔄 Sync main into develop"
+          PR_BODY="## Automatic sync from main to develop
+
+          This pull request was automatically created to sync changes from \`main\` into \`develop\`.
+
+          ### What happened?
+          Changes were pushed to \`main\` (e.g., a hotfix), and \`develop\` needs to be updated to include those changes.
+
+          This PR can be merged automatically as there are no conflicts."
+
+          if [ "${{ steps.check_pr.outputs.pr_exists }}" == "true" ]; then
+            gh pr edit ${{ steps.check_pr.outputs.pr_number }} \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY"
+            echo "Updated existing PR #${{ steps.check_pr.outputs.pr_number }}"
+          else
+            gh pr create \
+              --base develop \
+              --head main \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY"
+            echo "Created new PR"
+          fi
+
+      - name: Get PR number for merge
+        if: steps.check_conflicts.outputs.has_conflicts == 'false'
+        id: get_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list --base develop --head main --state open --json number --jq '.[0].number')
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+
+      - name: Auto-merge PR
+        if: steps.check_conflicts.outputs.has_conflicts == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge ${{ steps.get_pr.outputs.pr_number }} --merge --auto
+
+      - name: Create or update PR (with conflicts - manual merge required)
+        if: steps.check_conflicts.outputs.has_conflicts == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_TITLE="🔄 Sync main into develop (manual merge required)"
+          PR_BODY="## ⚠️ Manual merge required
+
+          This pull request was automatically created to sync changes from \`main\` into \`develop\`, but **merge conflicts were detected**.
+
+          ### What happened?
+          Changes were pushed to \`main\` (e.g., a hotfix), and \`develop\` needs to be updated to include those changes. However, there are conflicting changes between the branches.
+
+          ### What to do?
+          1. Check out this PR locally
+          2. Resolve the merge conflicts
+          3. Push the resolved changes
+          4. Merge this PR
+
+          cc @${{ github.repository_owner }}"
+
+          if [ "${{ steps.check_pr.outputs.pr_exists }}" == "true" ]; then
+            gh pr edit ${{ steps.check_pr.outputs.pr_number }} \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY"
+            echo "Updated existing PR #${{ steps.check_pr.outputs.pr_number }} to request manual merge"
+          else
+            gh pr create \
+              --base develop \
+              --head main \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY"
+            echo "Created new PR requesting manual merge"
+          fi
