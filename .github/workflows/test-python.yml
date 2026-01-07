@@ -1,4 +1,4 @@
-name: PyTest
+name: Test Python
 
 on:
   # Run on call from other workflows
