@@ -1,13 +1,15 @@
 name: Static Checks Python
 
 on:
-  # push:
-      # branches:
-          # - main
-  # pull_request:
-      # branches:
-          # - main
-  # workflow_call:
+  # Run on call from other workflows
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        description: 'Python version to use'
+        required: false
+        default: '3.9'
+  # Manual trigger
   workflow_dispatch:
 
 concurrency:
@@ -19,29 +21,28 @@ env:
 
 jobs:
   mypy:
-    name: Type Check Python Code
+    name: Static Analysis Python Code
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        python-version: ['3.9', '3.13']
     steps:
-      - uses: actions/checkout@v6
+      - name: 🔎 Checkout Code
+        uses: actions/checkout@v6
 
-      - name: Set up Python
+      - name: 🐍 Set up Python ${{ inputs.python-version }}
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ inputs.python-version }}
 
-      - name: Install uv
+      - name: ⚡️ Install uv
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
-      - name: Install dependencies
+      - name: 🏗️ Install dependencies
         run: |
           uv pip install mypy
           mypy --version
 
-      - name: Run Mypy
+      - name: 🧪 Run Mypy
         run: mypy python
