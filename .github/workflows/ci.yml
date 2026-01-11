@@ -1,14 +1,13 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
-      - develop
+  # Pushes to main are disallowed by branch protection rules.
+  # push:
+  #   branches:
+  #     - main
   pull_request:
     branches:
       - main
-      - develop
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
