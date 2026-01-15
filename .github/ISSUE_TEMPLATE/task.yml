@@ -1,0 +1,24 @@
+name: Task
+description: A small task to make progress on the project.
+labels: ['task']
+body:
+  - type: textarea
+    attributes:
+      label: Description
+      description: A short description of the task.
+      validations:
+        required: true
+  - type: textarea
+    attributes:
+      label: Context / Motivation
+      description: Provide context or motivation for this task.
+      validations:
+        required: true
+  - type: textarea
+    attributes:
+      label: Acceptance Criteria
+      description: Define the acceptance criteria for this task.
+      value: |
+        - [ ] Criterion 1
+      validations:
+        required: true
