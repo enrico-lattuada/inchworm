@@ -1,0 +1,32 @@
+name: Feature Request
+description: Suggest a new feature
+labels: ["triage", "enhancement"]
+body:
+  - type: textarea
+    attributes:
+      label: Description
+      description: A short description of the proposed feature.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Motivation
+      description: Why is this feature needed? What use cases does it support?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed solution
+      description: How should this capability be implemented? What might the user API look like?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Backwards compatibility
+      description: Does the feature break existing behavior? If so, how?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Additional context
+      description: Any other context, mockups, or links.
