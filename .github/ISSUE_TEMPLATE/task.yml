@@ -6,19 +6,19 @@ body:
     attributes:
       label: Description
       description: A short description of the task.
-      validations:
-        required: true
+    validations:
+      required: true
   - type: textarea
     attributes:
       label: Context / Motivation
       description: Provide context or motivation for this task.
-      validations:
-        required: true
+    validations:
+      required: true
   - type: textarea
     attributes:
       label: Acceptance Criteria
       description: Define the acceptance criteria for this task.
       value: |
         - [ ] Criterion 1
-      validations:
-        required: true
+    validations:
+      required: true
