@@ -39,3 +39,17 @@ jobs:
   test-python:
     needs: [pre-commit, lint-rust, python-static-checks]
     uses: ./.github/workflows/test-python.yml
+
+  ci:
+    name: CI
+    needs: [pre-commit, lint-rust, python-static-checks, test-rust, test-python]
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    steps:
+      - name: Check all jobs passed
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "One or more required jobs failed or were cancelled."
+          exit 1
+      - name: All checks passed
+        run: echo "All checks passed successfully!"
