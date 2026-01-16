@@ -21,8 +21,8 @@ env:
   UV_SYSTEM_PYTHON: 1
 
 jobs:
-  build:
-    name: Build Project
+  test-python:
+    name: Run Python Tests
     runs-on: ${{ inputs.os }}
     steps:
       - name: 🔎 Checkout Code
