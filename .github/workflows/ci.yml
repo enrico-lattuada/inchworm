@@ -18,10 +18,12 @@ jobs:
     uses: ./.github/workflows/pre-commit.yml
     with:
       python-version: '3.9'
+    if: ${{ !github.event.pull_request.draft }}
 
   lint-rust:
     needs: pre-commit
     uses: ./.github/workflows/check-rust.yml
+    if: ${{ !github.event.pull_request.draft }}
 
   python-static-checks:
     needs: pre-commit
@@ -31,14 +33,17 @@ jobs:
         python-version: ['3.9', '3.13']
     with:
       python-version: ${{ matrix.python-version }}
+    if: ${{ !github.event.pull_request.draft }}
 
   test-rust:
     needs: [pre-commit, lint-rust]
     uses: ./.github/workflows/test-rust.yml
+    if: ${{ !github.event.pull_request.draft }}
 
   test-python:
     needs: [pre-commit, lint-rust, python-static-checks]
     uses: ./.github/workflows/test-python.yml
+    if: ${{ !github.event.pull_request.draft }}
 
   ci:
     name: CI
