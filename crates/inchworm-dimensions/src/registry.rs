@@ -7,7 +7,7 @@
 /// # Examples
 ///
 /// ```
-/// use inchworm_dimensions::registry::DimensionRegistry;
+/// use inchworm_dimensions::DimensionRegistry;
 ///
 /// let registry = DimensionRegistry::new();
 /// ```
