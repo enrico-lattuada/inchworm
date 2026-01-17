@@ -9,6 +9,7 @@ license.workspace = true
 version.workspace = true
 
 [dependencies]
+inchworm-dimensions = { path = "../inchworm-dimensions" }
 
 [lints.clippy]
 indexing_slicing = "deny"
