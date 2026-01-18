@@ -1,4 +1,4 @@
-"""Type stubs for inchworm.dimensions submodule."""
+"""inchworm.dimensions module stubs."""
 
 class DimensionRegistry:
     """A registry for managing dimensions.
