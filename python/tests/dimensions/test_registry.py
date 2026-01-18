@@ -2,6 +2,7 @@
 
 from inchworm.dimensions import DimensionRegistry
 
+
 def test_dimension_registry_initialization():
     """
     WHEN a DimensionRegistry is initialized,
