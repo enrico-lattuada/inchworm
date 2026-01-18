@@ -1,4 +1,4 @@
-"""inchworm.dimensions module stubs."""
+"""inchworm.dimensions module stubs"""
 
 class DimensionRegistry:
     """A registry for managing dimensions.
@@ -9,3 +9,5 @@ class DimensionRegistry:
     """
 
     def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...

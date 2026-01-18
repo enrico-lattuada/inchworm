@@ -14,6 +14,13 @@ impl DimensionRegistry {
             _inner: inchworm::dimensions::DimensionRegistry::new(),
         }
     }
+
+    fn __repr__(&self) -> String {
+        format!("DimensionRegistry()")
+    }
+    fn __str__(&self) -> String {
+        format!("DimensionRegistry")
+    }
 }
 
 #[cfg(test)]
