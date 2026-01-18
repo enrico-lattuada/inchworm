@@ -21,4 +21,4 @@ except PackageNotFoundError:
     __license__ = ""
     __author__ = ()
 
-__all__ = ["add"]
+__all__ = ["add", "dimensions"]
