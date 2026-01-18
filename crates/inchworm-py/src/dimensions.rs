@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+use pyo3::types::PyString;
 
 /// DimensionRegistry for managing dimensions.
 #[pyclass]
@@ -15,11 +16,13 @@ impl DimensionRegistry {
         }
     }
 
-    fn __repr__(&self) -> String {
-        "DimensionRegistry()".to_string()
+    fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let class_name: Bound<'_, PyString> = slf.get_type().qualname()?;
+        Ok(format!("{}()", class_name))
     }
-    fn __str__(&self) -> String {
-        "DimensionRegistry".to_string()
+    fn __str__(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let class_name: Bound<'_, PyString> = slf.get_type().qualname()?;
+        Ok(format!("{}", class_name))
     }
 }
 
