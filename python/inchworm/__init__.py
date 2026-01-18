@@ -1,4 +1,3 @@
-from .inchworm import add
 from importlib.metadata import version, metadata, PackageNotFoundError
 
 
@@ -21,4 +20,4 @@ except PackageNotFoundError:
     __license__ = ""
     __author__ = ()
 
-__all__ = ["add"]
+__all__ = ["dimensions"]
