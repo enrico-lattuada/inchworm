@@ -16,10 +16,10 @@ impl DimensionRegistry {
     }
 
     fn __repr__(&self) -> String {
-        format!("DimensionRegistry()")
+        "DimensionRegistry()".to_string()
     }
     fn __str__(&self) -> String {
-        format!("DimensionRegistry")
+        "DimensionRegistry".to_string()
     }
 }
 
