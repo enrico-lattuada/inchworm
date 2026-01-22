@@ -8,6 +8,7 @@ license.workspace = true
 version.workspace = true
 
 [dependencies]
+thiserror = "2.0.18"
 
 [lints.clippy]
 indexing_slicing = "deny"
