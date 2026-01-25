@@ -5,7 +5,7 @@
 /// units system.
 /// Each base dimension has a name and an optional symbol for compact
 /// representation.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaseDimensionDef {
     // The name of the base dimension (e.g., "length", "mass").
     name: String,
@@ -24,12 +24,12 @@ impl BaseDimensionDef {
     }
 
     /// Returns the name of the base dimension.
-    pub fn get_name(&self) -> &str {
+    pub fn name(&self) -> &str {
         &self.name
     }
 
     /// Returns the symbol of the base dimension, if it exists.
-    pub fn get_symbol(&self) -> Option<&str> {
+    pub fn symbol(&self) -> Option<&str> {
         self.symbol.as_deref()
     }
 }
@@ -58,13 +58,13 @@ mod tests {
     #[test]
     fn test_get_name() {
         let dimension = BaseDimensionDef::new("mass", None);
-        assert_eq!(dimension.get_name(), "mass");
+        assert_eq!(dimension.name(), "mass");
     }
 
     // Test BaseDimensionDef get_symbol method
     #[test]
     fn test_get_symbol() {
         let dimension = BaseDimensionDef::new("current", Some("I"));
-        assert_eq!(dimension.get_symbol(), Some("I"));
+        assert_eq!(dimension.symbol(), Some("I"));
     }
 }
