@@ -28,7 +28,7 @@ impl DimensionRegistry {
     }
 
     /// Retrieves all registered base dimensions in the registry.
-    pub fn get_base_dimensions(&self) -> &HashMap<String, BaseDimensionDef> {
+    pub fn base_dimensions(&self) -> &HashMap<String, BaseDimensionDef> {
         &self.base_dimensions
     }
 
@@ -89,19 +89,21 @@ mod tests {
 
     /// Test registering a base dimension with the same name (case-insensitive)
     #[test]
-    fn test_register_base_dimension_same_key() {
+    fn test_register_existing_base_dimension() {
         let mut registry = DimensionRegistry::new();
         let dimension1 = BaseDimensionDef::new("length", Some("L"));
         let dimension2 = BaseDimensionDef::new("Length", Some("Len"));
         registry
-            .register_base_dimension("length", dimension1)
+            .register_base_dimension("length", dimension1.clone())
             .unwrap();
+        let res = registry.register_base_dimension("length", dimension2);
         assert!(
-            matches!(
-                registry.register_base_dimension("length", dimension2),
-                Err(RegistryError::BaseDimensionAlreadyDefined { .. })
-            ),
+            matches!(res, Err(RegistryError::BaseDimensionAlreadyDefined { .. })),
             "Expected error when registering base dimension with duplicate name"
+        );
+        assert!(
+            registry.base_dimensions().get("length") == Some(&dimension1),
+            "Original base dimension should remain unchanged"
         );
     }
 
@@ -116,12 +118,12 @@ mod tests {
             .unwrap();
         registry.replace_base_dimension("length", dimension2.clone());
         assert_eq!(
-            registry.get_base_dimensions().len(),
+            registry.base_dimensions().len(),
             1,
             "Expected only one base dimension after replacement"
         );
         assert_eq!(
-            registry.get_base_dimensions().get("length"),
+            registry.base_dimensions().get("length"),
             Some(&dimension2),
             "Base dimension was not replaced correctly"
         );
