@@ -20,6 +20,7 @@ impl DimensionRegistry {
         let class_name: Bound<'_, PyString> = slf.get_type().qualname()?;
         Ok(format!("{}()", class_name))
     }
+
     fn __str__(slf: &Bound<'_, Self>) -> PyResult<String> {
         let class_name: Bound<'_, PyString> = slf.get_type().qualname()?;
         Ok(format!("{}", class_name))
