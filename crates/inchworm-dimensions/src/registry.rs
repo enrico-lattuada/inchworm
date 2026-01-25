@@ -20,20 +20,16 @@ pub struct DimensionRegistry {
 }
 
 impl DimensionRegistry {
+    /// Creates a new, empty `DimensionRegistry`.
     pub fn new() -> Self {
         Self {
             base_dimensions: HashMap::new(),
         }
     }
 
-    /// Retrieves a base dimension by its name, if it exists in the registry.
-    pub fn get_base_dimension(&self, dimension: &str) -> Option<&BaseDimensionDef> {
-        self.base_dimensions.get(dimension)
-    }
-
-    /// Checks if a base dimension with the given name exists in the registry.
-    pub fn has_base_dimension(&self, dimension: &str) -> bool {
-        self.get_base_dimension(dimension).is_some()
+    /// Retrieves all registered base dimensions in the registry.
+    pub fn get_base_dimensions(&self) -> &HashMap<String, BaseDimensionDef> {
+        &self.base_dimensions
     }
 
     /// Registers a new base dimension in the registry.
@@ -43,7 +39,7 @@ impl DimensionRegistry {
         dimension: &str,
         definition: BaseDimensionDef,
     ) -> Result<(), RegistryError> {
-        if self.has_base_dimension(dimension) {
+        if self.base_dimensions.contains_key(dimension) {
             Err(RegistryError::BaseDimensionAlreadyDefined {
                 dimension: dimension.to_string(),
             })
@@ -55,9 +51,16 @@ impl DimensionRegistry {
     }
 
     /// Replaces an existing base dimension with the same name in the registry.
-    pub fn replace_base_dimension(&mut self, dimension: &str, definition: BaseDimensionDef) {
+    /// Returns the previous definition if it existed.
+    pub fn replace_base_dimension(
+        &mut self,
+        dimension: &str,
+        definition: BaseDimensionDef,
+    ) -> Option<BaseDimensionDef> {
+        let previous_def = self.base_dimensions.get(dimension).cloned();
         self.base_dimensions
             .insert(dimension.to_string(), definition);
+        previous_def
     }
 }
 
@@ -81,47 +84,6 @@ mod tests {
                 .register_base_dimension("length", dimension)
                 .is_ok(),
             "Failed to register base dimension"
-        );
-    }
-
-    /// Test retrieving a registered base dimension
-    #[test]
-    fn test_get_base_dimension() {
-        let mut registry = DimensionRegistry::new();
-        let dimension = BaseDimensionDef::new("length", Some("L"));
-        registry
-            .register_base_dimension("length", dimension.clone())
-            .unwrap();
-        assert!(
-            registry.get_base_dimension("length").is_some(),
-            "Expected to find the registered base dimension"
-        );
-        assert_eq!(
-            registry.get_base_dimension("length").unwrap(),
-            &dimension,
-            "Retrieved dimension does not match the registered one"
-        );
-        assert!(
-            registry.get_base_dimension("mass").is_none(),
-            "Did not expect to find an unregistered base dimension"
-        );
-    }
-
-    /// Test checking existence of a base dimension by name
-    #[test]
-    fn test_has_base_dimension() {
-        let mut registry = DimensionRegistry::new();
-        let dimension = BaseDimensionDef::new("length", Some("L"));
-        registry
-            .register_base_dimension("length", dimension.clone())
-            .unwrap();
-        assert!(
-            registry.has_base_dimension("length"),
-            "Expected base dimension to exist in the registry"
-        );
-        assert!(
-            !registry.has_base_dimension("mass"),
-            "Did not expect 'mass' base dimension to exist in the registry"
         );
     }
 
@@ -154,12 +116,12 @@ mod tests {
             .unwrap();
         registry.replace_base_dimension("length", dimension2.clone());
         assert_eq!(
-            registry.base_dimensions.len(),
+            registry.get_base_dimensions().len(),
             1,
             "Expected only one base dimension after replacement"
         );
         assert_eq!(
-            registry.get_base_dimension("length"),
+            registry.get_base_dimensions().get("length"),
             Some(&dimension2),
             "Base dimension was not replaced correctly"
         );
