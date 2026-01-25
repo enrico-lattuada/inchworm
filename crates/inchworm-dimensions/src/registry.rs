@@ -1,5 +1,5 @@
-use crate::{RegistryError, dimension_def::BaseDimensionDef};
-use std::collections::HashMap;
+use crate::dimension_def::BaseDimensionDef;
+use std::{collections::HashMap, error, fmt};
 
 /// A registry for managing dimensions in a units system.
 ///
@@ -38,9 +38,9 @@ impl DimensionRegistry {
         &mut self,
         dimension: &str,
         definition: BaseDimensionDef,
-    ) -> Result<(), RegistryError> {
+    ) -> Result<(), DimensionRegistryError> {
         if self.base_dimensions.contains_key(dimension) {
-            Err(RegistryError::BaseDimensionAlreadyDefined {
+            Err(DimensionRegistryError::DuplicateBaseDimension {
                 dimension: dimension.to_string(),
             })
         } else {
@@ -61,6 +61,29 @@ impl DimensionRegistry {
         self.base_dimensions
             .insert(dimension.to_string(), definition);
         previous_def
+    }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum DimensionRegistryError {
+    /// Error indicating that a base dimension with the same name already exists.
+    DuplicateBaseDimension { dimension: String },
+}
+
+impl error::Error for DimensionRegistryError {}
+
+impl fmt::Display for DimensionRegistryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DimensionRegistryError::DuplicateBaseDimension { dimension } => {
+                write!(
+                    f,
+                    "base dimension '{}' already exists in the registry",
+                    dimension
+                )
+            }
+        }
     }
 }
 
@@ -98,7 +121,10 @@ mod tests {
             .unwrap();
         let res = registry.register_base_dimension("length", dimension2);
         assert!(
-            matches!(res, Err(RegistryError::BaseDimensionAlreadyDefined { .. })),
+            matches!(
+                res,
+                Err(DimensionRegistryError::DuplicateBaseDimension { .. })
+            ),
             "Expected error when registering base dimension with duplicate name"
         );
         assert!(
