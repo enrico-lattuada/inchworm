@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn test_try_insert_new_base_dimension() {
         let mut registry = DimensionRegistry::new();
-        let dimension = BaseDimensionDef::new("length", Some("L"));
+        let dimension = BaseDimensionDef::new("length", "L");
         assert!(
             registry
                 .try_insert_new_base_dimension("length", dimension)
@@ -112,8 +112,8 @@ mod tests {
     #[test]
     fn test_try_insert_existing_base_dimension() {
         let mut registry = DimensionRegistry::new();
-        let dimension1 = BaseDimensionDef::new("length", Some("L"));
-        let dimension2 = BaseDimensionDef::new("Length", Some("Len"));
+        let dimension1 = BaseDimensionDef::new("length", "L");
+        let dimension2 = BaseDimensionDef::new("Length", "Len");
         registry
             .try_insert_new_base_dimension("length", dimension1.clone())
             .unwrap();
@@ -135,8 +135,8 @@ mod tests {
     #[test]
     fn test_replace_base_dimension() {
         let mut registry = DimensionRegistry::new();
-        let dimension1 = BaseDimensionDef::new("length", Some("L"));
-        let dimension2 = BaseDimensionDef::new("Length", Some("Len"));
+        let dimension1 = BaseDimensionDef::new("length", "L");
+        let dimension2 = BaseDimensionDef::new("Length", "Len");
         registry
             .try_insert_new_base_dimension("length", dimension1)
             .unwrap();

@@ -9,17 +9,17 @@
 pub struct BaseDimensionDef {
     // The name of the base dimension (e.g., "length", "mass").
     name: String,
-    // An optional symbol for the base dimension (e.g., "L" for length).
-    symbol: Option<String>,
+    // A symbol for the base dimension (e.g., "L" for length).
+    symbol: String,
 }
 
 impl BaseDimensionDef {
     /// Creates a new `BaseDimensionDef` with the given name and optional symbol.
     /// The name is case-insensitive and will be stored in lowercase.
-    pub fn new(name: &str, symbol: Option<&str>) -> Self {
+    pub fn new(name: &str, symbol: &str) -> Self {
         Self {
             name: name.to_string(),
-            symbol: symbol.map(|s| s.to_string()),
+            symbol: symbol.to_string(),
         }
     }
 
@@ -28,9 +28,9 @@ impl BaseDimensionDef {
         &self.name
     }
 
-    /// Returns the symbol of the base dimension, if it exists.
-    pub fn symbol(&self) -> Option<&str> {
-        self.symbol.as_deref()
+    /// Returns the symbol of the base dimension.
+    pub fn symbol(&self) -> &str {
+        &self.symbol
     }
 }
 
@@ -41,30 +41,30 @@ mod tests {
     // Test creation of BaseDimensionDef
     #[test]
     fn test_base_dimension_def_creation() {
-        let dimension = BaseDimensionDef::new("length", Some("L"));
+        let dimension = BaseDimensionDef::new("length", "L");
         assert_eq!(dimension.name, "length");
-        assert_eq!(dimension.symbol.as_deref(), Some("L"));
+        assert_eq!(dimension.symbol, "L");
     }
 
     // Test creation of BaseDimensionDef without symbol
     #[test]
     fn test_base_dimension_with_non_ascii_symbol() {
-        let dimension = BaseDimensionDef::new("time", Some("τ"));
+        let dimension = BaseDimensionDef::new("time", "τ");
         assert_eq!(dimension.name, "time");
-        assert_eq!(dimension.symbol.as_deref(), Some("τ"));
+        assert_eq!(dimension.symbol, "τ");
     }
 
     // Test BaseDimensionDef get_name method
     #[test]
     fn test_get_name() {
-        let dimension = BaseDimensionDef::new("mass", None);
+        let dimension = BaseDimensionDef::new("mass", "M");
         assert_eq!(dimension.name(), "mass");
     }
 
     // Test BaseDimensionDef get_symbol method
     #[test]
     fn test_get_symbol() {
-        let dimension = BaseDimensionDef::new("current", Some("I"));
-        assert_eq!(dimension.symbol(), Some("I"));
+        let dimension = BaseDimensionDef::new("current", "I");
+        assert_eq!(dimension.symbol(), "I");
     }
 }
