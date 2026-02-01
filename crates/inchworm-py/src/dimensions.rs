@@ -1,18 +1,19 @@
+use inchworm::dimensions::DimensionRegistry;
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 
 /// DimensionRegistry for managing dimensions.
-#[pyclass]
-pub struct DimensionRegistry {
-    _inner: inchworm::dimensions::DimensionRegistry,
+#[pyclass(name = "DimensionRegistry")]
+pub struct PyDimensionRegistry {
+    _inner: DimensionRegistry,
 }
 
 #[pymethods]
-impl DimensionRegistry {
+impl PyDimensionRegistry {
     #[new]
     fn new() -> Self {
-        DimensionRegistry {
-            _inner: inchworm::dimensions::DimensionRegistry::new(),
+        PyDimensionRegistry {
+            _inner: DimensionRegistry::new(),
         }
     }
 
@@ -33,6 +34,6 @@ mod tests {
 
     #[test]
     fn test_dimension_registry_creation() {
-        let _registry = DimensionRegistry::new();
+        let _registry = PyDimensionRegistry::new();
     }
 }
