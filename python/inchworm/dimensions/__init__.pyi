@@ -83,7 +83,7 @@ class BaseDimensionDef:
     """A definition of a base physical dimension.
 
     `BaseDimensionDef` represents a fundamental physical dimension, such as
-    length, mass, or time, that form the basis for derived dimensions in a 
+    length, mass, or time, that form the basis for derived dimensions in a
     units system.
 
     Attributes
@@ -101,7 +101,7 @@ class BaseDimensionDef:
 
     def __init__(self, name: str, symbol: str) -> None:
         """Initialize a BaseDimensionDef.
-        
+
         Parameters
         ----------
         name : str
