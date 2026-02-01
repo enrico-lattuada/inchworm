@@ -34,6 +34,7 @@ impl DimensionRegistry {
 
     /// Inserts a new base dimension in the registry.
     /// Returns an error if a base dimension with the same name already exists.
+    /// Use `replace_base_dimension` to overwrite an existing definition.
     pub fn try_insert_new_base_dimension(
         &mut self,
         dimension: &str,

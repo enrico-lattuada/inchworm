@@ -3,8 +3,6 @@
 /// `BaseDimensionDef` represents fundamental physical dimensions such as
 /// length, mass, and time, that form the basis for derived dimensions in a
 /// units system.
-/// Each base dimension has a name and an optional symbol for compact
-/// representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaseDimensionDef {
     // The name of the base dimension (e.g., "length", "mass").
@@ -14,8 +12,7 @@ pub struct BaseDimensionDef {
 }
 
 impl BaseDimensionDef {
-    /// Creates a new `BaseDimensionDef` with the given name and optional symbol.
-    /// The name is case-insensitive and will be stored in lowercase.
+    /// Creates a new `BaseDimensionDef` with the given name and symbol.
     pub fn new(name: &str, symbol: &str) -> Self {
         Self {
             name: name.to_string(),

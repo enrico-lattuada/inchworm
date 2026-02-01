@@ -8,11 +8,19 @@ class DimensionRegistry:
     `DimensionRegistry` provides a central location to define and manage
     physical dimensions (e.g., length, mass, time) that form the foundation
     of the units system.
+
+    Examples
+    --------
+    >>> from inchworm.dimensions import DimensionRegistry, BaseDimensionDef
+    >>> registry = DimensionRegistry()
+    >>> length_def = BaseDimensionDef(name="length", symbol="L")
+    >>> registry.try_insert_new_base_dimension("length", length_def)
     """
 
     def __init__(self) -> None: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
+    @property
     def base_dimensions(self) -> BaseDimensionsView:
         """Get the base dimensions in the registry.
 
@@ -30,6 +38,9 @@ class DimensionRegistry:
 
         This method attempts to insert a new base dimension into the registry.
         Raises an error if the dimension already exists.
+
+        .. tip:: Definition Replacement
+           Use `replace_base_dimension` to overwrite an existing definition.
 
         Parameters
         ----------
@@ -69,14 +80,36 @@ class DimensionRegistry:
         ...
 
 class BaseDimensionDef:
-    """Definition of a base physical dimension.
+    """A definition of a base physical dimension.
 
     `BaseDimensionDef` represents a fundamental physical dimension, such as
-    length, mass, or time. These base dimensions serve as the building blocks
-    for defining derived dimensions and units.
+    length, mass, or time, that form the basis for derived dimensions in a 
+    units system.
+
+    Attributes
+    ----------
+    name : str
+        The name of the base dimension.
+    symbol : str
+        The symbol of the base dimension.
+
+    Examples
+    --------
+    >>> from inchworm.dimensions import BaseDimensionDef
+    >>> length_def = BaseDimensionDef(name="length", symbol="L")
     """
 
-    def __init__(self, name: str, symbol: str) -> None: ...
+    def __init__(self, name: str, symbol: str) -> None:
+        """Initialize a BaseDimensionDef.
+        
+        Parameters
+        ----------
+        name : str
+            The name of the base dimension.
+        symbol : str
+            The symbol of the base dimension.
+        """
+        ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
     @property
@@ -104,8 +137,8 @@ class BaseDimensionDef:
 class BaseDimensionsView(Mapping[str, BaseDimensionDef]):
     """A view of the base dimensions in a DimensionRegistry.
 
-    `BaseDimensionsView` provides a read-only mapping interface to access
-    the base dimensions defined in a `DimensionRegistry`.
+    `BaseDimensionsView` provides a read-only mapping interface to the base
+    dimensions registered in a `DimensionRegistry`.
     """
 
     def __getitem__(self, key: str) -> BaseDimensionDef: ...
