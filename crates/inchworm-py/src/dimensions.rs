@@ -1,6 +1,6 @@
 use inchworm::dimensions::{BaseDimensionDef, DimensionRegistry};
 use pyo3::prelude::*;
-use pyo3::types::{PyIterator, PyList, PyString};
+use pyo3::types::{PyAny, PyIterator, PyList, PyString};
 
 /// A definition of a base physical dimension.
 ///
@@ -198,7 +198,7 @@ impl PyDimensionRegistry {
         match result {
             Ok(_) => Ok(()),
             Err(e) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to insert base dimension: {:?}",
+                "Failed to insert base dimension: {}",
                 e
             ))),
         }
@@ -300,11 +300,16 @@ impl PyBaseDimensionsView {
     /// Returns an iterator over the dimension keys.
     fn __iter__<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyIterator>> {
         let py = slf.py();
-        let keys: Vec<String> = {
-            let this = slf.borrow();
-            let registry = this.registry.borrow(py);
-            registry._inner.base_dimensions().keys().cloned().collect()
-        };
+        // Collect keys while holding borrow, then release before creating iterator
+        let keys: Vec<String> = slf
+            .borrow()
+            .registry
+            .borrow(py)
+            ._inner
+            .base_dimensions()
+            .keys()
+            .cloned()
+            .collect();
         let py_list = PyList::new(py, keys)?;
         PyIterator::from_object(py_list.as_any())
     }
@@ -319,53 +324,53 @@ impl PyBaseDimensionsView {
     }
 
     /// Returns a list of all dimension keys.
-    fn keys(slf: &Bound<'_, Self>) -> PyResult<Vec<String>> {
-        let iter = Self::__iter__(slf)?;
-        let mut keys = Vec::new();
-        for key in iter {
-            keys.push(key?.extract()?);
-        }
-        Ok(keys)
+    fn keys(&self, py: Python<'_>) -> Vec<String> {
+        self.registry
+            .borrow(py)
+            ._inner
+            .base_dimensions()
+            .keys()
+            .cloned()
+            .collect()
     }
 
     /// Returns a list of all dimension definitions.
-    fn values(slf: &Bound<'_, Self>) -> PyResult<Vec<PyBaseDimensionDef>> {
-        let py = slf.py();
-        let this = slf.borrow();
-        let iter = Self::__iter__(slf)?;
-        let mut values = Vec::new();
-        for key in iter {
-            let key_str: String = key?.extract()?;
-            values.push(this.__getitem__(py, &key_str)?);
-        }
-        Ok(values)
+    fn values(&self, py: Python<'_>) -> Vec<PyBaseDimensionDef> {
+        self.registry
+            .borrow(py)
+            ._inner
+            .base_dimensions()
+            .values()
+            .cloned()
+            .map(|def| def.into())
+            .collect()
     }
 
     /// Returns a list of (key, definition) pairs.
-    fn items(slf: &Bound<'_, Self>) -> PyResult<Vec<(String, PyBaseDimensionDef)>> {
-        let py = slf.py();
-        let this = slf.borrow();
-        let iter = Self::__iter__(slf)?;
-        let mut items = Vec::new();
-        for key in iter {
-            let key_str: String = key?.extract()?;
-            let value = this.__getitem__(py, &key_str)?;
-            items.push((key_str, value));
-        }
-        Ok(items)
+    fn items(&self, py: Python<'_>) -> Vec<(String, PyBaseDimensionDef)> {
+        self.registry
+            .borrow(py)
+            ._inner
+            .base_dimensions()
+            .iter()
+            .map(|(key, def)| (key.clone(), def.clone().into()))
+            .collect()
     }
 
     /// Gets a dimension by key, returning a default if not found.
     #[pyo3(signature = (key, default=None))]
-    fn get(
+    fn get<'py>(
         &self,
-        py: Python<'_>,
+        py: Python<'py>,
         key: &str,
-        default: Option<PyBaseDimensionDef>,
-    ) -> Option<PyBaseDimensionDef> {
-        match self.__getitem__(py, key) {
-            Ok(def) => Some(def),
-            Err(_) => default,
+        default: Option<Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        match self.registry.borrow(py)._inner.base_dimensions().get(key) {
+            Some(def) => {
+                let py_def: PyBaseDimensionDef = def.clone().into();
+                Ok(Py::new(py, py_def)?.into_bound(py).into_any())
+            }
+            None => Ok(default.unwrap_or_else(|| py.None().into_bound(py))),
         }
     }
 

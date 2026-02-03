@@ -109,7 +109,7 @@ mod tests {
         );
     }
 
-    /// Test try insert a new base dimension with the same name (case-insensitive)
+    /// Test try insert a new base dimension with the same name
     #[test]
     fn test_try_insert_existing_base_dimension() {
         let mut registry = DimensionRegistry::new();
