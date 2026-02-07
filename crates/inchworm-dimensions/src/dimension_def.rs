@@ -3,6 +3,14 @@
 /// `BaseDimensionDef` represents fundamental physical dimensions such as
 /// length, mass, and time, that form the basis for derived dimensions in a
 /// units system.
+///
+/// # Examples
+///
+/// ```
+/// use inchworm_dimensions::BaseDimensionDef;
+///
+/// let dimension = BaseDimensionDef::new("length", "L");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaseDimensionDef {
     // The name of the base dimension (e.g., "length", "mass").
