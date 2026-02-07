@@ -101,6 +101,14 @@ impl PyBaseDimensionDef {
             class_name, name, symbol
         ))
     }
+
+    /// Returns a string representation of the base dimension definition.
+    fn __str__(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let this = slf.borrow();
+        let name = this.name();
+        let symbol = this.symbol();
+        Ok(format!("{} ([{}])", name, symbol))
+    }
 }
 
 /// A registry for managing dimensions.

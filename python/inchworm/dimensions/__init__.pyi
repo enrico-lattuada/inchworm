@@ -110,7 +110,9 @@ class BaseDimensionDef:
             The symbol of the base dimension.
         """
         ...
+
     def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
     @property
     def name(self) -> str:
         """The name of the base dimension.
