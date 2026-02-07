@@ -23,7 +23,7 @@ classifiers = [
 dynamic = ["version"]
 
 [project.optional-dependencies]
-tests = ["pytest"]
+tests = ["pytest", "pytest-cases"]
 dev = [
     "inchworm[tests]",
     "maturin>=1.10,<2.0",
