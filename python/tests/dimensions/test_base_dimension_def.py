@@ -3,12 +3,14 @@
 from inchworm.dimensions import BaseDimensionDef
 from pytest_cases import parametrize_with_cases
 
+
 class BaseDimensionDefInitCases:
     """Test cases for BaseDimensionDef initialization."""
 
     def case_valid_parameters(self) -> tuple[str, str]:
         """A valid name and symbol."""
         return "Length", "L"
+
 
 @parametrize_with_cases(
     "name, symbol",
