@@ -1,1 +1,1 @@
-"""Inchworm module stubs"""
+"""inchworm module."""

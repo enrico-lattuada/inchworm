@@ -3,5 +3,9 @@
 from ..inchworm import dimensions as _dimensions
 
 DimensionRegistry = _dimensions.DimensionRegistry
+BaseDimensionDef = _dimensions.BaseDimensionDef
 
-__all__ = ["DimensionRegistry"]
+__all__ = [
+    "BaseDimensionDef",
+    "DimensionRegistry",
+]

@@ -38,6 +38,7 @@ jobs:
       - name: 🏗️ Install Dependencies
         run: |
           uv pip install --upgrade pip mypy
+          uv pip install -r pyproject.toml --all-extras
           mypy --version
 
       - name: 🧪 Run Mypy

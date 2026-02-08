@@ -15,6 +15,7 @@
 pub struct DimensionRegistry {}
 
 impl DimensionRegistry {
+    /// Creates a new, empty `DimensionRegistry`.
     pub fn new() -> Self {
         Self {}
     }
@@ -24,6 +25,7 @@ impl DimensionRegistry {
 mod tests {
     use super::*;
 
+    /// Test the creation of a DimensionRegistry
     #[test]
     fn test_dimension_registry_creation() {
         let _registry = DimensionRegistry::new();
