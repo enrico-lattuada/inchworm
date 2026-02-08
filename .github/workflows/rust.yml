@@ -1,4 +1,4 @@
-name: Test Rust
+name: Rust CI
 
 on:
   # Run on call from other workflows
@@ -13,19 +13,22 @@ on:
   workflow_dispatch:
 
 env:
-  RUSTFLAGS: -C debuginfo=0  # Do not produce debug symbols
+  RUSTFLAGS: -C debuginfo=0  # Do not produce debug symbols to keep memory usage down
   RUST_BACKTRACE: 1
 
 jobs:
-  test:
-    name: Run Cargo Tests
+  rust:
+    name: Lint, Build & Test (${{ inputs.os }})
     runs-on: ${{ inputs.os }}
     steps:
       - name: 🔎 Checkout Code
         uses: actions/checkout@v6
 
       - name: 🦀 Set up Rust
-        run: rustup show
+        run: rustup component add clippy
+
+      - name: ☑️ Run Clippy Check
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: 🏗️ Compile Tests
         run: cargo test --workspace --all-features --no-run

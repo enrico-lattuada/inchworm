@@ -21,34 +21,40 @@ jobs:
       python-version: '3.9'
     if: ${{ !github.event.pull_request.draft }}
 
-  lint-rust:
+  rust:
     needs: pre-commit
-    uses: ./.github/workflows/check-rust.yml
-    if: ${{ !github.event.pull_request.draft }}
-
-  python-static-checks:
-    needs: pre-commit
-    uses: ./.github/workflows/check-python.yml
+    uses: ./.github/workflows/rust.yml
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ['3.9', '3.13']
+        os: [ubuntu-latest, macos-latest, windows-latest]
     with:
+      os: ${{ matrix.os }}
+    if: ${{ !github.event.pull_request.draft }}
+
+  python:
+    needs: pre-commit
+    uses: ./.github/workflows/python.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: '3.9'    # min Python, Linux
+          - os: ubuntu-latest
+            python-version: '3.14'   # max Python, Linux
+          - os: macos-latest
+            python-version: '3.14'   # macOS ARM
+          - os: windows-latest
+            python-version: '3.14'   # Windows compat
+    with:
+      os: ${{ matrix.os }}
       python-version: ${{ matrix.python-version }}
-    if: ${{ !github.event.pull_request.draft }}
-
-  test-rust:
-    needs: [pre-commit, lint-rust]
-    uses: ./.github/workflows/test-rust.yml
-    if: ${{ !github.event.pull_request.draft }}
-
-  test-python:
-    needs: [pre-commit, lint-rust, python-static-checks]
-    uses: ./.github/workflows/test-python.yml
     if: ${{ !github.event.pull_request.draft }}
 
   ci:
     name: CI
-    needs: [pre-commit, lint-rust, python-static-checks, test-rust, test-python]
+    needs: [pre-commit, rust, python]
     runs-on: ubuntu-latest
     if: ${{ always() }}
     steps:
