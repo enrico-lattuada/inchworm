@@ -1,1 +1,1 @@
-pub use inchworm_dimensions::{BaseDimensionDef, DimensionRegistry};
+pub use inchworm_dimensions::{BaseDimensionDef, DerivedDimensionDef, DimensionRegistry};
