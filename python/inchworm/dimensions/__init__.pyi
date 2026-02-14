@@ -72,3 +72,41 @@ class BaseDimensionDef:
             The symbol of the base dimension.
         """
         ...
+
+class DerivedDimensionDef:
+    """A definition of a derived physical dimension.
+
+    `DerivedDimensionDef` represents derived physical dimensions that are
+    formed by combining base or other derived dimensions in a units system.
+
+    Attributes
+    ----------
+    name : str
+        The name of the derived dimension.
+    symbol : str
+        The symbol of the derived dimension.
+    """
+
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+    @property
+    def name(self) -> str:
+        """The name of the derived dimension.
+
+        Returns
+        -------
+        name : str
+            The name of the derived dimension.
+        """
+        ...
+
+    @property
+    def symbol(self) -> str:
+        """The symbol of the derived dimension.
+
+        Returns
+        -------
+        symbol : str
+            The symbol of the derived dimension.
+        """
+        ...
