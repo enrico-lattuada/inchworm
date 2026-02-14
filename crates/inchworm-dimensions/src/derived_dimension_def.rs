@@ -50,27 +50,22 @@ impl DerivedDimensionDef {
             ));
         }
         if symbol.is_empty() {
-            return Err(DimensionError::InvalidDefinition(
-                format!("Derived dimension ({}) symbol cannot be empty.", name).to_string(),
-            ));
+            return Err(DimensionError::InvalidDefinition(format!(
+                "Derived dimension ({}) symbol cannot be empty.",
+                name
+            )));
         }
         if components.is_empty() {
-            return Err(DimensionError::InvalidDefinition(
-                format!(
-                    "Derived dimension ({}) must have at least one component.",
-                    name
-                )
-                .to_string(),
-            ));
+            return Err(DimensionError::InvalidDefinition(format!(
+                "Derived dimension ({}) must have at least one component.",
+                name
+            )));
         }
         if components.iter().any(|c| !c.is_valid()) {
-            return Err(DimensionError::InvalidDefinition(
-                format!(
-                    "Derived dimension ({}) has invalid components. All component dimension references must be valid.",
-                    name
-                )
-                .to_string(),
-            ));
+            return Err(DimensionError::InvalidDefinition(format!(
+                "Derived dimension ({}) has invalid components. All component dimension references must be valid.",
+                name
+            )));
         }
         Ok(Self {
             name: name.to_string(),
@@ -217,9 +212,9 @@ mod tests {
         .unwrap();
         let components = velocity.components();
         assert_eq!(components.len(), 2);
-        assert_eq!(components[0].dimension_def().unwrap().name(), "Length");
+        assert_eq!(components[0].dimension().unwrap().name(), "Length");
         assert_eq!(components[0].exponent(), Ratio::from(1));
-        assert_eq!(components[1].dimension_def().unwrap().name(), "Time");
+        assert_eq!(components[1].dimension().unwrap().name(), "Time");
         assert_eq!(components[1].exponent(), Ratio::from(-1));
     }
 }

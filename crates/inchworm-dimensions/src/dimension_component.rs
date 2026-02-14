@@ -24,6 +24,12 @@ pub struct DimensionComponent {
 
 impl DimensionComponent {
     /// Creates a new `DimensionComponent` with the given dimension and exponent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DimensionError::InvalidComponent`] if:
+    /// - The dimension reference has been dropped (weak reference is no longer valid).
+    /// - The exponent is zero.
     pub fn new(
         dimension: Weak<DimensionDef>,
         exponent: Ratio<i32>,
@@ -51,14 +57,9 @@ impl DimensionComponent {
         self.dimension.upgrade().is_some()
     }
 
-    /// Returns a reference to the [`DimensionDef`] of the component.
-    pub fn dimension(&self) -> &Weak<DimensionDef> {
-        &self.dimension
-    }
-
     /// Returns an [`Arc`] to the [`DimensionDef`] of the component if it is
     /// still valid, or `None` if it has been dropped.
-    pub fn dimension_def(&self) -> Option<Arc<DimensionDef>> {
+    pub fn dimension(&self) -> Option<Arc<DimensionDef>> {
         self.dimension.upgrade()
     }
 
@@ -118,19 +119,8 @@ mod tests {
         let dimension = Arc::new(BaseDimensionDef::new("Length", "L").unwrap().into());
         let component =
             DimensionComponent::new(Arc::downgrade(&dimension), Ratio::from(1)).unwrap();
-        assert!(component.dimension().upgrade().is_some());
-        assert_eq!(component.dimension().upgrade().unwrap().name(), "Length");
-    }
-
-    // Test dimension_def() method
-    #[test]
-    fn test_dimension_component_dimension_def() {
-        let dimension = Arc::new(BaseDimensionDef::new("Length", "L").unwrap().into());
-        let component =
-            DimensionComponent::new(Arc::downgrade(&dimension), Ratio::from(1)).unwrap();
-        assert!(component.dimension_def().is_some());
-        assert_eq!(component.dimension_def().unwrap().name(), "Length");
-        assert_eq!(component.exponent(), Ratio::from(1));
+        assert!(component.dimension().is_some());
+        assert_eq!(component.dimension().unwrap().name(), "Length");
     }
 
     // Test exponent() method
