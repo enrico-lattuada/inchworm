@@ -75,6 +75,20 @@ mod tests {
         assert_eq!(dimension.symbol, "τ");
     }
 
+    // Test BaseDimensionDef creation with empty name
+    #[test]
+    fn test_base_dimension_def_empty_name() {
+        let result = BaseDimensionDef::new("", "L");
+        assert!(matches!(result, Err(DimensionError::InvalidDefinition(_))));
+    }
+
+    // Test BaseDimensionDef creation with empty symbol
+    #[test]
+    fn test_base_dimension_def_empty_symbol() {
+        let result = BaseDimensionDef::new("Length", "");
+        assert!(matches!(result, Err(DimensionError::InvalidDefinition(_))));
+    }
+
     // Test BaseDimensionDef name method
     #[test]
     fn test_base_dimension_get_name() {

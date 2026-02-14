@@ -127,6 +127,43 @@ mod tests {
         );
     }
 
+    // Test creation of DerivedDimensionDef with empty name
+    #[test]
+    fn test_derived_dimension_with_empty_name() {
+        let time = make_base_dimension("Time", "T");
+        let result = DerivedDimensionDef::new(
+            "",
+            "f",
+            vec![DimensionComponent::new(
+                Arc::downgrade(&time),
+                Ratio::from(-1),
+            )],
+        );
+        assert!(matches!(result, Err(DimensionError::InvalidDefinition(_))));
+    }
+
+    // Test creation of DerivedDimensionDef with empty symbol
+    #[test]
+    fn test_derived_dimension_with_empty_symbol() {
+        let time = make_base_dimension("Time", "T");
+        let result = DerivedDimensionDef::new(
+            "Frequency",
+            "",
+            vec![DimensionComponent::new(
+                Arc::downgrade(&time),
+                Ratio::from(-1),
+            )],
+        );
+        assert!(matches!(result, Err(DimensionError::InvalidDefinition(_))));
+    }
+
+    // Test creation of DerivedDimensionDef with no components
+    #[test]
+    fn test_derived_dimension_with_no_components() {
+        let result = DerivedDimensionDef::new("Dimensionless", "1", vec![]);
+        assert!(matches!(result, Err(DimensionError::InvalidDefinition(_))));
+    }
+
     // Test DerivedDimensionDef name method
     #[test]
     fn test_derived_dimension_get_name() {
