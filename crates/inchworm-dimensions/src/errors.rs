@@ -6,4 +6,6 @@ pub enum DimensionError {
     /// The dimension definition is invalid.
     #[error("Invalid dimension definition: {0}.")]
     InvalidDefinition(String),
+    #[error("Invalid dimension component: {0}.")]
+    InvalidComponent(String),
 }
