@@ -8,6 +8,7 @@ license.workspace = true
 version.workspace = true
 
 [dependencies]
+num-rational = "0.4.2"
 
 [lints.clippy]
 indexing_slicing = "deny"
@@ -15,4 +16,3 @@ fallible_impl_from = "deny"
 wildcard_enum_match_arm = "deny"
 unneeded_field_pattern = "deny"
 fn_params_excessive_bools = "deny"
-new_without_default = "allow"
