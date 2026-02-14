@@ -1,4 +1,4 @@
-use crate::dimension_component::DimensionComponent;
+use crate::{dimension_component::DimensionComponent, errors::DimensionError};
 
 /// A definition of a derived physical dimension.
 ///
@@ -35,13 +35,35 @@ pub struct DerivedDimensionDef {
 
 impl DerivedDimensionDef {
     /// Creates a new `DerivedDimensionDef` with the given name and symbol.
-    pub fn new(name: &str, symbol: &str, components: Vec<DimensionComponent>) -> Self {
-        // TODO: Raise error if name, symbol, or components are empty
-        Self {
+    pub fn new(
+        name: &str,
+        symbol: &str,
+        components: Vec<DimensionComponent>,
+    ) -> Result<Self, DimensionError> {
+        if name.is_empty() {
+            return Err(DimensionError::InvalidDefinition(
+                "Derived dimension name cannot be empty.".to_string(),
+            ));
+        }
+        if symbol.is_empty() {
+            return Err(DimensionError::InvalidDefinition(
+                format!("Derived dimension ({}) symbol cannot be empty.", name).to_string(),
+            ));
+        }
+        if components.is_empty() {
+            return Err(DimensionError::InvalidDefinition(
+                format!(
+                    "Derived dimension ({}) must have at least one component.",
+                    name
+                )
+                .to_string(),
+            ));
+        }
+        Ok(Self {
             name: name.to_string(),
             symbol: symbol.to_string(),
             components,
-        }
+        })
     }
 
     /// Returns the name of the derived dimension.
@@ -69,7 +91,7 @@ mod tests {
 
     // Helper function to create a base dimension wrapped in an Arc and converted to DimensionDef
     fn make_base_dimension(name: &str, symbol: &str) -> Arc<DimensionDef> {
-        Arc::new(BaseDimensionDef::new(name, symbol).into())
+        Arc::new(BaseDimensionDef::new(name, symbol).unwrap().into())
     }
 
     // Test creation of DerivedDimensionDef
@@ -113,7 +135,8 @@ mod tests {
                 DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
                 DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)),
             ],
-        );
+        )
+        .unwrap();
         assert_eq!(velocity.name(), "Velocity");
     }
 
@@ -129,7 +152,8 @@ mod tests {
                 DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
                 DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)),
             ],
-        );
+        )
+        .unwrap();
         assert_eq!(velocity.symbol(), "v");
     }
 }

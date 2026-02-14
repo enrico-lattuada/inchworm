@@ -8,6 +8,7 @@ mod base_dimension_def;
 mod derived_dimension_def;
 mod dimension_component;
 mod dimension_def;
+mod errors;
 mod registry;
 
 pub use base_dimension_def::BaseDimensionDef;
