@@ -200,4 +200,26 @@ mod tests {
         .unwrap();
         assert_eq!(velocity.symbol(), "v");
     }
+
+    // Test DerivedDimensionDef components method
+    #[test]
+    fn test_derived_dimension_get_components() {
+        let length = make_base_dimension("Length", "L");
+        let time = make_base_dimension("Time", "T");
+        let velocity = DerivedDimensionDef::new(
+            "Velocity",
+            "v",
+            vec![
+                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)).unwrap(),
+                DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)).unwrap(),
+            ],
+        )
+        .unwrap();
+        let components = velocity.components();
+        assert_eq!(components.len(), 2);
+        assert_eq!(components[0].dimension_def().unwrap().name(), "Length");
+        assert_eq!(components[0].exponent(), Ratio::from(1));
+        assert_eq!(components[1].dimension_def().unwrap().name(), "Time");
+        assert_eq!(components[1].exponent(), Ratio::from(-1));
+    }
 }
