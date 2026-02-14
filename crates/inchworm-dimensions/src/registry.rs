@@ -31,7 +31,7 @@ impl Default for DimensionRegistry {
 mod tests {
     use super::*;
 
-    /// Test the creation of a DimensionRegistry
+    // Test the creation of a DimensionRegistry
     #[test]
     fn test_dimension_registry_creation() {
         let _registry = DimensionRegistry::new();

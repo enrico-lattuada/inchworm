@@ -12,8 +12,8 @@ use crate::{dimension_component::DimensionComponent, errors::DimensionError};
 /// use num_rational::Ratio;
 /// use std::sync::Arc;
 ///
-/// let length = Arc::new(BaseDimensionDef::new("Length", "L").into());
-/// let time = Arc::new(BaseDimensionDef::new("Time", "T").into());
+/// let length = Arc::new(BaseDimensionDef::new("Length", "L").unwrap().into());
+/// let time = Arc::new(BaseDimensionDef::new("Time", "T").unwrap().into());
 /// let _velocity = DerivedDimensionDef::new(
 ///     "Velocity",
 ///     "v",
@@ -21,20 +21,24 @@ use crate::{dimension_component::DimensionComponent, errors::DimensionError};
 ///         DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
 ///         DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)),
 ///     ],
-/// );
+/// ).unwrap();
 /// ```
 #[derive(Debug, Clone)]
 pub struct DerivedDimensionDef {
-    // The name of the derived dimension (e.g., "velocity", "acceleration").
+    /// The name of the derived dimension (e.g., "velocity", "acceleration").
     name: String,
-    // A symbol for the derived dimension (e.g., "V" for velocity).
+    /// A symbol for the derived dimension (e.g., "V" for velocity).
     symbol: String,
-    // Components whose product forms the derived dimension
+    /// Components whose product forms the derived dimension
     components: Vec<DimensionComponent>,
 }
 
 impl DerivedDimensionDef {
     /// Creates a new `DerivedDimensionDef` with the given name and symbol.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DimensionError::InvalidDefinition`] if the name or symbol is empty, or if there are no components.
     pub fn new(
         name: &str,
         symbol: &str,

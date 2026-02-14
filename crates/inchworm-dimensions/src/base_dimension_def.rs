@@ -11,18 +11,22 @@ use crate::errors::DimensionError;
 /// ```
 /// use inchworm_dimensions::BaseDimensionDef;
 ///
-/// let dimension = BaseDimensionDef::new("length", "L");
+/// let dimension = BaseDimensionDef::new("length", "L").unwrap();
 /// ```
 #[derive(Debug, Clone)]
 pub struct BaseDimensionDef {
-    // The name of the base dimension (e.g., "length", "mass").
+    /// The name of the base dimension (e.g., "length", "mass").
     name: String,
-    // A symbol for the base dimension (e.g., "L" for length).
+    /// A symbol for the base dimension (e.g., "L" for length).
     symbol: String,
 }
 
 impl BaseDimensionDef {
     /// Creates a new `BaseDimensionDef` with the given name and symbol.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DimensionError::InvalidDefinition`] if the name or symbol is empty.
     pub fn new(name: &str, symbol: &str) -> Result<Self, DimensionError> {
         if name.is_empty() {
             return Err(DimensionError::InvalidDefinition(
