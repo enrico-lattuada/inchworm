@@ -21,11 +21,17 @@ impl DimensionRegistry {
     }
 }
 
+impl Default for DimensionRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Test the creation of a DimensionRegistry
+    // Test the creation of a DimensionRegistry
     #[test]
     fn test_dimension_registry_creation() {
         let _registry = DimensionRegistry::new();
