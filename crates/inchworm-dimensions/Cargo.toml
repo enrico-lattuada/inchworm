@@ -9,6 +9,7 @@ version.workspace = true
 
 [dependencies]
 num-rational = "0.4.2"
+thiserror = "2.0.18"
 
 [lints.clippy]
 indexing_slicing = "deny"
