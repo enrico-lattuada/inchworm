@@ -9,14 +9,16 @@ use crate::derived_dimension_def::DerivedDimensionDef;
 /// derived dimensions with rational exponents.
 #[derive(Debug, Clone)]
 pub enum DimensionDef {
-    /// A base dimension definition, representing fundamental physical dimensions.
+    /// A base dimension definition, representing fundamental physical
+    /// dimensions.
     Base(BaseDimensionDef),
-    /// A derived dimension definition, representing dimensions formed by combining base or other derived dimensions.
+    /// A derived dimension definition, representing dimensions formed by
+    /// combining base or other derived dimensions.
     Derived(DerivedDimensionDef),
 }
 
 impl DimensionDef {
-    /// Returns the name of the dimension, whether it's a base or derived dimension.
+    /// The name of the dimension.
     pub fn name(&self) -> &str {
         match self {
             DimensionDef::Base(def) => def.name(),
@@ -24,7 +26,7 @@ impl DimensionDef {
         }
     }
 
-    /// Returns the symbol of the dimension, whether it's a base or derived dimension.
+    /// The symbol of the dimension.
     pub fn symbol(&self) -> &str {
         match self {
             DimensionDef::Base(def) => def.symbol(),
