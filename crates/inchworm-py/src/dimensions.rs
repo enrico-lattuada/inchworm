@@ -2,14 +2,16 @@ use inchworm::dimensions::{BaseDimensionDef, DerivedDimensionDef, DimensionRegis
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 
+use crate::errors::dimension_error_to_pyerr;
+
 /// A definition of a base physical dimension.
 #[pyclass(name = "BaseDimensionDef")]
 pub struct PyBaseDimensionDef {
     _inner: BaseDimensionDef,
 }
 
+/// Creates a `PyBaseDimensionDef` from a `BaseDimensionDef`.
 impl From<BaseDimensionDef> for PyBaseDimensionDef {
-    /// Creates a `PyBaseDimensionDef` from a `BaseDimensionDef`.
     fn from(def: BaseDimensionDef) -> Self {
         PyBaseDimensionDef { _inner: def }
     }
@@ -20,8 +22,9 @@ impl PyBaseDimensionDef {
     /// Creates a new `BaseDimensionDef` with the given name and symbol.
     #[new]
     #[pyo3(text_signature = "(name, symbol)")]
-    fn new(name: &str, symbol: &str) -> Self {
-        BaseDimensionDef::new(name, symbol).into()
+    fn new(name: &str, symbol: &str) -> PyResult<Self> {
+        let inner = BaseDimensionDef::new(name, symbol).map_err(dimension_error_to_pyerr)?;
+        Ok(inner.into())
     }
 
     /// The name of the base dimension.

@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 
 mod dimensions;
+mod errors;
 
 /// A Python module implemented in Rust.
 #[pymodule(name = "inchworm")]

@@ -15,4 +15,5 @@ pub use base_dimension_def::BaseDimensionDef;
 pub use derived_dimension_def::DerivedDimensionDef;
 pub use dimension_component::DimensionComponent;
 pub use dimension_def::DimensionDef;
+pub use errors::DimensionError;
 pub use registry::DimensionRegistry;
