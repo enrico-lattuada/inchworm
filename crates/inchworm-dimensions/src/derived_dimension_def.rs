@@ -1,0 +1,135 @@
+use crate::dimension_component::DimensionComponent;
+
+/// A definition of a derived physical dimension.
+///
+/// `DerivedDimensionDef` represents derived physical dimensions that are
+/// formed by combining base or other derived dimensions in a units system.
+///
+/// # Examples
+///
+/// ```
+/// use inchworm_dimensions::{BaseDimensionDef, DerivedDimensionDef, DimensionComponent};
+/// use num_rational::Ratio;
+/// use std::sync::Arc;
+///
+/// let length = Arc::new(BaseDimensionDef::new("Length", "L").into());
+/// let time = Arc::new(BaseDimensionDef::new("Time", "T").into());
+/// let _velocity = DerivedDimensionDef::new(
+///     "Velocity",
+///     "v",
+///     vec![
+///         DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
+///         DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)),
+///     ],
+/// );
+/// ```
+#[derive(Debug, Clone)]
+pub struct DerivedDimensionDef {
+    // The name of the derived dimension (e.g., "velocity", "acceleration").
+    name: String,
+    // A symbol for the derived dimension (e.g., "V" for velocity).
+    symbol: String,
+    // Components whose product forms the derived dimension
+    components: Vec<DimensionComponent>,
+}
+
+impl DerivedDimensionDef {
+    /// Creates a new `DerivedDimensionDef` with the given name and symbol.
+    pub fn new(name: &str, symbol: &str, components: Vec<DimensionComponent>) -> Self {
+        // TODO: Raise error if name, symbol, or components are empty
+        Self {
+            name: name.to_string(),
+            symbol: symbol.to_string(),
+            components,
+        }
+    }
+
+    /// Returns the name of the derived dimension.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the symbol of the derived dimension.
+    pub fn symbol(&self) -> &str {
+        &self.symbol
+    }
+
+    /// Returns the components of the derived dimension.
+    pub fn components(&self) -> &[DimensionComponent] {
+        &self.components
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{DimensionDef, base_dimension_def::BaseDimensionDef};
+    use num_rational::Ratio;
+    use std::sync::Arc;
+
+    // Helper function to create a base dimension wrapped in an Arc and converted to DimensionDef
+    fn make_base_dimension(name: &str, symbol: &str) -> Arc<DimensionDef> {
+        Arc::new(BaseDimensionDef::new(name, symbol).into())
+    }
+
+    // Test creation of DerivedDimensionDef
+    #[test]
+    fn test_derived_dimension_def_creation() {
+        let length = make_base_dimension("Length", "L");
+        let time = make_base_dimension("Time", "T");
+        let _velocity = DerivedDimensionDef::new(
+            "Velocity",
+            "v",
+            vec![
+                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
+                DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)),
+            ],
+        );
+    }
+
+    // Test creation of DerivedDimensionDef with a non-ASCII symbol
+    #[test]
+    fn test_derived_dimension_with_non_ascii_symbol() {
+        let length = make_base_dimension("Length", "L");
+        let _strain = DerivedDimensionDef::new(
+            "Strain",
+            "ε",
+            vec![
+                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
+                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(-1)),
+            ],
+        );
+    }
+
+    // Test DerivedDimensionDef name method
+    #[test]
+    fn test_derived_dimension_get_name() {
+        let length = make_base_dimension("Length", "L");
+        let time = make_base_dimension("Time", "T");
+        let velocity = DerivedDimensionDef::new(
+            "Velocity",
+            "v",
+            vec![
+                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
+                DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)),
+            ],
+        );
+        assert_eq!(velocity.name(), "Velocity");
+    }
+
+    // Test DerivedDimensionDef symbol method
+    #[test]
+    fn test_derived_dimension_get_symbol() {
+        let length = make_base_dimension("Length", "L");
+        let time = make_base_dimension("Time", "T");
+        let velocity = DerivedDimensionDef::new(
+            "Velocity",
+            "v",
+            vec![
+                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
+                DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)),
+            ],
+        );
+        assert_eq!(velocity.symbol(), "v");
+    }
+}
