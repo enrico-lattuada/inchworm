@@ -89,14 +89,14 @@ mod tests {
         assert!(matches!(result, Err(DimensionError::InvalidDefinition(_))));
     }
 
-    // Test BaseDimensionDef name method
+    // Test name() method
     #[test]
     fn test_base_dimension_get_name() {
         let dimension = BaseDimensionDef::new("Mass", "M").unwrap();
         assert_eq!(dimension.name(), "Mass");
     }
 
-    // Test BaseDimensionDef symbol method
+    // Test symbol() method
     #[test]
     fn test_base_dimension_get_symbol() {
         let dimension = BaseDimensionDef::new("Current", "I").unwrap();

@@ -167,7 +167,7 @@ mod tests {
         assert!(matches!(result, Err(DimensionError::InvalidDefinition(_))));
     }
 
-    // Test DerivedDimensionDef name method
+    // Test name() method
     #[test]
     fn test_derived_dimension_get_name() {
         let length = make_base_dimension("Length", "L");
@@ -184,7 +184,7 @@ mod tests {
         assert_eq!(velocity.name(), "Velocity");
     }
 
-    // Test DerivedDimensionDef symbol method
+    // Test symbol() method
     #[test]
     fn test_derived_dimension_get_symbol() {
         let length = make_base_dimension("Length", "L");
@@ -201,7 +201,7 @@ mod tests {
         assert_eq!(velocity.symbol(), "v");
     }
 
-    // Test DerivedDimensionDef components method
+    // Test components() method
     #[test]
     fn test_derived_dimension_get_components() {
         let length = make_base_dimension("Length", "L");
