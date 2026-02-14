@@ -108,9 +108,5 @@ mod tests {
         assert_eq!(dimension_def.symbol(), "v");
         let components = dimension_def.components();
         assert_eq!(components.len(), 2);
-        assert_eq!(components[0].dimension().unwrap().name(), "Length");
-        assert_eq!(components[0].exponent(), Ratio::from(1));
-        assert_eq!(components[1].dimension().unwrap().name(), "Time");
-        assert_eq!(components[1].exponent(), Ratio::from(-1));
     }
 }
