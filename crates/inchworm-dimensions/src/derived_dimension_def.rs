@@ -18,8 +18,8 @@ use crate::{dimension_component::DimensionComponent, errors::DimensionError};
 ///     "Velocity",
 ///     "v",
 ///     vec![
-///         DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
-///         DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)),
+///         DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)).unwrap(),
+///         DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)).unwrap(),
 ///     ],
 /// ).unwrap();
 /// ```
@@ -58,6 +58,15 @@ impl DerivedDimensionDef {
             return Err(DimensionError::InvalidDefinition(
                 format!(
                     "Derived dimension ({}) must have at least one component.",
+                    name
+                )
+                .to_string(),
+            ));
+        }
+        if components.iter().any(|c| !c.is_valid()) {
+            return Err(DimensionError::InvalidDefinition(
+                format!(
+                    "Derived dimension ({}) has invalid components. All component dimension references must be valid.",
                     name
                 )
                 .to_string(),
@@ -107,8 +116,8 @@ mod tests {
             "Velocity",
             "v",
             vec![
-                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
-                DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)),
+                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)).unwrap(),
+                DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)).unwrap(),
             ],
         );
     }
@@ -121,8 +130,8 @@ mod tests {
             "Strain",
             "ε",
             vec![
-                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
-                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(-1)),
+                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)).unwrap(),
+                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(-1)).unwrap(),
             ],
         );
     }
@@ -134,10 +143,7 @@ mod tests {
         let result = DerivedDimensionDef::new(
             "",
             "f",
-            vec![DimensionComponent::new(
-                Arc::downgrade(&time),
-                Ratio::from(-1),
-            )],
+            vec![DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)).unwrap()],
         );
         assert!(matches!(result, Err(DimensionError::InvalidDefinition(_))));
     }
@@ -149,10 +155,7 @@ mod tests {
         let result = DerivedDimensionDef::new(
             "Frequency",
             "",
-            vec![DimensionComponent::new(
-                Arc::downgrade(&time),
-                Ratio::from(-1),
-            )],
+            vec![DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)).unwrap()],
         );
         assert!(matches!(result, Err(DimensionError::InvalidDefinition(_))));
     }
@@ -173,8 +176,8 @@ mod tests {
             "Velocity",
             "v",
             vec![
-                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
-                DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)),
+                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)).unwrap(),
+                DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)).unwrap(),
             ],
         )
         .unwrap();
@@ -190,8 +193,8 @@ mod tests {
             "Velocity",
             "v",
             vec![
-                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)),
-                DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)),
+                DimensionComponent::new(Arc::downgrade(&length), Ratio::from(1)).unwrap(),
+                DimensionComponent::new(Arc::downgrade(&time), Ratio::from(-1)).unwrap(),
             ],
         )
         .unwrap();
