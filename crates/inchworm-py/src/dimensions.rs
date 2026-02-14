@@ -10,7 +10,7 @@ pub struct PyBaseDimensionDef {
     _inner: BaseDimensionDef,
 }
 
-/// Creates a `PyBaseDimensionDef` from a `BaseDimensionDef`.
+/// Creates a [`PyBaseDimensionDef`] from a [`BaseDimensionDef`].
 impl From<BaseDimensionDef> for PyBaseDimensionDef {
     fn from(def: BaseDimensionDef) -> Self {
         PyBaseDimensionDef { _inner: def }
@@ -19,7 +19,7 @@ impl From<BaseDimensionDef> for PyBaseDimensionDef {
 
 #[pymethods]
 impl PyBaseDimensionDef {
-    /// Creates a new `BaseDimensionDef` with the given name and symbol.
+    /// Creates a new [`PyBaseDimensionDef`] with the given name and symbol.
     #[new]
     #[pyo3(text_signature = "(name, symbol)")]
     fn new(name: &str, symbol: &str) -> PyResult<Self> {
@@ -52,11 +52,11 @@ impl PyBaseDimensionDef {
     }
 
     /// Returns a string representation of the base dimension definition.
-    fn __str__(slf: &Bound<'_, Self>) -> PyResult<String> {
+    fn __str__(slf: &Bound<'_, Self>) -> String {
         let this = slf.borrow();
         let name = this.name();
         let symbol = this.symbol();
-        Ok(format!("{} ([{}])", name, symbol))
+        format!("{} ([{}])", name, symbol)
     }
 }
 
@@ -67,7 +67,7 @@ pub struct PyDerivedDimensionDef {
 }
 
 impl From<DerivedDimensionDef> for PyDerivedDimensionDef {
-    /// Creates a `PyDerivedDimensionDef` from a `DerivedDimensionDef`.
+    /// Creates a [`PyDerivedDimensionDef`] from a [`DerivedDimensionDef`].
     fn from(def: DerivedDimensionDef) -> Self {
         PyDerivedDimensionDef { _inner: def }
     }
@@ -75,13 +75,6 @@ impl From<DerivedDimensionDef> for PyDerivedDimensionDef {
 
 #[pymethods]
 impl PyDerivedDimensionDef {
-    /// Creates a new `DerivedDimensionDef` with the given name and symbol.
-    #[new]
-    #[pyo3(text_signature = "(name, symbol)")]
-    fn new(name: &str, symbol: &str) -> Self {
-        DerivedDimensionDef::new(name, symbol).into()
-    }
-
     /// The name of the derived dimension.
     #[getter]
     fn name(&self) -> &str {
@@ -107,11 +100,11 @@ impl PyDerivedDimensionDef {
     }
 
     /// Returns a string representation of the derived dimension definition.
-    fn __str__(slf: &Bound<'_, Self>) -> PyResult<String> {
+    fn __str__(slf: &Bound<'_, Self>) -> String {
         let this = slf.borrow();
         let name = this.name();
         let symbol = this.symbol();
-        Ok(format!("{} ([{}])", name, symbol))
+        format!("{} ([{}])", name, symbol)
     }
 }
 
@@ -122,7 +115,7 @@ pub struct PyDimensionRegistry {
 }
 
 impl From<DimensionRegistry> for PyDimensionRegistry {
-    /// Creates a `PyDimensionRegistry` from a `DimensionRegistry`.
+    /// Creates a [`PyDimensionRegistry`] from a [`DimensionRegistry`].
     fn from(registry: DimensionRegistry) -> Self {
         PyDimensionRegistry { _inner: registry }
     }
@@ -130,7 +123,7 @@ impl From<DimensionRegistry> for PyDimensionRegistry {
 
 #[pymethods]
 impl PyDimensionRegistry {
-    /// Creates a new, empty `DimensionRegistry`.
+    /// Creates a new, empty [`PyDimensionRegistry`].
     #[new]
     fn new() -> Self {
         DimensionRegistry::new().into()
@@ -154,24 +147,14 @@ impl PyDimensionRegistry {
 mod tests {
     use super::*;
 
-    /// Tests the creation of a `PyBaseDimensionDef` instance.
-    ///
-    /// Verifies that the name and symbol are correctly stored and accessible.
+    // Tests the creation of a `PyBaseDimensionDef` instance.
+    //
+    // Verifies that the name and symbol are correctly stored and accessible.
     #[test]
     fn test_base_dimension_def_creation() {
-        let dimension = PyBaseDimensionDef::new("Length", "L");
+        let dimension = PyBaseDimensionDef::new("Length", "L").unwrap();
         assert_eq!(dimension.name(), "Length");
         assert_eq!(dimension.symbol(), "L");
-    }
-
-    /// Tests the creation of a `PyDerivedDimensionDef` instance.
-    ///
-    /// Verifies that the name and symbol are correctly stored and accessible.
-    #[test]
-    fn test_derived_dimension_def_creation() {
-        let dimension = PyDerivedDimensionDef::new("Velocity", "v");
-        assert_eq!(dimension.name(), "Velocity");
-        assert_eq!(dimension.symbol(), "v");
     }
 
     /// Tests the creation of an empty `PyDimensionRegistry`.
