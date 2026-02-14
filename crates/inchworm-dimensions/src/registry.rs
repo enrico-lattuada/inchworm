@@ -21,6 +21,12 @@ impl DimensionRegistry {
     }
 }
 
+impl Default for DimensionRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
