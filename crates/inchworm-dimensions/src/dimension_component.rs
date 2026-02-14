@@ -12,6 +12,16 @@ use crate::{dimension_def::DimensionDef, errors::DimensionError};
 /// derived dimension of velocity (length/time), you would have a
 /// `DimensionComponent` for length with an exponent of 1 and a
 /// `DimensionComponent` for time with an exponent of -1.
+///
+/// # Examples
+///
+/// ```
+/// use inchworm_dimensions::{BaseDimensionDef, DimensionDef, DimensionComponent};
+/// use num_rational::Ratio;
+/// use std::sync::Arc;
+/// let length = Arc::new(BaseDimensionDef::new("Length", "L").unwrap().into());
+/// let area_component = DimensionComponent::new(Arc::downgrade(&length), Ratio::from(2)).unwrap();
+/// ```
 #[derive(Debug, Clone)]
 pub struct DimensionComponent {
     /// A weak reference to the dimension that is a component of the derived
