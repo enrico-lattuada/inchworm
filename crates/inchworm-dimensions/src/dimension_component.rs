@@ -68,3 +68,77 @@ impl DimensionComponent {
         self.exponent
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::base_dimension_def::BaseDimensionDef;
+
+    // Test creation of DimensionComponent
+    #[test]
+    fn test_dimension_component_creation() {
+        let dimension = Arc::new(BaseDimensionDef::new("Length", "L").unwrap().into());
+        let _component = DimensionComponent::new(Arc::downgrade(&dimension), Ratio::from(1));
+    }
+
+    // Test creation of DimensionComponent with invalid dimension reference
+    #[test]
+    fn test_dimension_component_creation_invalid_dimension() {
+        let dimension = Arc::new(BaseDimensionDef::new("Length", "L").unwrap().into());
+        let weak_dimension = Arc::downgrade(&dimension);
+        drop(dimension); // Drop the original dimension to make the weak reference invalid
+        let result = DimensionComponent::new(weak_dimension, Ratio::from(1));
+        assert!(matches!(result, Err(DimensionError::InvalidComponent(_))));
+    }
+
+    // Test creation of DimensionComponent with zero exponent
+    #[test]
+    fn test_dimension_component_creation_zero_exponent() {
+        let dimension = Arc::new(BaseDimensionDef::new("Length", "L").unwrap().into());
+        let result = DimensionComponent::new(Arc::downgrade(&dimension), Ratio::from(0));
+        assert!(matches!(result, Err(DimensionError::InvalidComponent(_))));
+    }
+
+    // Test is_valid() method
+    #[test]
+    fn test_dimension_component_is_valid() {
+        let dimension = Arc::new(BaseDimensionDef::new("Length", "L").unwrap().into());
+        let component =
+            DimensionComponent::new(Arc::downgrade(&dimension), Ratio::from(1)).unwrap();
+        assert!(component.is_valid());
+
+        // Drop the original dimension
+        drop(dimension);
+        assert!(!component.is_valid());
+    }
+
+    // Test dimension() method
+    #[test]
+    fn test_dimension_component_dimension() {
+        let dimension = Arc::new(BaseDimensionDef::new("Length", "L").unwrap().into());
+        let component =
+            DimensionComponent::new(Arc::downgrade(&dimension), Ratio::from(1)).unwrap();
+        assert!(component.dimension().upgrade().is_some());
+        assert_eq!(component.dimension().upgrade().unwrap().name(), "Length");
+    }
+
+    // Test dimension_def() method
+    #[test]
+    fn test_dimension_component_dimension_def() {
+        let dimension = Arc::new(BaseDimensionDef::new("Length", "L").unwrap().into());
+        let component =
+            DimensionComponent::new(Arc::downgrade(&dimension), Ratio::from(1)).unwrap();
+        assert!(component.dimension_def().is_some());
+        assert_eq!(component.dimension_def().unwrap().name(), "Length");
+        assert_eq!(component.exponent(), Ratio::from(1));
+    }
+
+    // Test exponent() method
+    #[test]
+    fn test_dimension_component_exponent() {
+        let dimension = Arc::new(BaseDimensionDef::new("Length", "L").unwrap().into());
+        let component =
+            DimensionComponent::new(Arc::downgrade(&dimension), Ratio::new(3, 2)).unwrap();
+        assert_eq!(component.exponent(), Ratio::new(3, 2));
+    }
+}
