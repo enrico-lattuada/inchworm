@@ -39,7 +39,7 @@ impl Exp {
     }
 
     /// Constructs a new integer exponent.
-    /// 
+    ///
     /// # Errors
     ///
     /// Returns [`DimensionError::ExponentOverflow`] if `n` is `i64::MIN`.
