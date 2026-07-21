@@ -8,6 +8,8 @@ pub struct Exp {
 }
 
 impl Exp {
+    pub const ZERO: Self = Self { num: 0, den: 1 };
+
     /// Constructs a new rational exponent with the specified numerator and denominator.
     ///
     /// # Errors
@@ -147,6 +149,11 @@ impl Exp {
         let new_num = i128::from(self.num) * i128::from(rhs.num);
         let new_den = i128::from(self.den) * i128::from(rhs.den);
         Self::new_from_i128(new_num, new_den)
+    }
+
+    /// Returns `true` if `self` is equal to the additive identity.
+    pub fn is_zero(&self) -> bool {
+        *self == Self::ZERO
     }
 }
 
