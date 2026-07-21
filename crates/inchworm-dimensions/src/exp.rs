@@ -22,7 +22,7 @@ impl Exp {
     /// let exp = Exp::new(2, 3).unwrap();
     /// assert_eq!(Exp::new(4, 6).unwrap(), exp);
     /// ```
-    pub fn new(num: i64, den: i64) -> Result<Exp, DimensionError> {
+    pub fn new(num: i64, den: i64) -> Result<Self, DimensionError> {
         if den == 0 {
             return Err(DimensionError::ZeroDenominator);
         }
@@ -31,7 +31,7 @@ impl Exp {
         }
         let gcd = gcd(num.unsigned_abs(), den.unsigned_abs()) as i64;
         let den_sign = if den < 0 { -1 } else { 1 };
-        let exp = Exp {
+        let exp = Self {
             num: den_sign * num / gcd,
             den: den_sign * den / gcd,
         };
@@ -51,11 +51,11 @@ impl Exp {
     /// let exp = Exp::int(2).unwrap();
     /// assert_eq!(Exp::new(4, 2).unwrap(), exp);
     /// ```
-    pub fn int(n: i64) -> Result<Exp, DimensionError> {
+    pub fn int(n: i64) -> Result<Self, DimensionError> {
         if n == i64::MIN {
             return Err(DimensionError::ExponentOverflow);
         }
-        Ok(Exp { num: n, den: 1 })
+        Ok(Self { num: n, den: 1 })
     }
 
     /// The numerator of the rational exponent.
@@ -68,7 +68,7 @@ impl Exp {
         self.den
     }
 
-    fn new_from_i128(num: i128, den: i128) -> Result<Exp, DimensionError> {
+    fn new_from_i128(num: i128, den: i128) -> Result<Self, DimensionError> {
         if den == 0 {
             return Err(DimensionError::ZeroDenominator);
         }
@@ -92,7 +92,7 @@ impl Exp {
             1,
             "numerator/denominator must already be in lowest terms at this point"
         );
-        Ok(Exp {
+        Ok(Self {
             num: new_num as i64,
             den: new_den as i64,
         })
@@ -116,13 +116,13 @@ impl Exp {
     /// let overflowing_rhs = Exp::new(i64::MAX, 1).unwrap();
     /// assert!(matches!(exp.checked_add(overflowing_rhs), Err(DimensionError::ExponentOverflow)))
     /// ```
-    pub fn checked_add(self, rhs: Exp) -> Result<Exp, DimensionError> {
+    pub fn checked_add(self, rhs: Self) -> Result<Self, DimensionError> {
         // With self=a/b and rhs=c/d, new_den=b*d and new_num=a*d+c*b
         let new_den = i128::from(self.den) * i128::from(rhs.den);
         let ad = i128::from(self.num) * i128::from(rhs.den);
         let cb = i128::from(self.den) * i128::from(rhs.num);
         let new_num = ad.checked_add(cb).ok_or(DimensionError::ExponentOverflow)?;
-        Exp::new_from_i128(new_num, new_den)
+        Self::new_from_i128(new_num, new_den)
     }
 
     /// Checked exponent multiplication.
@@ -143,10 +143,10 @@ impl Exp {
     /// let overflowing_rhs = Exp::new(1, i64::MAX).unwrap();
     /// assert!(matches!(exp.checked_mul(overflowing_rhs), Err(DimensionError::ExponentOverflow)))
     /// ```
-    pub fn checked_mul(self, rhs: Exp) -> Result<Exp, DimensionError> {
+    pub fn checked_mul(self, rhs: Self) -> Result<Self, DimensionError> {
         let new_num = i128::from(self.num) * i128::from(rhs.num);
         let new_den = i128::from(self.den) * i128::from(rhs.den);
-        Exp::new_from_i128(new_num, new_den)
+        Self::new_from_i128(new_num, new_den)
     }
 }
 
