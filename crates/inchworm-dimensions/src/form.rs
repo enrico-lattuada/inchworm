@@ -25,7 +25,7 @@ impl Form {
     /// Merges two forms, combining exponents of shared atoms, pruning any that cancel to zero.
     ///
     /// # Errors
-    /// Returns [`DimensionError::ExponentOverflow`] if overflow occurs during merge of shared atoms [`Exp`] combination.
+    /// Returns [`DimensionError::ExponentOverflow`] if combining a shared atom's exponents overflows.
     pub(crate) fn mul(&self, rhs: &Self) -> Result<Self, DimensionError> {
         let mut entries = SmallVec::new();
         let mut i = 0;
