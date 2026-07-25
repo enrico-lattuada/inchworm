@@ -64,7 +64,7 @@ impl Form {
     /// Raises `self` to the power of `e`, pruning any that cancels to zero.
     ///
     /// # Errors
-    /// Returns [`DimensionError::ExponentOverflow`] if combining a shared atom's exponents overflows.
+    /// Returns [`DimensionError::ExponentOverflow`] if multiplying an atom's exponent by `e` overflows.
     pub(crate) fn pow(&self, e: Exp) -> Result<Self, DimensionError> {
         let mut entries = SmallVec::new();
         if !e.is_zero() {
@@ -75,10 +75,20 @@ impl Form {
         }
         Ok(Self { entries })
     }
+
+    // ---- tests ----
+    #[cfg(test)]
+    pub(crate) fn raw(entries: impl IntoIterator<Item = (AtomId, Exp)>) -> Self {
+        Self {
+            entries: entries.into_iter().collect(),
+        }
+    }
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
+    use crate::test_utils::make_form_entry;
+
     use super::*;
     use smallvec::smallvec;
 
@@ -89,9 +99,9 @@ mod test {
     }
 
     #[test]
-    fn test_form_is_empty() {
+    fn form_is_empty() {
         let empty_form = Form {
-            entries: smallvec![],
+            entries: SmallVec::new(),
         };
         let entries = smallvec![make_form_entry(0, (1, 1)),];
         let form = Form { entries };
@@ -106,7 +116,7 @@ mod test {
     }
 
     #[test]
-    fn test_mul_empty_form() {
+    fn mul_empty_form() {
         let empty_form = Form {
             entries: smallvec![],
         };
@@ -130,7 +140,7 @@ mod test {
     }
 
     #[test]
-    fn test_blocked_forms_mul() {
+    fn blocked_forms_mul() {
         let entries1 = smallvec![make_form_entry(0, (1, 2)), make_form_entry(1, (1, 3)),];
         let entries2 = smallvec![make_form_entry(2, (1, 1)), make_form_entry(3, (5, 4)),];
         let mul_entries = smallvec![
@@ -149,7 +159,7 @@ mod test {
     }
 
     #[test]
-    fn test_interleaved_forms_mul() {
+    fn interleaved_forms_mul() {
         let entries1 = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (1, 3)),];
         let entries2 = smallvec![make_form_entry(1, (1, 1)), make_form_entry(3, (5, 4)),];
         let mul_entries = smallvec![
@@ -167,7 +177,7 @@ mod test {
     }
 
     #[test]
-    fn test_fully_overlapping_forms_mul() {
+    fn fully_overlapping_forms_mul() {
         let entries1 = smallvec![make_form_entry(0, (1, 2)), make_form_entry(1, (1, 3)),];
         let entries2 = smallvec![make_form_entry(0, (1, 1)), make_form_entry(1, (5, 4)),];
         let mul_entries = smallvec![make_form_entry(0, (3, 2)), make_form_entry(1, (19, 12))];
@@ -180,7 +190,7 @@ mod test {
     }
 
     #[test]
-    fn test_zero_exp_result_forms_mul() {
+    fn zero_exp_result_forms_mul() {
         let entries1 = smallvec![make_form_entry(0, (1, 2)),];
         let entries2 = smallvec![make_form_entry(0, (-1, 2)),];
         let mul_entries = smallvec![];
@@ -193,7 +203,7 @@ mod test {
     }
 
     #[test]
-    fn test_generic_forms_mul() {
+    fn generic_forms_mul() {
         let entries1 = smallvec![
             make_form_entry(0, (1, 2)),
             make_form_entry(2, (1, 3)),
@@ -222,7 +232,7 @@ mod test {
     }
 
     #[test]
-    fn test_forms_mul_err_on_exp_overflow() {
+    fn forms_mul_err_on_exp_overflow() {
         let entries1 = smallvec![make_form_entry(0, (1, 1)),];
         let entries2 = smallvec![make_form_entry(0, (i64::MAX, 1)),];
         let form1 = Form { entries: entries1 };
@@ -234,7 +244,7 @@ mod test {
     }
 
     #[test]
-    fn test_form_pow() {
+    fn form_pow() {
         let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(1, (-1, 1)),];
         let form = Form { entries };
         let e = Exp::new(-3, 2).unwrap();
@@ -248,7 +258,7 @@ mod test {
     }
 
     #[test]
-    fn test_form_pow_invariance() {
+    fn form_pow_invariance() {
         let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (5, 4)),];
         let form = Form { entries };
         let e = Exp::new(-3, 2).unwrap();
@@ -257,7 +267,7 @@ mod test {
     }
 
     #[test]
-    fn test_form_pow_zero() {
+    fn form_pow_zero() {
         let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (5, 4)),];
         let form = Form { entries };
         let e = Exp::ZERO;
@@ -265,7 +275,7 @@ mod test {
     }
 
     #[test]
-    fn test_empty_form_raised_to_zero_stays_empty() {
+    fn empty_form_raised_to_zero_stays_empty() {
         let empty_entries = smallvec![];
         let empty_form = Form {
             entries: empty_entries,
@@ -275,7 +285,7 @@ mod test {
     }
 
     #[test]
-    fn test_form_pow_err_on_exp_overflow() {
+    fn form_pow_err_on_exp_overflow() {
         let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (5, 4)),];
         let form = Form { entries };
         let e = Exp::new(i64::MAX, 1).unwrap();

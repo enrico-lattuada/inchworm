@@ -12,11 +12,11 @@ impl AtomId {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     #[test]
-    fn test_new_atom_id() {
+    fn new_atom_id() {
         assert_eq!(AtomId::new(100), AtomId(100));
     }
 }

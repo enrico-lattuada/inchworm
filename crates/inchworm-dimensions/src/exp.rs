@@ -1,7 +1,7 @@
 use crate::error::DimensionError;
 
 /// A rational exponent, always stored in lowest terms with `den > 0`.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Exp {
     num: i64,
     den: i64,
@@ -151,9 +151,10 @@ impl Exp {
         Self::new_from_i128(new_num, new_den)
     }
 
-    /// Returns `true` if `self` is equal to the additive identity.
-    pub fn is_zero(&self) -> bool {
-        *self == Self::ZERO
+    // ---- tests ----
+    #[cfg(test)]
+    pub(crate) fn raw(num: i64, den: i64) -> Self {
+        Self { num, den }
     }
 }
 
