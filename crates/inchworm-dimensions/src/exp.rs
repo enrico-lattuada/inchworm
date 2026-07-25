@@ -70,6 +70,11 @@ impl Exp {
         self.den
     }
 
+    /// Returns `true` if `self` is equal to the additive identity.
+    pub fn is_zero(&self) -> bool {
+        *self == Self::ZERO
+    }
+
     fn new_from_i128(num: i128, den: i128) -> Result<Self, DimensionError> {
         if den == 0 {
             return Err(DimensionError::ZeroDenominator);
@@ -149,6 +154,15 @@ impl Exp {
         let new_num = i128::from(self.num) * i128::from(rhs.num);
         let new_den = i128::from(self.den) * i128::from(rhs.den);
         Self::new_from_i128(new_num, new_den)
+    }
+
+    /// Checked exponent negation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DimensionError::ExponentOverflow`] if overflow occurs in `-self`
+    pub fn checked_neg(self) -> Result<Self, DimensionError> {
+        self.checked_mul(Self::int(-1)?)
     }
 
     // ---- tests ----
@@ -350,5 +364,15 @@ mod tests {
                 Err(DimensionError::ExponentOverflow)
             ));
         }
+    }
+
+    #[test]
+    fn checked_neg_propagates_exponent_overflow() {
+        let (num, den) = (i64::MIN, 1);
+        let exp = Exp { num, den };
+        assert!(matches!(
+            exp.checked_neg(),
+            Err(DimensionError::ExponentOverflow)
+        ));
     }
 }

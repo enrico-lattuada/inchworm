@@ -22,6 +22,13 @@ pub struct Form {
 }
 
 impl Form {
+    /// Returns an empty form.
+    pub fn empty() -> Self {
+        Self {
+            entries: SmallVec::new(),
+        }
+    }
+
     /// Returns `true` if `self` has no entries.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
@@ -76,12 +83,38 @@ impl Form {
         Ok(Self { entries })
     }
 
+    /// Computes the reciprocal of `self` by raising it to the power of `-1`.
+    ///
+    /// # Errors
+    /// Returns [`DimensionError::ExponentOverflow`] if computing the reciprocal of an atom's exponents overflows.
+    pub(crate) fn recip(&self) -> Result<Self, DimensionError> {
+        let mut entries = SmallVec::new();
+        for (atom_id, entry) in self.entries.iter().copied() {
+            entries.push((atom_id, entry.checked_neg()?));
+        }
+        Ok(Self { entries })
+    }
+
     // ---- tests ----
     #[cfg(test)]
     pub(crate) fn raw(entries: impl IntoIterator<Item = (AtomId, Exp)>) -> Self {
         Self {
             entries: entries.into_iter().collect(),
         }
+    }
+}
+
+/// Base signature, a [`Form`] containing base atoms only.
+///
+/// A [`Signature`] answers "are these the same physical quantity, ignoring names?"
+/// while a canonical [`Form`] additionally keeps named-dimensionless atoms as irreducible factors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Signature(pub(crate) Form);
+
+impl Signature {
+    #[cfg(test)]
+    pub(crate) fn raw(entries: impl IntoIterator<Item = (AtomId, Exp)>) -> Self {
+        Self(Form::raw(entries))
     }
 }
 
@@ -92,10 +125,15 @@ mod tests {
     use super::*;
     use smallvec::smallvec;
 
-    fn make_form_entry(id: u64, num_den: (i64, i64)) -> (AtomId, Exp) {
-        let (num, den) = num_den;
-        let exp = Exp::new(num, den).unwrap();
-        (AtomId::new(id), exp)
+    #[test]
+    fn form_empty() {
+        let empty_form = Form::empty();
+        assert_eq!(
+            empty_form,
+            Form {
+                entries: SmallVec::new()
+            }
+        );
     }
 
     #[test]
@@ -290,5 +328,12 @@ mod tests {
         let form = Form { entries };
         let e = Exp::new(i64::MAX, 1).unwrap();
         assert!(matches!(form.pow(e), Err(DimensionError::ExponentOverflow)));
+    }
+
+    #[test]
+    fn recip_of_recip_is_identity() {
+        let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (5, 4)),];
+        let form = Form { entries };
+        assert_eq!(form, form.recip().unwrap().recip().unwrap());
     }
 }
