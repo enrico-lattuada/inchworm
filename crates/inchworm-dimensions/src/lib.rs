@@ -6,7 +6,7 @@ mod form;
 #[cfg(test)]
 mod test_utils;
 
-pub use atom::AtomId;
+pub use atom::{AtomId, RegistryId};
 pub use dimension::Dimension;
 pub use error::DimensionError;
 pub use exp::Exp;
