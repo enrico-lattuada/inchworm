@@ -62,7 +62,6 @@ impl Dimension {
     }
 }
 
-
 // ---- algebra ----
 impl Dimension {
     /// Multiplies two dimensions.
@@ -118,7 +117,6 @@ impl Dimension {
         })
     }
 }
-
 
 // ---- compatibility queries ----
 impl Dimension {
