@@ -74,7 +74,10 @@ impl Exp {
     pub fn is_zero(&self) -> bool {
         *self == Self::ZERO
     }
+}
 
+// ---- algebra ----
+impl Exp {
     fn new_from_i128(num: i128, den: i128) -> Result<Self, DimensionError> {
         if den == 0 {
             return Err(DimensionError::ZeroDenominator);
@@ -164,8 +167,10 @@ impl Exp {
     pub fn checked_neg(self) -> Result<Self, DimensionError> {
         self.checked_mul(Self::int(-1)?)
     }
+}
 
-    // ---- tests ----
+// ---- test utils ----
+impl Exp {
     #[cfg(test)]
     pub(crate) fn raw(num: i64, den: i64) -> Self {
         Self { num, den }

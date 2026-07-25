@@ -33,7 +33,10 @@ impl Form {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+}
 
+// ---- algebra ----
+impl Form {
     /// Merges two forms, combining exponents of shared atoms, pruning any that cancel to zero.
     ///
     /// # Errors
@@ -94,8 +97,10 @@ impl Form {
         }
         Ok(Self { entries })
     }
+}
 
-    // ---- tests ----
+// ---- test utils ----
+impl Form {
     #[cfg(test)]
     pub(crate) fn raw(entries: impl IntoIterator<Item = (AtomId, Exp)>) -> Self {
         Self {

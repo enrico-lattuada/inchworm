@@ -60,8 +60,11 @@ impl Dimension {
     pub fn has_dimensionless_signature(&self) -> bool {
         self.signature.0.is_empty()
     }
+}
 
-    // ---- algebra ----
+
+// ---- algebra ----
+impl Dimension {
     /// Multiplies two dimensions.
     ///
     /// # Errors
@@ -114,8 +117,11 @@ impl Dimension {
             canonical,
         })
     }
+}
 
-    // ---- compatibility queries ----
+
+// ---- compatibility queries ----
+impl Dimension {
     /// Returns the [`Compatibility`] between `self` and `rhs`.
     pub fn compatibility(&self, rhs: &Self) -> Compatibility {
         if self == rhs {
