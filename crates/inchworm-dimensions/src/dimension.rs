@@ -256,7 +256,6 @@ mod tests {
         // canonical = [(L, 1), (force_id, 1)] ; signature = [(T, -2), (L, 2), (M, 1)]
         // Energy (potential) is m.g.h, therefore
         // canonical = [(L, 1), (M, 1), (acceleration_id, 1)] ; signature = [(T, -2), (L, 2), (M, 1)]
-        // How does canonical change if i compute r x F vs F.r (work)??
         let (time_id, length_id, mass_id) = (0, 1, 2);
         let acceleration_id = 3;
         let force_id = 4;
