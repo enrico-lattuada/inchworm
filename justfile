@@ -7,3 +7,7 @@ fmt:
 # Run the Rust test suites.
 test:
     cargo test --workspace --all-features --color always
+
+# Compile and open the docs.
+doc:
+    cargo doc --workspace --open
