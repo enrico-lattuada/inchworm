@@ -18,8 +18,13 @@ pub enum Compatibility {
 /// An immutable dimension value.
 #[derive(Clone, Debug)]
 pub struct Dimension {
+    /// Stored (display/identity) form: the named composite the user built,
+    /// with like factors combined and zero powers dropped.
+    /// `velocity * time` stores `{velocity¹, time¹}` — NOT reduced to `{length¹}`.
     factors: Form,
+    /// Full expansion to base atoms (dimensionless kinds vanish).
     signature: Signature,
+    /// Expansion to base atoms + irreducible dimensionless-kind atoms.
     canonical: Form,
 }
 
