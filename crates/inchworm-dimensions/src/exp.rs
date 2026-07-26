@@ -9,6 +9,7 @@ pub struct Exp {
 
 impl Exp {
     pub const ZERO: Self = Self { num: 0, den: 1 };
+    pub const ONE: Self = Self { num: 1, den: 1 };
 
     /// Constructs a new rational exponent with the specified numerator and denominator.
     ///
