@@ -196,191 +196,225 @@ fn gcd128(mut a: u128, mut b: u128) -> u128 {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::test_utils::errors_match;
 
-    use super::*;
+    mod new {
+        use super::*;
 
-    #[test]
-    fn new_exp_normalization() {
-        let cases = [
-            ((2, 4), (1, 2)),
-            ((1, -2), (-1, 2)),
-            ((0, 3), (0, 1)),
-            ((0, -8), (0, 1)),
-            ((14, -42), (-1, 3)),
-            ((-18, -24), (3, 4)),
-            ((-7, 3), (-7, 3)),
-            ((i64::MAX, 1), (i64::MAX, 1)),
-            ((i64::MIN + 1, 1), (i64::MIN + 1, 1)),
-        ];
-        for (input, expected) in cases {
-            let exp = Exp::new(input.0, input.1).unwrap();
-            let expected_exp = Exp {
-                num: expected.0,
-                den: expected.1,
-            };
-            assert_eq!(exp, expected_exp, "Exp::new({input:?}) failed.");
+        #[test]
+        fn normalization() {
+            let cases = [
+                ((2, 4), (1, 2)),
+                ((1, -2), (-1, 2)),
+                ((0, 3), (0, 1)),
+                ((0, -8), (0, 1)),
+                ((14, -42), (-1, 3)),
+                ((-18, -24), (3, 4)),
+                ((-7, 3), (-7, 3)),
+                ((i64::MAX, 1), (i64::MAX, 1)),
+                ((i64::MIN + 1, 1), (i64::MIN + 1, 1)),
+            ];
+            for (input, expected) in cases {
+                let exp = Exp::new(input.0, input.1).unwrap();
+                let expected_exp = Exp {
+                    num: expected.0,
+                    den: expected.1,
+                };
+                assert_eq!(exp, expected_exp, "Exp::new({input:?}) failed.");
+            }
+        }
+
+        #[test]
+        fn err_on_zero_denominator() {
+            assert!(errors_match(
+                &Exp::new(1, 0).unwrap_err(),
+                &DimensionError::ZeroDenominator
+            ));
+        }
+
+        #[test]
+        fn err_on_exponent_overflow() {
+            let cases = [(i64::MIN, 1), (1, i64::MIN)];
+            for case in cases {
+                assert!(errors_match(
+                    &Exp::new(case.0, case.1).unwrap_err(),
+                    &DimensionError::ExponentOverflow
+                ));
+            }
         }
     }
 
-    #[test]
-    fn new_exp_returns_error_for_zero_denominator() {
-        assert!(errors_match(
-            &Exp::new(1, 0).unwrap_err(),
-            &DimensionError::ZeroDenominator
-        ));
-    }
+    mod int {
+        use super::*;
 
-    #[test]
-    fn new_exp_returns_error_for_exponent_overflow() {
-        let cases = [(i64::MIN, 1), (1, i64::MIN)];
-        for case in cases {
+        #[test]
+        fn basic() {
+            assert_eq!(Exp::int(3).unwrap(), Exp { num: 3, den: 1 });
+        }
+
+        #[test]
+        fn err_on_exponent_overflow() {
             assert!(errors_match(
-                &Exp::new(case.0, case.1).unwrap_err(),
+                &Exp::int(i64::MIN).unwrap_err(),
                 &DimensionError::ExponentOverflow
             ));
         }
     }
 
     #[test]
-    fn int_exp() {
-        assert_eq!(Exp::int(3).unwrap(), Exp { num: 3, den: 1 });
+    fn is_zero() {
+        assert!(Exp::ZERO.is_zero());
+        assert!(!Exp::ONE.is_zero());
+        assert!(Exp::new(0, 5).unwrap().is_zero());
     }
 
-    #[test]
-    fn int_exp_returns_error_for_exponent_overflow() {
-        assert!(errors_match(
-            &Exp::int(i64::MIN).unwrap_err(),
-            &DimensionError::ExponentOverflow
-        ));
-    }
+    mod checked_mul {
+        use super::*;
 
-    #[test]
-    fn exp_checked_mul() {
-        let cases = [
-            ((0, 1), (5, 3), (0, 1)),
-            ((1, 2), (1, 1), (1, 2)),
-            ((1, 2), (1, 2), (1, 4)),
-            ((1, 1), (1, 2), (1, 2)),
-            ((4, 3), (3, 2), (2, 1)),
-            ((4, 7), (-1, 3), (-4, 21)),
-            ((-1, 4), (3, 4), (-3, 16)),
-            ((-7, 3), (-7, 3), (49, 9)),
-            ((i64::MAX, 2), (2, i64::MAX), (1, 1)),
-            ((i64::MIN + 1, 3), (-3, i64::MAX), (1, 1)),
-        ];
-        for (lhs, rhs, expected) in cases {
-            let lhs_exp = Exp {
-                num: lhs.0,
-                den: lhs.1,
-            };
-            let rhs_exp = Exp {
-                num: rhs.0,
-                den: rhs.1,
-            };
-            let expected_exp = Exp {
-                num: expected.0,
-                den: expected.1,
-            };
-            assert_eq!(lhs_exp.checked_mul(rhs_exp).unwrap(), expected_exp);
+        #[test]
+        fn basic() {
+            let cases = [
+                ((0, 1), (5, 3), (0, 1)),
+                ((1, 2), (1, 1), (1, 2)),
+                ((1, 2), (1, 2), (1, 4)),
+                ((1, 1), (1, 2), (1, 2)),
+                ((4, 3), (3, 2), (2, 1)),
+                ((4, 7), (-1, 3), (-4, 21)),
+                ((-1, 4), (3, 4), (-3, 16)),
+                ((-7, 3), (-7, 3), (49, 9)),
+                ((i64::MAX, 2), (2, i64::MAX), (1, 1)),
+                ((i64::MIN + 1, 3), (-3, i64::MAX), (1, 1)),
+            ];
+            for (lhs, rhs, expected) in cases {
+                let lhs_exp = Exp {
+                    num: lhs.0,
+                    den: lhs.1,
+                };
+                let rhs_exp = Exp {
+                    num: rhs.0,
+                    den: rhs.1,
+                };
+                let expected_exp = Exp {
+                    num: expected.0,
+                    den: expected.1,
+                };
+                assert_eq!(lhs_exp.checked_mul(rhs_exp).unwrap(), expected_exp);
+            }
+        }
+
+        #[test]
+        fn err_on_exponent_overflow() {
+            let cases = [
+                ((i64::MAX, 1), (2, 1)),
+                ((i64::MIN + 1, 1), (2, 1)),
+                (((i64::MAX - 1) / 2 + 1, 1), (2, 1)),
+                ((i64::MIN / 2, 1), (2, 1)),
+                ((1, i64::MAX), (1, 2)),
+                ((1, i64::MIN + 1), (1, 2)),
+                ((1, (i64::MAX - 1) / 2 + 1), (1, 2)),
+                ((1, i64::MIN / 2), (1, 2)),
+            ];
+            for (lhs, rhs) in cases {
+                let lhs_exp = Exp {
+                    num: lhs.0,
+                    den: lhs.1,
+                };
+                let rhs_exp = Exp {
+                    num: rhs.0,
+                    den: rhs.1,
+                };
+                assert!(errors_match(
+                    &lhs_exp.checked_mul(rhs_exp).unwrap_err(),
+                    &DimensionError::ExponentOverflow
+                ));
+            }
         }
     }
 
-    #[test]
-    fn checked_mul_returns_error_for_exponent_overflow() {
-        let cases = [
-            ((i64::MAX, 1), (2, 1)),
-            ((i64::MIN + 1, 1), (2, 1)),
-            (((i64::MAX - 1) / 2 + 1, 1), (2, 1)),
-            ((i64::MIN / 2, 1), (2, 1)),
-            ((1, i64::MAX), (1, 2)),
-            ((1, i64::MIN + 1), (1, 2)),
-            ((1, (i64::MAX - 1) / 2 + 1), (1, 2)),
-            ((1, i64::MIN / 2), (1, 2)),
-        ];
-        for (lhs, rhs) in cases {
-            let lhs_exp = Exp {
-                num: lhs.0,
-                den: lhs.1,
-            };
-            let rhs_exp = Exp {
-                num: rhs.0,
-                den: rhs.1,
+    mod checked_add {
+        use super::*;
+
+        #[test]
+        fn basic() {
+            let cases = [
+                ((0, 1), (5, 3), (5, 3)),
+                ((1, 2), (1, 1), (3, 2)),
+                ((1, 2), (1, 2), (1, 1)),
+                ((1, 1), (1, 2), (3, 2)),
+                ((4, 3), (3, 2), (17, 6)),
+                ((4, 7), (-1, 3), (5, 21)),
+                ((-4, 7), (1, 3), (-5, 21)),
+                ((-1, 4), (3, 4), (1, 2)),
+                ((-7, 3), (7, 3), (0, 1)),
+                ((i64::MAX - 1, i64::MAX), (1, i64::MAX), (1, 1)),
+                (
+                    (1, i64::MAX - 1),
+                    (1, i64::MAX - 1),
+                    (1, (i64::MAX - 1) / 2),
+                ),
+            ];
+            for (lhs, rhs, expected) in cases {
+                let lhs_exp = Exp {
+                    num: lhs.0,
+                    den: lhs.1,
+                };
+                let rhs_exp = Exp {
+                    num: rhs.0,
+                    den: rhs.1,
+                };
+                let expected_exp = Exp {
+                    num: expected.0,
+                    den: expected.1,
+                };
+                assert_eq!(lhs_exp.checked_add(rhs_exp).unwrap(), expected_exp);
+            }
+        }
+
+        #[test]
+        fn err_on_exponent_overflow() {
+            let cases = [
+                ((i64::MAX, 1), (1, 1)),
+                ((i64::MIN + 1, 1), (-1, 1)),
+                ((1, i64::MAX), (1, 1)),
+                ((1, i64::MIN + 1), (-1, 1)),
+            ];
+            for (lhs, rhs) in cases {
+                let lhs_exp = Exp {
+                    num: lhs.0,
+                    den: lhs.1,
+                };
+                let rhs_exp = Exp {
+                    num: rhs.0,
+                    den: rhs.1,
+                };
+                assert!(errors_match(
+                    &lhs_exp.checked_add(rhs_exp).unwrap_err(),
+                    &DimensionError::ExponentOverflow
+                ));
+            }
+        }
+    }
+
+    mod checked_neg {
+        use super::*;
+
+        #[test]
+        fn basic() {
+            let exp = Exp::new(2, 3).unwrap();
+            assert_eq!(exp.checked_neg().unwrap(), Exp { num: -2, den: 3 });
+        }
+
+        #[test]
+        fn err_on_exponent_overflow() {
+            let exp = Exp {
+                num: i64::MIN,
+                den: 1,
             };
             assert!(errors_match(
-                &lhs_exp.checked_mul(rhs_exp).unwrap_err(),
+                &exp.checked_neg().unwrap_err(),
                 &DimensionError::ExponentOverflow
             ));
         }
-    }
-
-    #[test]
-    fn exp_checked_add() {
-        let cases = [
-            ((0, 1), (5, 3), (5, 3)),
-            ((1, 2), (1, 1), (3, 2)),
-            ((1, 2), (1, 2), (1, 1)),
-            ((1, 1), (1, 2), (3, 2)),
-            ((4, 3), (3, 2), (17, 6)),
-            ((4, 7), (-1, 3), (5, 21)),
-            ((-4, 7), (1, 3), (-5, 21)),
-            ((-1, 4), (3, 4), (1, 2)),
-            ((-7, 3), (7, 3), (0, 1)),
-            ((i64::MAX - 1, i64::MAX), (1, i64::MAX), (1, 1)),
-            (
-                (1, i64::MAX - 1),
-                (1, i64::MAX - 1),
-                (1, (i64::MAX - 1) / 2),
-            ),
-        ];
-        for (lhs, rhs, expected) in cases {
-            let lhs_exp = Exp {
-                num: lhs.0,
-                den: lhs.1,
-            };
-            let rhs_exp = Exp {
-                num: rhs.0,
-                den: rhs.1,
-            };
-            let expected_exp = Exp {
-                num: expected.0,
-                den: expected.1,
-            };
-            assert_eq!(lhs_exp.checked_add(rhs_exp).unwrap(), expected_exp);
-        }
-    }
-
-    #[test]
-    fn checked_add_returns_error_for_exponent_overflow() {
-        let cases = [
-            ((i64::MAX, 1), (1, 1)),
-            ((i64::MIN + 1, 1), (-1, 1)),
-            ((1, i64::MAX), (1, 1)),
-            ((1, i64::MIN + 1), (-1, 1)),
-        ];
-        for (lhs, rhs) in cases {
-            let lhs_exp = Exp {
-                num: lhs.0,
-                den: lhs.1,
-            };
-            let rhs_exp = Exp {
-                num: rhs.0,
-                den: rhs.1,
-            };
-            assert!(errors_match(
-                &lhs_exp.checked_add(rhs_exp).unwrap_err(),
-                &DimensionError::ExponentOverflow
-            ));
-        }
-    }
-
-    #[test]
-    fn checked_neg_propagates_exponent_overflow() {
-        let (num, den) = (i64::MIN, 1);
-        let exp = Exp { num, den };
-        assert!(errors_match(
-            &exp.checked_neg().unwrap_err(),
-            &DimensionError::ExponentOverflow
-        ));
     }
 }

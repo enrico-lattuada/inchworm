@@ -19,7 +19,7 @@ pub enum Compatibility {
 // TODO: Do not derive Hash, impl Hash for Dimension to be compatible with PartialEq
 
 /// An immutable dimension value.
-/// 
+///
 /// TODO: Add examples.
 #[derive(Clone, Debug)]
 pub struct Dimension {
@@ -209,300 +209,343 @@ mod tests {
     use super::*;
     use crate::test_utils::{assert_exactly_eq, errors_match, make_form_entry};
 
-    #[test]
-    fn dimensionless_has_empty_canonical_and_signature() {
-        let dimensionless = Dimension::dimensionless();
-        assert_eq!(dimensionless.canonical, Form::empty());
-        assert_eq!(dimensionless.signature, Signature(Form::empty()));
+    mod dimensionless {
+        use super::*;
+
+        #[test]
+        fn has_empty_canonical_and_signature() {
+            let dimensionless = Dimension::dimensionless();
+            assert_eq!(dimensionless.canonical, Form::empty());
+            assert_eq!(dimensionless.signature, Signature(Form::empty()));
+        }
+
+        #[test]
+        fn equals_itself() {
+            assert_eq!(Dimension::dimensionless(), Dimension::dimensionless());
+        }
     }
 
-    #[test]
-    fn dimensionless_equals_itself() {
-        assert_eq!(Dimension::dimensionless(), Dimension::dimensionless());
+    mod registry_id {
+        use super::*;
+
+        #[test]
+        fn basic() {
+            let factors = Form::raw(vec![make_form_entry(0, (1, 2))]);
+            let dimension = Dimension {
+                factors: factors.clone(),
+                ..Dimension::dimensionless()
+            };
+            assert!(dimension.registry_id().is_some());
+            let dim_registry_id = dimension.registry_id().unwrap();
+            let fac_registry_id = factors.entries()[0].0.registry_id;
+            assert_eq!(dim_registry_id, fac_registry_id);
+        }
+
+        #[test]
+        fn dimensionless_registry_id_is_none() {
+            assert_eq!(Dimension::dimensionless().registry_id(), None);
+        }
     }
 
-    #[test]
-    fn compatibility_full_for_empty_canonical_forms() {
-        let canonical1 = Form::empty();
-        let canonical2 = Form::empty();
-        let dimension1 = Dimension {
-            canonical: canonical1,
-            ..Dimension::dimensionless()
-        };
-        let dimension2 = Dimension {
-            canonical: canonical2,
-            ..Dimension::dimensionless()
-        };
-        assert!(matches!(
-            dimension1.compatibility(&dimension2),
-            Compatibility::Full
-        ));
+    mod compatibility {
+        use super::*;
+
+        #[test]
+        fn compatibility_full_for_empty_canonical_forms() {
+            let canonical1 = Form::empty();
+            let canonical2 = Form::empty();
+            let dimension1 = Dimension {
+                canonical: canonical1,
+                ..Dimension::dimensionless()
+            };
+            let dimension2 = Dimension {
+                canonical: canonical2,
+                ..Dimension::dimensionless()
+            };
+            assert!(matches!(
+                dimension1.compatibility(&dimension2),
+                Compatibility::Full
+            ));
+        }
+
+        #[test]
+        fn compatibility_full_for_equal_canonical_forms() {
+            let canonical1 = Form::raw(vec![
+                make_form_entry(0, (1, 2)),
+                make_form_entry(2, (-4, 3)),
+            ]);
+            let canonical2 = canonical1.clone();
+            let lhs = Dimension {
+                canonical: canonical1,
+                ..Dimension::dimensionless()
+            };
+            let rhs = Dimension {
+                canonical: canonical2,
+                ..Dimension::dimensionless()
+            };
+            assert!(matches!(lhs.compatibility(&rhs), Compatibility::Full));
+        }
+
+        #[test]
+        fn compatibility_incompatible_for_different_signatures() {
+            let canonical1 = Form::raw(vec![make_form_entry(0, (1, 2))]);
+            let signature1 = Signature(Form::empty());
+            let signature2 = Signature(Form::raw(vec![make_form_entry(0, (1, 2))]));
+            let dimension1 = Dimension {
+                canonical: canonical1,
+                signature: signature1,
+                ..Dimension::dimensionless()
+            };
+            let dimension2 = Dimension {
+                signature: signature2,
+                ..Dimension::dimensionless()
+            };
+            assert!(matches!(
+                dimension1.compatibility(&dimension2),
+                Compatibility::Incompatible
+            ));
+        }
+
+        #[test]
+        fn compatibility_partial_for_same_signature_different_canonical_forms() {
+            let canonical1 = Form::empty();
+            let canonical2 = Form::raw(vec![make_form_entry(0, (1, 2))]);
+            let signature1 = Signature(Form::raw(vec![make_form_entry(1, (-3, 4))]));
+            let signature2 = Signature(Form::raw(vec![make_form_entry(1, (-3, 4))]));
+            let lhs = Dimension {
+                signature: signature1,
+                canonical: canonical1,
+                ..Dimension::dimensionless()
+            };
+            let rhs = Dimension {
+                signature: signature2,
+                canonical: canonical2,
+                ..Dimension::dimensionless()
+            };
+            assert!(matches!(lhs.compatibility(&rhs), Compatibility::Partial));
+        }
+
+        #[test]
+        fn compatibility_partial_for_torque_vs_energy() {
+            // Torque is r x F, therefore
+            // canonical = [(L, 1), (force_id, 1)] ; signature = [(T, -2), (L, 2), (M, 1)]
+            // Energy (potential) is m.g.h, therefore
+            // canonical = [(L, 1), (M, 1), (acceleration_id, 1)] ; signature = [(T, -2), (L, 2), (M, 1)]
+            let (time_id, length_id, mass_id) = (0, 1, 2);
+            let acceleration_id = 3;
+            let force_id = 4;
+            let torque_canonical = Form::raw(vec![
+                make_form_entry(length_id, (1, 1)),
+                make_form_entry(force_id, (1, 1)),
+            ]);
+            let torque_signature = Signature::raw(vec![
+                make_form_entry(time_id, (-2, 1)),
+                make_form_entry(length_id, (2, 1)),
+                make_form_entry(mass_id, (1, 1)),
+            ]);
+            let energy_canonical = Form::raw(vec![
+                make_form_entry(length_id, (1, 1)),
+                make_form_entry(mass_id, (1, 1)),
+                make_form_entry(acceleration_id, (1, 1)),
+            ]);
+            let energy_signature = Signature::raw(vec![
+                make_form_entry(time_id, (-2, 1)),
+                make_form_entry(length_id, (2, 1)),
+                make_form_entry(mass_id, (1, 1)),
+            ]);
+            let torque = Dimension {
+                canonical: torque_canonical,
+                signature: torque_signature,
+                ..Dimension::dimensionless()
+            };
+            let energy = Dimension {
+                canonical: energy_canonical,
+                signature: energy_signature,
+                ..Dimension::dimensionless()
+            };
+            assert!(matches!(
+                torque.compatibility(&energy),
+                Compatibility::Partial
+            ));
+        }
+
+        #[test]
+        fn compatibility_partial_for_plane_angle_vs_bare_number() {
+            // Plane angle has
+            // canonical = [(plane_angle_id, 1)] ; signature = []
+            // Bare number has
+            // canonical = [] ; signature = []
+            let plane_angle_id = 0;
+            let plane_angle_canonical = Form::raw(vec![make_form_entry(plane_angle_id, (1, 1))]);
+            let plane_angle = Dimension {
+                canonical: plane_angle_canonical,
+                ..Dimension::dimensionless()
+            };
+            let bare_number = Dimension::dimensionless();
+            assert!(matches!(
+                plane_angle.compatibility(&bare_number),
+                Compatibility::Partial
+            ));
+        }
+
+        #[test]
+        fn compatibility_partial_for_angular_velocity_vs_frequency() {
+            // Angular velocity has
+            // canonical = [(T, -1), (plane_angle_id, 1)] ; signature = [(T, -1)]
+            // Bare number has
+            // canonical = [(T, -1)] ; signature = [(T, -1)]
+            let (time_id, plane_angle_id) = (0, 1);
+            let angular_velocity_canonical = Form::raw(vec![
+                make_form_entry(time_id, (-1, 1)),
+                make_form_entry(plane_angle_id, (1, 1)),
+            ]);
+            let angular_velocity_signature =
+                Signature::raw(vec![make_form_entry(time_id, (-1, 1))]);
+            let frequency_canonical = Form::raw(vec![make_form_entry(time_id, (-1, 1))]);
+            let frequency_signature = Signature::raw(vec![make_form_entry(time_id, (-1, 1))]);
+            let angular_velocity = Dimension {
+                canonical: angular_velocity_canonical,
+                signature: angular_velocity_signature,
+                ..Dimension::dimensionless()
+            };
+            let frequency = Dimension {
+                canonical: frequency_canonical,
+                signature: frequency_signature,
+                ..Dimension::dimensionless()
+            };
+            assert!(matches!(
+                angular_velocity.compatibility(&frequency),
+                Compatibility::Partial
+            ));
+        }
     }
 
-    #[test]
-    fn compatibility_full_for_equal_canonical_forms() {
-        let canonical1 = Form::raw(vec![
-            make_form_entry(0, (1, 2)),
-            make_form_entry(2, (-4, 3)),
-        ]);
-        let canonical2 = canonical1.clone();
-        let lhs = Dimension {
-            canonical: canonical1,
-            ..Dimension::dimensionless()
-        };
-        let rhs = Dimension {
-            canonical: canonical2,
-            ..Dimension::dimensionless()
-        };
-        assert!(matches!(lhs.compatibility(&rhs), Compatibility::Full));
+    mod try_mul {
+        use super::*;
+
+        #[test]
+        fn combines_all_three_forms() {
+            let factors1 = Form::raw(vec![
+                make_form_entry(0, (-1, 2)),
+                make_form_entry(2, (4, 3)),
+            ]);
+            let factors2 = Form::raw(vec![make_form_entry(0, (1, 2)), make_form_entry(1, (2, 3))]);
+            let factors12 = Form::raw(vec![make_form_entry(1, (2, 3)), make_form_entry(2, (4, 3))]);
+            let signature1 = Signature::raw(vec![make_form_entry(1, (-3, 2))]);
+            let signature2 = Signature::raw(vec![make_form_entry(1, (1, 2))]);
+            let signature12 = Signature::raw(vec![make_form_entry(1, (-1, 1))]);
+            let canonical1 = Form::raw(vec![
+                make_form_entry(3, (10, 7)),
+                make_form_entry(5, (-6, 7)),
+            ]);
+            let canonical2 = Form::raw(vec![
+                make_form_entry(3, (-10, 7)),
+                make_form_entry(5, (6, 7)),
+            ]);
+            let canonical12 = Form::raw(vec![]);
+            let dimension1 = Dimension {
+                factors: factors1,
+                signature: signature1,
+                canonical: canonical1,
+            };
+            let dimension2 = Dimension {
+                factors: factors2,
+                signature: signature2,
+                canonical: canonical2,
+            };
+            let dimension12 = Dimension {
+                factors: factors12,
+                signature: signature12,
+                canonical: canonical12,
+            };
+            assert_exactly_eq(&dimension1.try_mul(&dimension2).unwrap(), &dimension12);
+        }
+
+        #[test]
+        fn err_on_exponent_overflow() {
+            let lhs_factors = Form::raw(vec![make_form_entry(0, (i64::MAX, 1))]);
+            let lhs = Dimension {
+                factors: lhs_factors,
+                ..Dimension::dimensionless()
+            };
+            let rhs_factors = Form::raw(vec![make_form_entry(0, (2, 1))]);
+            let rhs = Dimension {
+                factors: rhs_factors,
+                ..Dimension::dimensionless()
+            };
+            assert!(errors_match(
+                &lhs.try_mul(&rhs).unwrap_err(),
+                &DimensionError::ExponentOverflow
+            ));
+        }
     }
 
-    #[test]
-    fn compatibility_incompatible_for_different_signatures() {
-        let canonical1 = Form::raw(vec![make_form_entry(0, (1, 2))]);
-        let signature1 = Signature(Form::empty());
-        let signature2 = Signature(Form::raw(vec![make_form_entry(0, (1, 2))]));
-        let dimension1 = Dimension {
-            canonical: canonical1,
-            signature: signature1,
-            ..Dimension::dimensionless()
-        };
-        let dimension2 = Dimension {
-            signature: signature2,
-            ..Dimension::dimensionless()
-        };
-        assert!(matches!(
-            dimension1.compatibility(&dimension2),
-            Compatibility::Incompatible
-        ));
+    mod try_div {
+        use super::*;
+
+        #[test]
+        fn div_of_self_gives_dimensionless() {
+            let factors = Form::raw(vec![
+                make_form_entry(0, (-1, 2)),
+                make_form_entry(2, (4, 3)),
+            ]);
+            let signature = Signature::raw(vec![make_form_entry(1, (-3, 2))]);
+            let canonical = Form::raw(vec![
+                make_form_entry(3, (10, 7)),
+                make_form_entry(5, (6, 7)),
+            ]);
+            let dimension = Dimension {
+                factors,
+                signature,
+                canonical,
+            };
+            assert!(dimension.try_div(&dimension).unwrap().is_dimensionless());
+        }
     }
 
-    #[test]
-    fn compatibility_partial_for_same_signature_different_canonical_forms() {
-        let canonical1 = Form::empty();
-        let canonical2 = Form::raw(vec![make_form_entry(0, (1, 2))]);
-        let signature1 = Signature(Form::raw(vec![make_form_entry(1, (-3, 4))]));
-        let signature2 = Signature(Form::raw(vec![make_form_entry(1, (-3, 4))]));
-        let lhs = Dimension {
-            signature: signature1,
-            canonical: canonical1,
-            ..Dimension::dimensionless()
-        };
-        let rhs = Dimension {
-            signature: signature2,
-            canonical: canonical2,
-            ..Dimension::dimensionless()
-        };
-        assert!(matches!(lhs.compatibility(&rhs), Compatibility::Partial));
-    }
+    mod pow {
+        use super::*;
 
-    #[test]
-    fn compatibility_partial_for_torque_vs_energy() {
-        // Torque is r x F, therefore
-        // canonical = [(L, 1), (force_id, 1)] ; signature = [(T, -2), (L, 2), (M, 1)]
-        // Energy (potential) is m.g.h, therefore
-        // canonical = [(L, 1), (M, 1), (acceleration_id, 1)] ; signature = [(T, -2), (L, 2), (M, 1)]
-        let (time_id, length_id, mass_id) = (0, 1, 2);
-        let acceleration_id = 3;
-        let force_id = 4;
-        let torque_canonical = Form::raw(vec![
-            make_form_entry(length_id, (1, 1)),
-            make_form_entry(force_id, (1, 1)),
-        ]);
-        let torque_signature = Signature::raw(vec![
-            make_form_entry(time_id, (-2, 1)),
-            make_form_entry(length_id, (2, 1)),
-            make_form_entry(mass_id, (1, 1)),
-        ]);
-        let energy_canonical = Form::raw(vec![
-            make_form_entry(length_id, (1, 1)),
-            make_form_entry(mass_id, (1, 1)),
-            make_form_entry(acceleration_id, (1, 1)),
-        ]);
-        let energy_signature = Signature::raw(vec![
-            make_form_entry(time_id, (-2, 1)),
-            make_form_entry(length_id, (2, 1)),
-            make_form_entry(mass_id, (1, 1)),
-        ]);
-        let torque = Dimension {
-            canonical: torque_canonical,
-            signature: torque_signature,
-            ..Dimension::dimensionless()
-        };
-        let energy = Dimension {
-            canonical: energy_canonical,
-            signature: energy_signature,
-            ..Dimension::dimensionless()
-        };
-        assert!(matches!(
-            torque.compatibility(&energy),
-            Compatibility::Partial
-        ));
-    }
+        #[test]
+        fn zero_gives_dimensionless() {
+            let factors = Form::raw(vec![
+                make_form_entry(0, (-1, 2)),
+                make_form_entry(2, (4, 3)),
+            ]);
+            let signature = Signature::raw(vec![make_form_entry(1, (-3, 2))]);
+            let canonical = Form::raw(vec![
+                make_form_entry(3, (10, 7)),
+                make_form_entry(5, (6, 7)),
+            ]);
+            let dimension = Dimension {
+                factors,
+                signature,
+                canonical,
+            };
+            assert!(dimension.pow(Exp::ZERO).unwrap().is_dimensionless());
+        }
 
-    #[test]
-    fn compatibility_partial_for_plane_angle_vs_bare_number() {
-        // Plane angle has
-        // canonical = [(plane_angle_id, 1)] ; signature = []
-        // Bare number has
-        // canonical = [] ; signature = []
-        let plane_angle_id = 0;
-        let plane_angle_canonical = Form::raw(vec![make_form_entry(plane_angle_id, (1, 1))]);
-        let plane_angle = Dimension {
-            canonical: plane_angle_canonical,
-            ..Dimension::dimensionless()
-        };
-        let bare_number = Dimension::dimensionless();
-        assert!(matches!(
-            plane_angle.compatibility(&bare_number),
-            Compatibility::Partial
-        ));
-    }
-
-    #[test]
-    fn compatibility_partial_for_angular_velocity_vs_frequency() {
-        // Angular velocity has
-        // canonical = [(T, -1), (plane_angle_id, 1)] ; signature = [(T, -1)]
-        // Bare number has
-        // canonical = [(T, -1)] ; signature = [(T, -1)]
-        let (time_id, plane_angle_id) = (0, 1);
-        let angular_velocity_canonical = Form::raw(vec![
-            make_form_entry(time_id, (-1, 1)),
-            make_form_entry(plane_angle_id, (1, 1)),
-        ]);
-        let angular_velocity_signature = Signature::raw(vec![make_form_entry(time_id, (-1, 1))]);
-        let frequency_canonical = Form::raw(vec![make_form_entry(time_id, (-1, 1))]);
-        let frequency_signature = Signature::raw(vec![make_form_entry(time_id, (-1, 1))]);
-        let angular_velocity = Dimension {
-            canonical: angular_velocity_canonical,
-            signature: angular_velocity_signature,
-            ..Dimension::dimensionless()
-        };
-        let frequency = Dimension {
-            canonical: frequency_canonical,
-            signature: frequency_signature,
-            ..Dimension::dimensionless()
-        };
-        assert!(matches!(
-            angular_velocity.compatibility(&frequency),
-            Compatibility::Partial
-        ));
-    }
-
-    #[test]
-    fn try_mul_combines_all_three_forms() {
-        let factors1 = Form::raw(vec![
-            make_form_entry(0, (-1, 2)),
-            make_form_entry(2, (4, 3)),
-        ]);
-        let factors2 = Form::raw(vec![make_form_entry(0, (1, 2)), make_form_entry(1, (2, 3))]);
-        let factors12 = Form::raw(vec![make_form_entry(1, (2, 3)), make_form_entry(2, (4, 3))]);
-        let signature1 = Signature::raw(vec![make_form_entry(1, (-3, 2))]);
-        let signature2 = Signature::raw(vec![make_form_entry(1, (1, 2))]);
-        let signature12 = Signature::raw(vec![make_form_entry(1, (-1, 1))]);
-        let canonical1 = Form::raw(vec![
-            make_form_entry(3, (10, 7)),
-            make_form_entry(5, (-6, 7)),
-        ]);
-        let canonical2 = Form::raw(vec![
-            make_form_entry(3, (-10, 7)),
-            make_form_entry(5, (6, 7)),
-        ]);
-        let canonical12 = Form::raw(vec![]);
-        let dimension1 = Dimension {
-            factors: factors1,
-            signature: signature1,
-            canonical: canonical1,
-        };
-        let dimension2 = Dimension {
-            factors: factors2,
-            signature: signature2,
-            canonical: canonical2,
-        };
-        let dimension12 = Dimension {
-            factors: factors12,
-            signature: signature12,
-            canonical: canonical12,
-        };
-        assert_exactly_eq(&dimension1.try_mul(&dimension2).unwrap(), &dimension12);
-    }
-
-    #[test]
-    fn try_mul_propagates_exponent_overflow() {
-        let lhs_factors = Form::raw(vec![make_form_entry(0, (i64::MAX, 1))]);
-        let lhs = Dimension {
-            factors: lhs_factors,
-            ..Dimension::dimensionless()
-        };
-        let rhs_factors = Form::raw(vec![make_form_entry(0, (2, 1))]);
-        let rhs = Dimension {
-            factors: rhs_factors,
-            ..Dimension::dimensionless()
-        };
-        assert!(errors_match(
-            &lhs.try_mul(&rhs).unwrap_err(),
-            &DimensionError::ExponentOverflow
-        ));
-    }
-
-    #[test]
-    fn try_div_of_self_gives_dimensionless() {
-        let factors = Form::raw(vec![
-            make_form_entry(0, (-1, 2)),
-            make_form_entry(2, (4, 3)),
-        ]);
-        let signature = Signature::raw(vec![make_form_entry(1, (-3, 2))]);
-        let canonical = Form::raw(vec![
-            make_form_entry(3, (10, 7)),
-            make_form_entry(5, (6, 7)),
-        ]);
-        let dimension = Dimension {
-            factors,
-            signature,
-            canonical,
-        };
-        assert!(dimension.try_div(&dimension).unwrap().is_dimensionless());
-    }
-
-    #[test]
-    fn pow_zero_gives_dimensionless() {
-        let factors = Form::raw(vec![
-            make_form_entry(0, (-1, 2)),
-            make_form_entry(2, (4, 3)),
-        ]);
-        let signature = Signature::raw(vec![make_form_entry(1, (-3, 2))]);
-        let canonical = Form::raw(vec![
-            make_form_entry(3, (10, 7)),
-            make_form_entry(5, (6, 7)),
-        ]);
-        let dimension = Dimension {
-            factors,
-            signature,
-            canonical,
-        };
-        assert!(dimension.pow(Exp::ZERO).unwrap().is_dimensionless());
-    }
-
-    #[test]
-    fn pow_matches_recip_at_exponent_negative_one() {
-        let factors = Form::raw(vec![
-            make_form_entry(0, (-1, 2)),
-            make_form_entry(2, (4, 3)),
-        ]);
-        let signature = Signature::raw(vec![make_form_entry(1, (-3, 2))]);
-        let canonical = Form::raw(vec![
-            make_form_entry(3, (10, 7)),
-            make_form_entry(5, (6, 7)),
-        ]);
-        let dimension = Dimension {
-            factors,
-            signature,
-            canonical,
-        };
-        assert_exactly_eq(
-            &dimension.pow(Exp::int(-1).unwrap()).unwrap(),
-            &dimension.recip().unwrap(),
-        );
+        #[test]
+        fn matches_recip_at_exponent_negative_one() {
+            let factors = Form::raw(vec![
+                make_form_entry(0, (-1, 2)),
+                make_form_entry(2, (4, 3)),
+            ]);
+            let signature = Signature::raw(vec![make_form_entry(1, (-3, 2))]);
+            let canonical = Form::raw(vec![
+                make_form_entry(3, (10, 7)),
+                make_form_entry(5, (6, 7)),
+            ]);
+            let dimension = Dimension {
+                factors,
+                signature,
+                canonical,
+            };
+            assert_exactly_eq(
+                &dimension.pow(Exp::int(-1).unwrap()).unwrap(),
+                &dimension.recip().unwrap(),
+            );
+        }
     }
 
     #[test]

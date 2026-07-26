@@ -10,7 +10,7 @@ use crate::{
 /// Instance-based: multiple registries coexist. Dimensions from different
 /// registries cannot be mixed; the mismatch is detected via the [`RegistryId`]
 /// carried by every atom.
-/// 
+///
 /// TODO: Add examples
 pub struct DimRegistry {
     id: RegistryId,

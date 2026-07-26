@@ -16,7 +16,7 @@ const MAX_INLINE_FACTORS: usize = 4;
 /// - no duplicates.
 ///
 /// Used for both the base signature and the canonical form of a `Dimension`.
-/// 
+///
 /// TODO: Add examples.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Form {
@@ -173,184 +173,212 @@ mod tests {
         );
     }
 
-    #[test]
-    fn mul_empty_form() {
-        let empty_form = Form {
-            entries: smallvec![],
-        };
-        let entries = smallvec![make_form_entry(0, (1, 1)),];
-        let form = Form { entries };
-        assert_eq!(
-            form.mul(&empty_form).unwrap(),
-            form.clone(),
-            "form multiplied by empty form should return form"
-        );
-        assert_eq!(
-            empty_form.mul(&form).unwrap(),
-            form.clone(),
-            "empty form multiplied by form should return form"
-        );
-        assert_eq!(
-            empty_form.mul(&empty_form).unwrap(),
-            empty_form.clone(),
-            "product of empty forms should return empty form"
-        );
+    mod single {
+        use super::*;
+
+        #[test]
+        fn nonzero_exp_gives_one_entry() {
+            let (atom, exp) = make_form_entry(0, (1, 3));
+            let single = Form::single(&atom, exp);
+            assert_eq!(single.entries().len(), 1);
+            assert_eq!(single.entries().first().unwrap().1, exp);
+        }
+
+        #[test]
+        fn zero_exp_gives_empty() {
+            let (atom, _) = make_form_entry(0, (1, 1));
+            let single = Form::single(&atom, Exp::ZERO);
+            assert!(single.entries().is_empty());
+        }
     }
 
-    #[test]
-    fn blocked_forms_mul() {
-        let entries1 = smallvec![make_form_entry(0, (1, 2)), make_form_entry(1, (1, 3)),];
-        let entries2 = smallvec![make_form_entry(2, (1, 1)), make_form_entry(3, (5, 4)),];
-        let mul_entries = smallvec![
-            make_form_entry(0, (1, 2)),
-            make_form_entry(1, (1, 3)),
-            make_form_entry(2, (1, 1)),
-            make_form_entry(3, (5, 4))
-        ];
-        let form1 = Form { entries: entries1 };
-        let form2 = Form { entries: entries2 };
-        let form1_x_form2 = Form {
-            entries: mul_entries,
-        };
-        assert_eq!(form1.mul(&form2).unwrap(), form1_x_form2);
-        assert_eq!(form2.mul(&form1).unwrap(), form1_x_form2);
+    mod mul {
+        use super::*;
+
+        #[test]
+        fn empty_form() {
+            let empty_form = Form {
+                entries: smallvec![],
+            };
+            let entries = smallvec![make_form_entry(0, (1, 1)),];
+            let form = Form { entries };
+            assert_eq!(
+                form.mul(&empty_form).unwrap(),
+                form.clone(),
+                "form multiplied by empty form should return form"
+            );
+            assert_eq!(
+                empty_form.mul(&form).unwrap(),
+                form.clone(),
+                "empty form multiplied by form should return form"
+            );
+            assert_eq!(
+                empty_form.mul(&empty_form).unwrap(),
+                empty_form.clone(),
+                "product of empty forms should return empty form"
+            );
+        }
+
+        #[test]
+        fn blocked_forms() {
+            let entries1 = smallvec![make_form_entry(0, (1, 2)), make_form_entry(1, (1, 3)),];
+            let entries2 = smallvec![make_form_entry(2, (1, 1)), make_form_entry(3, (5, 4)),];
+            let mul_entries = smallvec![
+                make_form_entry(0, (1, 2)),
+                make_form_entry(1, (1, 3)),
+                make_form_entry(2, (1, 1)),
+                make_form_entry(3, (5, 4))
+            ];
+            let form1 = Form { entries: entries1 };
+            let form2 = Form { entries: entries2 };
+            let form1_x_form2 = Form {
+                entries: mul_entries,
+            };
+            assert_eq!(form1.mul(&form2).unwrap(), form1_x_form2);
+            assert_eq!(form2.mul(&form1).unwrap(), form1_x_form2);
+        }
+
+        #[test]
+        fn interleaved_forms() {
+            let entries1 = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (1, 3)),];
+            let entries2 = smallvec![make_form_entry(1, (1, 1)), make_form_entry(3, (5, 4)),];
+            let mul_entries = smallvec![
+                make_form_entry(0, (1, 2)),
+                make_form_entry(1, (1, 1)),
+                make_form_entry(2, (1, 3)),
+                make_form_entry(3, (5, 4))
+            ];
+            let form1 = Form { entries: entries1 };
+            let form2 = Form { entries: entries2 };
+            let form1_x_form2 = Form {
+                entries: mul_entries,
+            };
+            assert_eq!(form1.mul(&form2).unwrap(), form1_x_form2);
+        }
+
+        #[test]
+        fn fully_overlapping_forms() {
+            let entries1 = smallvec![make_form_entry(0, (1, 2)), make_form_entry(1, (1, 3)),];
+            let entries2 = smallvec![make_form_entry(0, (1, 1)), make_form_entry(1, (5, 4)),];
+            let mul_entries = smallvec![make_form_entry(0, (3, 2)), make_form_entry(1, (19, 12))];
+            let form1 = Form { entries: entries1 };
+            let form2 = Form { entries: entries2 };
+            let form1_x_form2 = Form {
+                entries: mul_entries,
+            };
+            assert_eq!(form1.mul(&form2).unwrap(), form1_x_form2);
+        }
+
+        #[test]
+        fn zero_exp_result() {
+            let entries1 = smallvec![make_form_entry(0, (1, 2)),];
+            let entries2 = smallvec![make_form_entry(0, (-1, 2)),];
+            let mul_entries = smallvec![];
+            let form1 = Form { entries: entries1 };
+            let form2 = Form { entries: entries2 };
+            let form1_x_form2 = Form {
+                entries: mul_entries,
+            };
+            assert_eq!(form1.mul(&form2).unwrap(), form1_x_form2);
+        }
+
+        #[test]
+        fn generic_forms() {
+            let entries1 = smallvec![
+                make_form_entry(0, (1, 2)),
+                make_form_entry(2, (1, 3)),
+                make_form_entry(4, (1, 3)),
+                make_form_entry(5, (1, 3))
+            ];
+            let entries2 = smallvec![
+                make_form_entry(1, (1, 1)),
+                make_form_entry(3, (5, 4)),
+                make_form_entry(4, (-1, 3)),
+                make_form_entry(5, (1, 2))
+            ];
+            let mul_entries = smallvec![
+                make_form_entry(0, (1, 2)),
+                make_form_entry(1, (1, 1)),
+                make_form_entry(2, (1, 3)),
+                make_form_entry(3, (5, 4)),
+                make_form_entry(5, (5, 6)),
+            ];
+            let form1 = Form { entries: entries1 };
+            let form2 = Form { entries: entries2 };
+            let form1_x_form2 = Form {
+                entries: mul_entries,
+            };
+            assert_eq!(form1.mul(&form2).unwrap(), form1_x_form2);
+        }
+
+        #[test]
+        fn err_on_exp_overflow() {
+            let entries1 = smallvec![make_form_entry(0, (1, 1)),];
+            let entries2 = smallvec![make_form_entry(0, (i64::MAX, 1)),];
+            let form1 = Form { entries: entries1 };
+            let form2 = Form { entries: entries2 };
+            assert!(errors_match(
+                &form1.mul(&form2).unwrap_err(),
+                &DimensionError::ExponentOverflow
+            ));
+        }
     }
 
-    #[test]
-    fn interleaved_forms_mul() {
-        let entries1 = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (1, 3)),];
-        let entries2 = smallvec![make_form_entry(1, (1, 1)), make_form_entry(3, (5, 4)),];
-        let mul_entries = smallvec![
-            make_form_entry(0, (1, 2)),
-            make_form_entry(1, (1, 1)),
-            make_form_entry(2, (1, 3)),
-            make_form_entry(3, (5, 4))
-        ];
-        let form1 = Form { entries: entries1 };
-        let form2 = Form { entries: entries2 };
-        let form1_x_form2 = Form {
-            entries: mul_entries,
-        };
-        assert_eq!(form1.mul(&form2).unwrap(), form1_x_form2);
-    }
+    mod pow {
+        use super::*;
 
-    #[test]
-    fn fully_overlapping_forms_mul() {
-        let entries1 = smallvec![make_form_entry(0, (1, 2)), make_form_entry(1, (1, 3)),];
-        let entries2 = smallvec![make_form_entry(0, (1, 1)), make_form_entry(1, (5, 4)),];
-        let mul_entries = smallvec![make_form_entry(0, (3, 2)), make_form_entry(1, (19, 12))];
-        let form1 = Form { entries: entries1 };
-        let form2 = Form { entries: entries2 };
-        let form1_x_form2 = Form {
-            entries: mul_entries,
-        };
-        assert_eq!(form1.mul(&form2).unwrap(), form1_x_form2);
-    }
+        #[test]
+        fn basic() {
+            let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(1, (-1, 1)),];
+            let form = Form { entries };
+            let e = Exp::new(-3, 2).unwrap();
+            let expected_entries =
+                smallvec![make_form_entry(0, (-3, 4)), make_form_entry(1, (3, 2)),];
+            assert_eq!(
+                form.pow(e).unwrap(),
+                Form {
+                    entries: expected_entries
+                }
+            );
+        }
 
-    #[test]
-    fn zero_exp_result_forms_mul() {
-        let entries1 = smallvec![make_form_entry(0, (1, 2)),];
-        let entries2 = smallvec![make_form_entry(0, (-1, 2)),];
-        let mul_entries = smallvec![];
-        let form1 = Form { entries: entries1 };
-        let form2 = Form { entries: entries2 };
-        let form1_x_form2 = Form {
-            entries: mul_entries,
-        };
-        assert_eq!(form1.mul(&form2).unwrap(), form1_x_form2);
-    }
+        #[test]
+        fn invariance() {
+            let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (5, 4)),];
+            let form = Form { entries };
+            let e = Exp::new(-3, 2).unwrap();
+            let e_recipr = Exp::new(2, -3).unwrap();
+            assert_eq!(form.pow(e).unwrap().pow(e_recipr).unwrap(), form);
+        }
 
-    #[test]
-    fn generic_forms_mul() {
-        let entries1 = smallvec![
-            make_form_entry(0, (1, 2)),
-            make_form_entry(2, (1, 3)),
-            make_form_entry(4, (1, 3)),
-            make_form_entry(5, (1, 3))
-        ];
-        let entries2 = smallvec![
-            make_form_entry(1, (1, 1)),
-            make_form_entry(3, (5, 4)),
-            make_form_entry(4, (-1, 3)),
-            make_form_entry(5, (1, 2))
-        ];
-        let mul_entries = smallvec![
-            make_form_entry(0, (1, 2)),
-            make_form_entry(1, (1, 1)),
-            make_form_entry(2, (1, 3)),
-            make_form_entry(3, (5, 4)),
-            make_form_entry(5, (5, 6)),
-        ];
-        let form1 = Form { entries: entries1 };
-        let form2 = Form { entries: entries2 };
-        let form1_x_form2 = Form {
-            entries: mul_entries,
-        };
-        assert_eq!(form1.mul(&form2).unwrap(), form1_x_form2);
-    }
+        #[test]
+        fn zero_gives_empty() {
+            let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (5, 4)),];
+            let form = Form { entries };
+            let e = Exp::ZERO;
+            assert!(form.pow(e).unwrap().is_empty());
+        }
 
-    #[test]
-    fn forms_mul_err_on_exp_overflow() {
-        let entries1 = smallvec![make_form_entry(0, (1, 1)),];
-        let entries2 = smallvec![make_form_entry(0, (i64::MAX, 1)),];
-        let form1 = Form { entries: entries1 };
-        let form2 = Form { entries: entries2 };
-        assert!(errors_match(
-            &form1.mul(&form2).unwrap_err(),
-            &DimensionError::ExponentOverflow
-        ));
-    }
+        #[test]
+        fn empty_raised_to_zero_stays_empty() {
+            let empty_entries = smallvec![];
+            let empty_form = Form {
+                entries: empty_entries,
+            };
+            let e = Exp::ZERO;
+            assert!(empty_form.pow(e).unwrap().is_empty());
+        }
 
-    #[test]
-    fn form_pow() {
-        let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(1, (-1, 1)),];
-        let form = Form { entries };
-        let e = Exp::new(-3, 2).unwrap();
-        let expected_entries = smallvec![make_form_entry(0, (-3, 4)), make_form_entry(1, (3, 2)),];
-        assert_eq!(
-            form.pow(e).unwrap(),
-            Form {
-                entries: expected_entries
-            }
-        );
-    }
-
-    #[test]
-    fn form_pow_invariance() {
-        let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (5, 4)),];
-        let form = Form { entries };
-        let e = Exp::new(-3, 2).unwrap();
-        let e_recipr = Exp::new(2, -3).unwrap();
-        assert_eq!(form.pow(e).unwrap().pow(e_recipr).unwrap(), form);
-    }
-
-    #[test]
-    fn form_pow_zero() {
-        let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (5, 4)),];
-        let form = Form { entries };
-        let e = Exp::ZERO;
-        assert!(form.pow(e).unwrap().is_empty());
-    }
-
-    #[test]
-    fn empty_form_raised_to_zero_stays_empty() {
-        let empty_entries = smallvec![];
-        let empty_form = Form {
-            entries: empty_entries,
-        };
-        let e = Exp::ZERO;
-        assert!(empty_form.pow(e).unwrap().is_empty());
-    }
-
-    #[test]
-    fn form_pow_err_on_exp_overflow() {
-        let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (5, 4)),];
-        let form = Form { entries };
-        let e = Exp::new(i64::MAX, 1).unwrap();
-        assert!(errors_match(
-            &form.pow(e).unwrap_err(),
-            &DimensionError::ExponentOverflow
-        ));
+        #[test]
+        fn err_on_exp_overflow() {
+            let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (5, 4)),];
+            let form = Form { entries };
+            let e = Exp::new(i64::MAX, 1).unwrap();
+            assert!(errors_match(
+                &form.pow(e).unwrap_err(),
+                &DimensionError::ExponentOverflow
+            ));
+        }
     }
 
     #[test]
