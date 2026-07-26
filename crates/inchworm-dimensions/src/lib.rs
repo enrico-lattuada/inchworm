@@ -8,7 +8,7 @@ mod registry;
 mod test_utils;
 
 pub use atom::{AtomId, RegistryId};
-pub use dimension::Dimension;
+pub use dimension::{Compatibility, Dimension};
 pub use error::DimensionError;
 pub use exp::Exp;
 pub use form::{Form, Signature};
