@@ -5,9 +5,17 @@ use crate::{
     atom::{Atom, AtomData, AtomKind},
 };
 
+/// A mutable namespace and factory for named dimensions.
+///
+/// Instance-based: multiple registries coexist. Dimensions from different
+/// registries cannot be mixed; the mismatch is detected via the [`RegistryId`]
+/// carried by every atom.
+/// 
+/// TODO: Add examples
 pub struct DimRegistry {
     id: RegistryId,
     name: Box<str>,
+    /// Map name to atom.
     atoms: HashMap<Box<str>, Atom>,
 }
 
@@ -21,12 +29,12 @@ impl DimRegistry {
         }
     }
 
-    /// Returns the id of the registry.
+    /// Returns the `id` of the registry.
     pub fn id(&self) -> RegistryId {
         self.id
     }
 
-    /// Returns the name of the registry.
+    /// Returns the `name` of the registry.
     pub fn name(&self) -> &str {
         &self.name
     }

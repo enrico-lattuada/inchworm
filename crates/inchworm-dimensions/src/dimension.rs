@@ -19,6 +19,8 @@ pub enum Compatibility {
 // TODO: Do not derive Hash, impl Hash for Dimension to be compatible with PartialEq
 
 /// An immutable dimension value.
+/// 
+/// TODO: Add examples.
 #[derive(Clone, Debug)]
 pub struct Dimension {
     /// Stored (display/identity) form: the named composite the user built,

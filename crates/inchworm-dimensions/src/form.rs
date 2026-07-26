@@ -16,6 +16,8 @@ const MAX_INLINE_FACTORS: usize = 4;
 /// - no duplicates.
 ///
 /// Used for both the base signature and the canonical form of a `Dimension`.
+/// 
+/// TODO: Add examples.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Form {
     entries: SmallVec<[(Atom, Exp); MAX_INLINE_FACTORS]>,
