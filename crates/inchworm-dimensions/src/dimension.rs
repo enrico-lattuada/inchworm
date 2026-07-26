@@ -46,6 +46,7 @@ impl Dimension {
         }
     }
 
+    /// Returns a dimension from an [`Atom`].
     pub(crate) fn from_atom(atom: &Atom) -> Self {
         match &atom.kind {
             AtomKind::Base { symbol: _ } => {
