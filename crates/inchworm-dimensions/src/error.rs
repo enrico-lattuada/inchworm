@@ -5,6 +5,9 @@ use crate::RegistryId;
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum DimensionError {
+    #[error("dimension name `{name}` is already defined in registry `{registry}`")]
+    DuplicateName { name: String, registry: String },
+
     #[error("exponent arithmetic overflow")]
     ExponentOverflow,
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 #[cfg(test)]
 use crate::{
-    AtomId, Exp, RegistryId,
+    AtomId, Dimension, DimensionError, Exp, RegistryId,
     atom::{Atom, AtomData, AtomKind},
 };
 
@@ -15,9 +15,56 @@ pub(crate) fn make_form_entry(id: u64, num_den: (i64, i64)) -> (Atom, Exp) {
         id: AtomId::raw(id),
         registry_id: RegistryId::raw(0),
         name: "foo".into(),
-        kind: AtomKind::Base {
-            symbol: "F".to_string(),
-        },
+        kind: AtomKind::Base { symbol: "F".into() },
     };
     (Arc::new(atom_data), exp)
+}
+
+#[cfg(test)]
+/// Assert factors, signature, and canonical of two dimensions are equal.
+///
+/// Caller must pass entries already sorted/reduced.
+pub(crate) fn assert_exactly_eq(dimension: &Dimension, other_dimension: &Dimension) -> () {
+    assert_eq!(
+        dimension.factors(),
+        other_dimension.factors(),
+        "factors must match"
+    );
+    assert_eq!(
+        dimension.signature(),
+        other_dimension.signature(),
+        "signature must match"
+    );
+    assert_eq!(
+        dimension.canonical_form(),
+        other_dimension.canonical_form(),
+        "canonical must match"
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn errors_match(actual: &DimensionError, expected: &DimensionError) -> bool {
+    if std::mem::discriminant(actual) == std::mem::discriminant(expected) {
+        match (actual, expected) {
+            (DimensionError::ZeroDenominator, DimensionError::ZeroDenominator) => true,
+            (DimensionError::ExponentOverflow, DimensionError::ExponentOverflow) => true,
+            (
+                DimensionError::DuplicateName { name, registry },
+                DimensionError::DuplicateName {
+                    name: expected_name,
+                    registry: expected_registry,
+                },
+            ) => name == expected_name && registry == expected_registry,
+            (
+                DimensionError::CrossRegistry { left, right },
+                DimensionError::CrossRegistry {
+                    left: expected_left,
+                    right: expected_right,
+                },
+            ) => left == expected_left && right == expected_right,
+            _ => false,
+        }
+    } else {
+        false
+    }
 }
