@@ -139,9 +139,8 @@ impl Signature {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::make_form_entry;
-
     use super::*;
+    use crate::test_utils::{errors_match, make_form_entry};
     use smallvec::smallvec;
 
     #[test]
@@ -294,9 +293,9 @@ mod tests {
         let entries2 = smallvec![make_form_entry(0, (i64::MAX, 1)),];
         let form1 = Form { entries: entries1 };
         let form2 = Form { entries: entries2 };
-        assert!(matches!(
-            form1.mul(&form2),
-            Err(DimensionError::ExponentOverflow)
+        assert!(errors_match(
+            &form1.mul(&form2).unwrap_err(),
+            &DimensionError::ExponentOverflow
         ));
     }
 
@@ -346,7 +345,10 @@ mod tests {
         let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (5, 4)),];
         let form = Form { entries };
         let e = Exp::new(i64::MAX, 1).unwrap();
-        assert!(matches!(form.pow(e), Err(DimensionError::ExponentOverflow)));
+        assert!(errors_match(
+            &form.pow(e).unwrap_err(),
+            &DimensionError::ExponentOverflow
+        ));
     }
 
     #[test]

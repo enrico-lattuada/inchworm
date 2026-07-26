@@ -203,27 +203,8 @@ impl Eq for Dimension {}
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::make_form_entry;
-
     use super::*;
-
-    /// Assert factors, signature, and canonical of two dimensions are equal.
-    ///
-    /// Caller must pass entries already sorted/reduced.
-    fn assert_exactly_eq(dimension: &Dimension, other_dimension: &Dimension) -> () {
-        assert_eq!(
-            dimension.factors, other_dimension.factors,
-            "factors must match"
-        );
-        assert_eq!(
-            dimension.signature, other_dimension.signature,
-            "signature must match"
-        );
-        assert_eq!(
-            dimension.canonical, other_dimension.canonical,
-            "canonical must match"
-        )
-    }
+    use crate::test_utils::{assert_exactly_eq, errors_match, make_form_entry};
 
     #[test]
     fn dimensionless_has_empty_canonical_and_signature() {
@@ -455,9 +436,9 @@ mod tests {
             factors: rhs_factors,
             ..Dimension::dimensionless()
         };
-        assert!(matches!(
-            lhs.try_mul(&rhs),
-            Err(DimensionError::ExponentOverflow)
+        assert!(errors_match(
+            &lhs.try_mul(&rhs).unwrap_err(),
+            &DimensionError::ExponentOverflow
         ));
     }
 

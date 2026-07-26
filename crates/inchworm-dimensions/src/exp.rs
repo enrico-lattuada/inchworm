@@ -196,6 +196,8 @@ fn gcd128(mut a: u128, mut b: u128) -> u128 {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_utils::errors_match;
+
     use super::*;
 
     #[test]
@@ -223,9 +225,9 @@ mod tests {
 
     #[test]
     fn new_exp_returns_error_for_zero_denominator() {
-        assert!(matches!(
-            Exp::new(1, 0),
-            Err(DimensionError::ZeroDenominator)
+        assert!(errors_match(
+            &Exp::new(1, 0).unwrap_err(),
+            &DimensionError::ZeroDenominator
         ));
     }
 
@@ -233,9 +235,9 @@ mod tests {
     fn new_exp_returns_error_for_exponent_overflow() {
         let cases = [(i64::MIN, 1), (1, i64::MIN)];
         for case in cases {
-            assert!(matches!(
-                Exp::new(case.0, case.1),
-                Err(DimensionError::ExponentOverflow)
+            assert!(errors_match(
+                &Exp::new(case.0, case.1).unwrap_err(),
+                &DimensionError::ExponentOverflow
             ));
         }
     }
@@ -247,9 +249,9 @@ mod tests {
 
     #[test]
     fn int_exp_returns_error_for_exponent_overflow() {
-        assert!(matches!(
-            Exp::int(i64::MIN),
-            Err(DimensionError::ExponentOverflow)
+        assert!(errors_match(
+            &Exp::int(i64::MIN).unwrap_err(),
+            &DimensionError::ExponentOverflow
         ));
     }
 
@@ -305,9 +307,9 @@ mod tests {
                 num: rhs.0,
                 den: rhs.1,
             };
-            assert!(matches!(
-                lhs_exp.checked_mul(rhs_exp),
-                Err(DimensionError::ExponentOverflow)
+            assert!(errors_match(
+                &lhs_exp.checked_mul(rhs_exp).unwrap_err(),
+                &DimensionError::ExponentOverflow
             ));
         }
     }
@@ -365,9 +367,9 @@ mod tests {
                 num: rhs.0,
                 den: rhs.1,
             };
-            assert!(matches!(
-                lhs_exp.checked_add(rhs_exp),
-                Err(DimensionError::ExponentOverflow)
+            assert!(errors_match(
+                &lhs_exp.checked_add(rhs_exp).unwrap_err(),
+                &DimensionError::ExponentOverflow
             ));
         }
     }
@@ -376,9 +378,9 @@ mod tests {
     fn checked_neg_propagates_exponent_overflow() {
         let (num, den) = (i64::MIN, 1);
         let exp = Exp { num, den };
-        assert!(matches!(
-            exp.checked_neg(),
-            Err(DimensionError::ExponentOverflow)
+        assert!(errors_match(
+            &exp.checked_neg().unwrap_err(),
+            &DimensionError::ExponentOverflow
         ));
     }
 }
