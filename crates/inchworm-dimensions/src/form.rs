@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use smallvec::SmallVec;
+use smallvec::{SmallVec, smallvec};
 
 use crate::atom::Atom;
 use crate::error::DimensionError;
@@ -26,6 +26,16 @@ impl Form {
     pub fn empty() -> Self {
         Self {
             entries: SmallVec::new(),
+        }
+    }
+
+    /// Returns a form with a single entry, or an empty form if `exp` is zero.
+    pub(crate) fn single(atom: &Atom, exp: Exp) -> Self {
+        if exp.is_zero() {
+            return Self::empty();
+        }
+        Self {
+            entries: smallvec![(atom.clone(), exp)],
         }
     }
 

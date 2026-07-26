@@ -1,4 +1,7 @@
-use crate::{DimensionError, Exp, Form, Signature};
+use crate::{
+    DimensionError, Exp, Form, RegistryId, Signature,
+    atom::{Atom, AtomKind},
+};
 
 /// How two [`Dimension`]s relate.
 pub enum Compatibility {
@@ -41,6 +44,38 @@ impl Dimension {
         }
     }
 
+    pub(crate) fn from_atom(atom: &Atom) -> Self {
+        match &atom.kind {
+            AtomKind::Base { symbol: _ } => {
+                let factors = Form::single(atom, Exp::ONE);
+                let signature = Signature(factors.clone());
+                let canonical = factors.clone();
+                Self {
+                    factors,
+                    signature,
+                    canonical,
+                }
+            }
+            AtomKind::Derived {
+                definition,
+                dimensionless_kind,
+            } => {
+                let factors = Form::single(atom, Exp::ONE);
+                let signature = definition.signature.clone();
+                let canonical = if *dimensionless_kind {
+                    factors.clone()
+                } else {
+                    definition.canonical_form().clone()
+                };
+                Self {
+                    factors,
+                    signature,
+                    canonical,
+                }
+            }
+        }
+    }
+
     /// The stored named-composite factors (what `Display` prints).
     pub fn factors(&self) -> &Form {
         &self.factors
@@ -65,6 +100,14 @@ impl Dimension {
     pub fn has_dimensionless_signature(&self) -> bool {
         self.signature.0.is_empty()
     }
+
+    /// Returns the [`RegistryId`] of the registry where `self` is defined.
+    pub(crate) fn registry_id(&self) -> Option<RegistryId> {
+        self.factors
+            .entries()
+            .first()
+            .map(|(atom, _)| atom.registry_id)
+    }
 }
 
 // ---- algebra ----
@@ -75,13 +118,11 @@ impl Dimension {
     /// Returns [`DimensionError::ExponentOverflow`] if combining a shared atom's exponents overflows.
     /// Returns [`DimensionError::CrossRegistry`] if combining atoms from different registries.
     pub fn try_mul(&self, rhs: &Self) -> Result<Self, DimensionError> {
-        if let Some((self_atom_data, _)) = self.factors.entries().iter().next()
-            && let Some((rhs_atom_data, _)) = rhs.factors.entries().iter().next()
-        {
-            if self_atom_data.registry_id != rhs_atom_data.registry_id {
+        if let (Some(lhs_id), Some(rhs_id)) = (self.registry_id(), rhs.registry_id()) {
+            if lhs_id != rhs_id {
                 return Err(DimensionError::CrossRegistry {
-                    left: self_atom_data.registry_id,
-                    right: rhs_atom_data.registry_id,
+                    left: lhs_id,
+                    right: rhs_id,
                 });
             }
         }
