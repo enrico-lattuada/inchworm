@@ -1,6 +1,6 @@
-use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::Dimension;
 
@@ -13,16 +13,42 @@ pub(crate) type Atom = Arc<AtomData>;
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct AtomId(u64);
 
+/// Process-unique registry identity, used to detect cross-registry mixing.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct RegistryId(u64);
+
+static NEXT_ATOM_ID: AtomicU64 = AtomicU64::new(1);
+static NEXT_REGISTRY_ID: AtomicU64 = AtomicU64::new(1);
+
+impl AtomId {
+    pub(crate) fn next() -> Self {
+        let id = NEXT_ATOM_ID.fetch_add(1, Ordering::Relaxed);
+        assert_ne!(
+            id, 0,
+            "AtomId space exhausted: counter wrapped past u64::MAX"
+        );
+        Self(id)
+    }
+}
+
+impl RegistryId {
+    pub(crate) fn next() -> Self {
+        let id = NEXT_REGISTRY_ID.fetch_add(1, Ordering::Relaxed);
+        assert_ne!(
+            id, 0,
+            "RegistryId space exhausted: counter wrapped past u64::MAX"
+        );
+        Self(id)
+    }
+}
+
+// ---- test utils ----
 impl AtomId {
     #[cfg(test)]
     pub(crate) fn raw(id: u64) -> Self {
         Self(id)
     }
 }
-
-/// Process-unique registry identity, used to detect cross-registry mixing.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct RegistryId(u64);
 
 impl RegistryId {
     #[cfg(test)]
@@ -36,7 +62,7 @@ pub(crate) enum AtomKind {
     /// An axis of the signature space (e.g., length, time).
     Base {
         /// Base dimension symbol (e.g. "L", "Θ").
-        symbol: String,
+        symbol: Box<str>,
     },
     /// Named derived dimension with a definition.
     ///
@@ -61,13 +87,13 @@ pub(crate) struct AtomData {
 }
 
 impl PartialOrd for AtomData {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.id.partial_cmp(&other.id)
     }
 }
 
 impl Ord for AtomData {
-    fn cmp(&self, other: &Self) -> Ordering {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.id.cmp(&other.id)
     }
 }
@@ -90,8 +116,21 @@ impl Eq for AtomData {}
 mod tests {
     use super::*;
 
-    #[test]
-    fn new_atom_id() {
-        assert_eq!(AtomId::raw(100), AtomId(100));
+    mod atom_id {
+        use super::*;
+
+        #[test]
+        fn next() {
+            assert_ne!(AtomId::next(), AtomId::next());
+        }
+    }
+
+    mod registry_id {
+        use super::*;
+
+        #[test]
+        fn next() {
+            assert_ne!(RegistryId::next(), RegistryId::next());
+        }
     }
 }
