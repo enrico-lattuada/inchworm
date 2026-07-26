@@ -1,7 +1,10 @@
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use crate::Dimension;
+
+pub(crate) type Atom = Arc<AtomData>;
 
 /// Process-unique identity, assigned from a global counter at registration.
 ///
@@ -11,7 +14,8 @@ use crate::Dimension;
 pub struct AtomId(u64);
 
 impl AtomId {
-    pub(crate) fn new(id: u64) -> Self {
+    #[cfg(test)]
+    pub(crate) fn raw(id: u64) -> Self {
         Self(id)
     }
 }
@@ -20,10 +24,20 @@ impl AtomId {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct RegistryId(u64);
 
+impl RegistryId {
+    #[cfg(test)]
+    pub(crate) fn raw(registry_id: u64) -> Self {
+        Self(registry_id)
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum AtomKind {
     /// An axis of the signature space (e.g., length, time).
-    Base,
+    Base {
+        /// Base dimension symbol (e.g. "L", "Θ").
+        symbol: String,
+    },
     /// Named derived dimension with a definition.
     ///
     /// `dimensionless_kind` is precomputed at registration: true iff
@@ -43,8 +57,6 @@ pub(crate) struct AtomData {
     pub registry_id: RegistryId,
     /// e.g. "plane_angle"
     pub name: Box<str>,
-    /// e.g. "L", "Θ"
-    pub symbol: Option<Box<str>>,
     pub kind: AtomKind,
 }
 
@@ -80,6 +92,6 @@ mod tests {
 
     #[test]
     fn new_atom_id() {
-        assert_eq!(AtomId::new(100), AtomId(100));
+        assert_eq!(AtomId::raw(100), AtomId(100));
     }
 }

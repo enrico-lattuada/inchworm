@@ -73,7 +73,18 @@ impl Dimension {
     ///
     /// # Errors
     /// Returns [`DimensionError::ExponentOverflow`] if combining a shared atom's exponents overflows.
+    /// Returns [`DimensionError::CrossRegistry`] if combining atoms from different registries.
     pub fn try_mul(&self, rhs: &Self) -> Result<Self, DimensionError> {
+        if let Some((self_atom_data, _)) = self.factors.entries().iter().next()
+            && let Some((rhs_atom_data, _)) = rhs.factors.entries().iter().next()
+        {
+            if self_atom_data.registry_id != rhs_atom_data.registry_id {
+                return Err(DimensionError::CrossRegistry {
+                    left: self_atom_data.registry_id,
+                    right: rhs_atom_data.registry_id,
+                });
+            }
+        }
         let factors = self.factors.mul(&rhs.factors)?;
         let signature = Signature(self.signature.0.mul(&rhs.signature.0)?);
         let canonical = self.canonical.mul(&rhs.canonical)?;
@@ -88,6 +99,7 @@ impl Dimension {
     ///
     /// # Errors
     /// Returns [`DimensionError::ExponentOverflow`] if combining a shared atom's exponents overflows.
+    /// Returns [`DimensionError::CrossRegistry`] if combining atoms from different registries.
     pub fn try_div(&self, rhs: &Self) -> Result<Self, DimensionError> {
         self.try_mul(&rhs.recip()?)
     }

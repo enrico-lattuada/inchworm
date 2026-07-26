@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use smallvec::SmallVec;
 
-use crate::atom::AtomId;
+use crate::atom::Atom;
 use crate::error::DimensionError;
 use crate::exp::Exp;
 
@@ -18,7 +18,7 @@ const MAX_INLINE_FACTORS: usize = 4;
 /// Used for both the base signature and the canonical form of a `Dimension`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Form {
-    entries: SmallVec<[(AtomId, Exp); MAX_INLINE_FACTORS]>,
+    entries: SmallVec<[(Atom, Exp); MAX_INLINE_FACTORS]>,
 }
 
 impl Form {
@@ -33,6 +33,10 @@ impl Form {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+
+    pub(crate) fn entries(&self) -> &[(Atom, Exp)] {
+        &self.entries
+    }
 }
 
 // ---- algebra ----
@@ -46,28 +50,28 @@ impl Form {
         let mut i = 0;
         let mut j = 0;
         while i < self.entries.len() && j < rhs.entries.len() {
-            let (id_a, exp_a) = self.entries[i];
-            let (id_b, exp_b) = rhs.entries[j];
-            match id_a.cmp(&id_b) {
+            let (id_a, exp_a) = &self.entries[i];
+            let (id_b, exp_b) = &rhs.entries[j];
+            match id_a.cmp(id_b) {
                 Ordering::Less => {
-                    entries.push((id_a, exp_a));
+                    entries.push((id_a.clone(), exp_a.clone()));
                     i += 1;
                 }
                 Ordering::Greater => {
-                    entries.push((id_b, exp_b));
+                    entries.push((id_b.clone(), exp_b.clone()));
                     j += 1;
                 }
                 Ordering::Equal => {
-                    let exp_sum = exp_a.checked_add(exp_b)?;
+                    let exp_sum = exp_a.checked_add(exp_b.clone())?;
                     if !exp_sum.is_zero() {
-                        entries.push((id_a, exp_sum));
+                        entries.push((id_a.clone(), exp_sum));
                     }
                     (i, j) = (i + 1, j + 1);
                 }
             }
         }
-        entries.extend_from_slice(&self.entries[i..]);
-        entries.extend_from_slice(&rhs.entries[j..]);
+        entries.extend(self.entries[i..].iter().cloned());
+        entries.extend(rhs.entries[j..].iter().cloned());
         Ok(Self { entries })
     }
 
@@ -78,9 +82,9 @@ impl Form {
     pub(crate) fn pow(&self, e: Exp) -> Result<Self, DimensionError> {
         let mut entries = SmallVec::new();
         if !e.is_zero() {
-            for (atom_id, exp) in self.entries.iter().copied() {
+            for (atom_data, exp) in self.entries.iter() {
                 let exp_times_e = exp.checked_mul(e)?;
-                entries.push((atom_id, exp_times_e));
+                entries.push((atom_data.clone(), exp_times_e));
             }
         }
         Ok(Self { entries })
@@ -92,8 +96,8 @@ impl Form {
     /// Returns [`DimensionError::ExponentOverflow`] if computing the reciprocal of an atom's exponents overflows.
     pub(crate) fn recip(&self) -> Result<Self, DimensionError> {
         let mut entries = SmallVec::new();
-        for (atom_id, entry) in self.entries.iter().copied() {
-            entries.push((atom_id, entry.checked_neg()?));
+        for (atom_data, entry) in self.entries.iter() {
+            entries.push((atom_data.clone(), entry.checked_neg()?));
         }
         Ok(Self { entries })
     }
@@ -102,7 +106,7 @@ impl Form {
 // ---- test utils ----
 impl Form {
     #[cfg(test)]
-    pub(crate) fn raw(entries: impl IntoIterator<Item = (AtomId, Exp)>) -> Self {
+    pub(crate) fn raw(entries: impl IntoIterator<Item = (Atom, Exp)>) -> Self {
         Self {
             entries: entries.into_iter().collect(),
         }
@@ -118,7 +122,7 @@ pub struct Signature(pub(crate) Form);
 
 impl Signature {
     #[cfg(test)]
-    pub(crate) fn raw(entries: impl IntoIterator<Item = (AtomId, Exp)>) -> Self {
+    pub(crate) fn raw(entries: impl IntoIterator<Item = (Atom, Exp)>) -> Self {
         Self(Form::raw(entries))
     }
 }
