@@ -68,7 +68,13 @@ pub(crate) fn errors_match(actual: &DimensionError, expected: &DimensionError) -
                     name: expected_name,
                     dependents: expected_dependents,
                 },
-            ) => name == expected_name && dependents.clone().sort() == expected_dependents.clone().sort(),
+            ) => {
+                let mut dependents = dependents.clone();
+                let mut expected_dependents = expected_dependents.clone();
+                dependents.sort();
+                expected_dependents.sort();
+                name == expected_name && dependents == expected_dependents
+            },
             _ => false,
         }
     } else {
