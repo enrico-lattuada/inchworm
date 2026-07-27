@@ -8,6 +8,12 @@ pub enum DimensionError {
     #[error("dimension name `{name}` is already defined in registry `{registry}`")]
     DuplicateName { name: String, registry: String },
 
+    #[error("cannot remove `{name}`: referenced by {dependents:?}")]
+    RemovalBlocked {
+        name: String,
+        dependents: Vec<String>,
+    },
+
     #[error("exponent arithmetic overflow")]
     ExponentOverflow,
 

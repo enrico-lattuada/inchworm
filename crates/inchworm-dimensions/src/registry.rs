@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use std::sync::Arc;
+
 use crate::{
     AtomId, Dimension, DimensionError, RegistryId,
     atom::{Atom, AtomData, AtomKind},
@@ -69,6 +71,8 @@ impl DimRegistry {
     }
 
     /// Add a derived dimension to the registry and return the corresponding [`Dimension`].
+    /// 
+    /// The returned [`Dimension`] is an atom-identified dimension, distinct from the `definition`.
     ///
     /// # Errors
     /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
@@ -110,6 +114,42 @@ impl DimRegistry {
     /// Returns the [`Dimension`] corresponding to `name`.
     pub fn get(&self, name: &str) -> Option<Dimension> {
         self.atoms.get(name).map(Dimension::from_atom)
+    }
+
+    /// Removes `name` from the registry, returning the [`Dimension`] at `name` if `name` was previously in the registry.
+    ///
+    /// # Errors
+    /// Returns [`DimensionError::RemovalBlocked`] if any *registered* definition still references `name`.
+    pub fn remove(&mut self, name: &str) -> Result<Option<Dimension>, DimensionError> {
+        if let Some(atom) = self.atoms.get(name)
+            && Arc::strong_count(atom) > 1
+        {
+            let mut dependents = Vec::new();
+            for (atom_name, atom_data) in self.atoms.iter() {
+                let AtomKind::Derived { definition, .. } = &atom_data.kind else {
+                    continue;
+                };
+                let factors_entries = definition.factors().entries();
+                let canonical_entries = definition.canonical_form().entries();
+                if factors_entries
+                    .iter()
+                    .chain(canonical_entries.iter())
+                    .any(|(other_atom, _)| Arc::ptr_eq(atom, other_atom))
+                {
+                    dependents.push(atom_name.clone().into());
+                }
+            }
+            if dependents.len() > 0 {
+                return Err(DimensionError::RemovalBlocked {
+                    name: name.into(),
+                    dependents,
+                });
+            }
+        }
+        Ok(self
+            .atoms
+            .remove(name)
+            .map(|atom| Dimension::from_atom(&atom)))
     }
 }
 
@@ -250,6 +290,71 @@ mod tests {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", "L").unwrap();
             assert_eq!(registry.get("length").unwrap(), length);
+        }
+    }
+
+    mod remove {
+        use crate::test_utils::{assert_exactly_eq, errors_match};
+
+        use super::*;
+
+        #[test]
+        fn returns_none_for_unregistered_name() {
+            let mut registry = DimRegistry::new("test_reg");
+            let _ = registry.add_base("length", "L");
+            assert!(registry.remove("time").unwrap().is_none());
+        }
+
+        #[test]
+        fn removes_registered_name_and_returns_its_dimension() {
+            let mut registry = DimRegistry::new("test_reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let removed = registry.remove("length").unwrap().unwrap();
+            assert_exactly_eq(&length, &removed);
+            assert!(registry.get("length").is_none());
+        }
+
+        #[test]
+        fn unblocked_by_external_dimension_handle() {
+            let mut registry = DimRegistry::new("test_reg");
+            let _length = registry.add_base("length", "L").unwrap();
+            let removed = registry.remove("length");
+            assert!(removed.is_ok());
+            assert!(registry.get("length").is_none());
+        }
+
+        #[test]
+        fn blocked_by_direct_dependent() {
+            let mut registry = DimRegistry::new("test_reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let time = registry.add_base("time", "T").unwrap();
+            let definition = length.try_div(&time).unwrap();
+            let _velocity = registry.add_derived("velocity", &definition).unwrap();
+            let err = registry.remove("length").unwrap_err();
+            let expected_err = DimensionError::RemovalBlocked {
+                name: "length".into(),
+                dependents: vec!["velocity".into()],
+            };
+            assert!(errors_match(&err, &expected_err,));
+            assert!(registry.get("length").is_some());
+        }
+
+        #[test]
+        fn blocked_by_transitive_canonical_dependent() {
+            let mut registry = DimRegistry::new("test_reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let time = registry.add_base("time", "T").unwrap();
+            let velocity_definition = length.try_div(&time).unwrap();
+            let velocity = registry.add_derived("velocity", &velocity_definition).unwrap();
+            let acceleration_definition = velocity.try_div(&time).unwrap();
+            let _acceleration = registry.add_derived("acceleration", &acceleration_definition).unwrap();
+            let err = registry.remove("length").unwrap_err();
+            let expected_err = DimensionError::RemovalBlocked {
+                name: "length".into(),
+                dependents: vec!["velocity".into(), "acceleration".into()],
+            };
+            assert!(errors_match(&err, &expected_err,));
+            assert!(registry.get("length").is_some());
         }
     }
 }

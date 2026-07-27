@@ -62,6 +62,13 @@ pub(crate) fn errors_match(actual: &DimensionError, expected: &DimensionError) -
                     right: expected_right,
                 },
             ) => left == expected_left && right == expected_right,
+            (
+                DimensionError::RemovalBlocked { name, dependents },
+                DimensionError::RemovalBlocked {
+                    name: expected_name,
+                    dependents: expected_dependents,
+                },
+            ) => name == expected_name && dependents.clone().sort() == expected_dependents.clone().sort(),
             _ => false,
         }
     } else {
