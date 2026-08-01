@@ -156,7 +156,7 @@ impl DimRegistry {
 
 // ---- parsing and loading ----
 impl DimRegistry {
-    /// Parses `expr` returning the corresponding [`Dimension`] from the registry.
+    /// Parses a dimension expression (e.g., "length / time^2") against this registry's names.
     ///
     /// # Errors
     /// Returns [`DimensionError::UnknownDimension`] if `expr` contains a dimension unknown to the registry.
