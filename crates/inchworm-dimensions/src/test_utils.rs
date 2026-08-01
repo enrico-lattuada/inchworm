@@ -74,7 +74,21 @@ pub(crate) fn errors_match(actual: &DimensionError, expected: &DimensionError) -
                 dependents.sort();
                 expected_dependents.sort();
                 name == expected_name && dependents == expected_dependents
-            },
+            }
+            (
+                DimensionError::UnknownDimension { name, registry },
+                DimensionError::UnknownDimension {
+                    name: expected_name,
+                    registry: expected_registry,
+                },
+            ) => name == expected_name && registry == expected_registry,
+            (
+                DimensionError::Parse { offset, .. },
+                DimensionError::Parse {
+                    offset: expected_offset,
+                    ..
+                },
+            ) => offset == expected_offset,
             _ => false,
         }
     } else {

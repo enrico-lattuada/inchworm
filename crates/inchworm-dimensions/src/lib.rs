@@ -28,6 +28,7 @@ mod dimension;
 mod error;
 mod exp;
 mod form;
+mod parser;
 mod registry;
 #[cfg(test)]
 mod test_utils;
