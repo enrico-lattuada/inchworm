@@ -20,6 +20,12 @@ pub enum DimensionError {
         dependents: Vec<String>,
     },
 
+    #[error("cyclic definition involving `{name}`")]
+    CyclicDefinition { name: String },
+
+    #[error("`{name}` is declared dimensionless but reduces to signature `{signature}`")]
+    NotDimensionless { name: String, signature: String },
+
     #[error("parse error at byte {offset}: {message} in `{src}`")]
     Parse {
         src: String,
@@ -32,4 +38,7 @@ pub enum DimensionError {
 
     #[error("zero denominator in exponent")]
     ZeroDenominator,
+
+    #[error("invalid definition file: {0}")]
+    DefinitionFile(String),
 }

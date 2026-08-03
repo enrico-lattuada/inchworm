@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::fmt;
 
 use smallvec::{SmallVec, smallvec};
 
@@ -125,6 +126,33 @@ impl Form {
     }
 }
 
+impl fmt::Display for Form {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.entries.is_empty() {
+            return write!(f, "1");
+        }
+        for (i, (atom, exp)) in self.entries().iter().enumerate() {
+            if i > 0 {
+                write!(f, "·")?;
+            }
+            write!(f, "{}", &atom.name)?;
+            if !exp.is_one() {
+                let body = if exp.is_int() {
+                    exp.num().to_string()
+                } else {
+                    format!("{}/{}", exp.num(), exp.den())
+                };
+                if exp.num() < 0 {
+                    write!(f, "^({body})")?;
+                } else {
+                    write!(f, "^{body}")?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Base signature, a [`Form`] containing base atoms only.
 ///
 /// A [`Signature`] answers "are these the same physical quantity, ignoring names?"
@@ -136,6 +164,12 @@ impl Signature {
     #[cfg(test)]
     pub(crate) fn raw(entries: impl IntoIterator<Item = (Atom, Exp)>) -> Self {
         Self(Form::raw(entries))
+    }
+}
+
+impl fmt::Display for Signature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 
@@ -386,5 +420,60 @@ mod tests {
         let entries = smallvec![make_form_entry(0, (1, 2)), make_form_entry(2, (5, 4)),];
         let form = Form { entries };
         assert_eq!(form, form.recip().unwrap().recip().unwrap());
+    }
+
+    mod display {
+        use std::sync::Arc;
+
+        use super::*;
+        use crate::{
+            AtomId, RegistryId,
+            atom::{AtomData, AtomKind},
+        };
+
+        #[test]
+        fn dimensionless() {
+            let form = Form::empty();
+            assert_eq!(form.to_string(), "1");
+        }
+
+        #[test]
+        fn omits_unit_exp() {
+            let exp = Exp::int(1).unwrap();
+            let atom_data = AtomData {
+                id: AtomId::raw(0),
+                registry_id: RegistryId::raw(0),
+                name: "length".into(),
+                kind: AtomKind::Base { symbol: "L".into() },
+            };
+            let form = Form::single(&Arc::new(atom_data), exp);
+            assert_eq!(form.to_string(), "length");
+        }
+
+        #[test]
+        fn integer_nonunit_exp() {
+            let exp = Exp::int(3).unwrap();
+            let atom_data = AtomData {
+                id: AtomId::raw(0),
+                registry_id: RegistryId::raw(0),
+                name: "length".into(),
+                kind: AtomKind::Base { symbol: "L".into() },
+            };
+            let form = Form::single(&Arc::new(atom_data), exp);
+            assert_eq!(form.to_string(), "length^3");
+        }
+
+        #[test]
+        fn fractional() {
+            let exp = Exp::new(1, 3).unwrap();
+            let atom_data = AtomData {
+                id: AtomId::raw(0),
+                registry_id: RegistryId::raw(0),
+                name: "length".into(),
+                kind: AtomKind::Base { symbol: "L".into() },
+            };
+            let form = Form::single(&Arc::new(atom_data), exp);
+            assert_eq!(form.to_string(), "length^1/3");
+        }
     }
 }

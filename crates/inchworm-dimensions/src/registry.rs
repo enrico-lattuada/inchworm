@@ -112,6 +112,29 @@ impl DimRegistry {
         Ok(dimension)
     }
 
+    /// Add a dimensionless, derived dimension to the registry and return the corresponding [`Dimension`].
+    ///
+    /// The returned [`Dimension`] is an atom-identified dimension, distinct from the `definition`.
+    ///
+    /// # Errors
+    /// Returns [`DimensionError::NotDimensionless`] if `definition` does not have a dimensionless signature.
+    /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
+    /// Returns [`DimensionError::CrossRegistry`] if `definition` comes from a different registry.
+    pub fn add_dimensionless(
+        &mut self,
+        name: &str,
+        definition: &Dimension,
+    ) -> Result<Dimension, DimensionError> {
+        if !definition.has_dimensionless_signature() {
+            Err(DimensionError::NotDimensionless {
+                name: name.into(),
+                signature: definition.signature().to_string(),
+            })
+        } else {
+            self.add_derived(name, definition)
+        }
+    }
+
     /// Returns the [`Dimension`] corresponding to `name`.
     pub fn get(&self, name: &str) -> Option<Dimension> {
         self.atoms.get(name).map(Dimension::from_atom)
@@ -295,6 +318,35 @@ mod tests {
         }
     }
 
+    mod add_dimensionless {
+        use super::*;
+        use crate::test_utils::errors_match;
+
+        #[test]
+        fn allows_dimensionless_definition() {
+            let mut registry = DimRegistry::new("test_reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let definition = length.try_div(&length).unwrap();
+            let plane_angle = registry
+                .add_dimensionless("plane_angle", &definition)
+                .unwrap();
+            assert!(plane_angle.has_dimensionless_signature());
+            assert!(!plane_angle.is_dimensionless());
+        }
+
+        #[test]
+        fn rejects_non_dimensionless_signature_definition() {
+            let mut registry = DimRegistry::new("test_reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let err = registry.add_dimensionless("distance", &length).unwrap_err();
+            let expected_err = DimensionError::NotDimensionless {
+                name: "distance".into(),
+                signature: "length".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+    }
+
     mod get {
         use super::*;
 
@@ -382,9 +434,8 @@ mod tests {
     }
 
     mod parse {
-        use crate::{Exp, test_utils::errors_match};
-
         use super::*;
+        use crate::{Exp, test_utils::errors_match};
 
         #[test]
         fn parses_simple_identifier() {
@@ -586,6 +637,33 @@ mod tests {
                 message: "".into(),
             };
             assert!(errors_match(&err, &expected_err));
+        }
+    }
+
+    mod roundtrips {
+        use super::*;
+        use crate::{Exp, test_utils::assert_exactly_eq};
+
+        #[test]
+        fn roundtrips_through_display_and_parse() {
+            let mut registry = DimRegistry::new("test_reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let time = registry.add_base("time", "T").unwrap();
+            let mass = registry.add_base("mass", "M").unwrap();
+            let definitions = [
+                length
+                    .try_div(&time.pow(Exp::int(2).unwrap()).unwrap())
+                    .unwrap(),
+                length.pow(Exp::new(3, 2).unwrap()).unwrap(),
+                length.try_mul(&time).unwrap().try_mul(&mass).unwrap(),
+            ];
+            for (i, definition) in definitions.iter().enumerate() {
+                let name = format!("{i}");
+                registry.add_derived(&name, &definition).unwrap();
+                let str_definition = definition.factors().to_string();
+                let parsed = registry.parse(&str_definition).unwrap();
+                assert_exactly_eq(&parsed, definition);
+            }
         }
     }
 }

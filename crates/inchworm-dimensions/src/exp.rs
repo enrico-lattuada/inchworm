@@ -75,6 +75,16 @@ impl Exp {
     pub fn is_zero(&self) -> bool {
         *self == Self::ZERO
     }
+
+    /// Returns `true` if `self` is equal to the multiplicative identity.
+    pub fn is_one(&self) -> bool {
+        *self == Self::ONE
+    }
+
+    /// Returns `true` if `self` is integer.
+    pub fn is_int(&self) -> bool {
+        self.den() == 1
+    }
 }
 
 // ---- algebra ----
@@ -267,6 +277,22 @@ mod tests {
         assert!(Exp::ZERO.is_zero());
         assert!(!Exp::ONE.is_zero());
         assert!(Exp::new(0, 5).unwrap().is_zero());
+    }
+
+    #[test]
+    fn is_one() {
+        assert!(Exp::ONE.is_one());
+        assert!(!Exp::ZERO.is_one());
+        assert!(Exp::new(4, 4).unwrap().is_one());
+    }
+
+    #[test]
+    fn is_int() {
+        assert!(Exp::ONE.is_int());
+        assert!(Exp::ZERO.is_int());
+        assert!(Exp::int(4).unwrap().is_int());
+        assert!(Exp::new(6, 2).unwrap().is_int());
+        assert!(!Exp::new(6, 4).unwrap().is_int());
     }
 
     mod checked_mul {

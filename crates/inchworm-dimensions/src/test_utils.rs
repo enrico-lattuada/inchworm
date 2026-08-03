@@ -89,6 +89,22 @@ pub(crate) fn errors_match(actual: &DimensionError, expected: &DimensionError) -
                     ..
                 },
             ) => offset == expected_offset,
+            (
+                DimensionError::CyclicDefinition { name },
+                DimensionError::CyclicDefinition {
+                    name: expected_name,
+                },
+            ) => name == expected_name,
+            (
+                DimensionError::NotDimensionless { name, signature },
+                DimensionError::NotDimensionless {
+                    name: expected_name,
+                    signature: expected_signature,
+                },
+            ) => name == expected_name && signature == expected_signature,
+            (DimensionError::DefinitionFile(src), DimensionError::DefinitionFile(expected_src)) => {
+                src == expected_src
+            }
             _ => false,
         }
     } else {
