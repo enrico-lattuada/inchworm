@@ -464,6 +464,19 @@ mod tests {
         }
 
         #[test]
+        fn negative_integer_nonunit_exp() {
+            let exp = Exp::int(-3).unwrap();
+            let atom_data = AtomData {
+                id: AtomId::raw(0),
+                registry_id: RegistryId::raw(0),
+                name: "length".into(),
+                kind: AtomKind::Base { symbol: "L".into() },
+            };
+            let form = Form::single(&Arc::new(atom_data), exp);
+            assert_eq!(form.to_string(), "length^(-3)");
+        }
+
+        #[test]
         fn fractional() {
             let exp = Exp::new(1, 3).unwrap();
             let atom_data = AtomData {
