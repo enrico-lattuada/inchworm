@@ -20,8 +20,8 @@ pub enum DimensionError {
         dependents: Vec<String>,
     },
 
-    #[error("cyclic definition involving `{name}`")]
-    CyclicDefinition { name: String },
+    #[error("cyclic definition(s) involving {names:?}")]
+    CyclicDefinition { names: Vec<String> },
 
     #[error("`{name}` is declared dimensionless but reduces to signature `{signature}`")]
     NotDimensionless { name: String, signature: String },
