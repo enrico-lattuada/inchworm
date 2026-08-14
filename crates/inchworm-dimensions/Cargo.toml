@@ -1,9 +1,22 @@
 [package]
 name = "inchworm-dimensions"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+
+[features]
+# Without "toml": no definition-file loading and no DimRegistry::standard()
+# (which is built by parsing the embedded data/standard.toml).
+default = ["toml"]
+toml = ["dep:serde", "dep:toml"]
 
 [dependencies]
-smallvec = "1.15.2"
+serde = { workspace = true, optional = true}
+smallvec = { workspace = true }
 thiserror = { workspace = true }
+toml = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

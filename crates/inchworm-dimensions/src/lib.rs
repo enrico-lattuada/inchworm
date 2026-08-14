@@ -36,6 +36,8 @@ mod test_utils;
 
 #[cfg(feature = "toml")]
 mod loader;
+#[cfg(feature = "toml")]
+mod standard;
 
 pub use atom::{AtomId, RegistryId};
 pub use dimension::{Compatibility, Dimension};

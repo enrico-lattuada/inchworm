@@ -1,0 +1,103 @@
+schema = 1
+
+[registry]
+name = "standard"
+version = "1"
+
+
+# ---- base dimensions (ISQ) ----
+
+[[base]]
+name = "length"
+symbol = "L"
+
+[[base]]
+name = "mass"
+symbol = "M"
+
+[[base]]
+name = "time"
+symbol = "T"
+
+[[base]]
+name = "electric_current"
+symbol = "I"
+
+[[base]]
+name = "temperature"
+symbol = "Θ"
+
+[[base]]
+name = "amount_of_substance"
+symbol = "N"
+
+[[base]]
+name = "luminous_intensity"
+symbol = "J"
+
+# ---- angles: named derived dimensions with dimensionless signature ----
+# Auto-classified as irreducible dimensionless kinds: they are NEVER
+# silently collapsed to bare dimensionless.
+
+[[dimensionless]]
+name = "plane_angle"
+definition = "length / length"
+aliases = ["angle"]
+
+[[dimensionless]]
+name = "solid_angle"
+definition = "length^(2) / length^(2)"
+
+# ---- named derived dimensions ----
+
+[[derived]]
+name = "area"
+definition = "length^2"
+
+[[derived]]
+name = "volume"
+definition = "length^3"
+
+[[derived]]
+name = "velocity"
+definition = "length / time"
+
+[[derived]]
+name = "acceleration"
+definition = "velocity / time"
+
+[[derived]]
+name = "force"
+definition = "mass * acceleration"
+
+[[derived]]
+name = "pressure"
+definition = "force / area"
+
+[[derived]]
+name = "energy"
+definition = "force * length"
+
+[[derived]]
+name = "power"
+definition = "energy / time"
+
+[[derived]]
+name = "frequency"
+definition = "1 / time"
+
+[[derived]]
+name = "electric_charge"
+definition = "electric_current * time"
+
+[[derived]]
+name = "voltage"
+definition = "power / electric_current"
+
+[[derived]]
+name = "angular_velocity"
+definition = "plane_angle / time"
+
+[[derived]]
+name = "angular_acceleration"
+definition = "plane_angle / time^2"
