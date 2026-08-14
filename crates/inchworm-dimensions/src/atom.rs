@@ -88,7 +88,7 @@ pub(crate) struct AtomData {
 
 impl PartialOrd for AtomData {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.id.partial_cmp(&other.id)
+        Some(self.cmp(other))
     }
 }
 

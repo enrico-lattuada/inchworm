@@ -121,13 +121,13 @@ impl Dimension {
     /// Returns [`DimensionError::ExponentOverflow`] if combining a shared atom's exponents overflows.
     /// Returns [`DimensionError::CrossRegistry`] if combining atoms from different registries.
     pub fn try_mul(&self, rhs: &Self) -> Result<Self, DimensionError> {
-        if let (Some(lhs_id), Some(rhs_id)) = (self.registry_id(), rhs.registry_id()) {
-            if lhs_id != rhs_id {
-                return Err(DimensionError::CrossRegistry {
-                    left: lhs_id,
-                    right: rhs_id,
-                });
-            }
+        if let (Some(lhs_id), Some(rhs_id)) = (self.registry_id(), rhs.registry_id())
+            && lhs_id != rhs_id
+        {
+            return Err(DimensionError::CrossRegistry {
+                left: lhs_id,
+                right: rhs_id,
+            });
         }
         let factors = self.factors.mul(&rhs.factors)?;
         let signature = Signature(self.signature.0.mul(&rhs.signature.0)?);

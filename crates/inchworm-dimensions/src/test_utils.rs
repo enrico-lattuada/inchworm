@@ -24,7 +24,7 @@ pub(crate) fn make_form_entry(id: u64, num_den: (i64, i64)) -> (Atom, Exp) {
 /// Assert factors, signature, and canonical of two dimensions are equal.
 ///
 /// Caller must pass entries already sorted/reduced.
-pub(crate) fn assert_exactly_eq(dimension: &Dimension, other_dimension: &Dimension) -> () {
+pub(crate) fn assert_exactly_eq(dimension: &Dimension, other_dimension: &Dimension) {
     assert_eq!(
         dimension.factors(),
         other_dimension.factors(),

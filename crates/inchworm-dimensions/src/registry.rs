@@ -167,7 +167,7 @@ impl DimRegistry {
                     dependents.push(atom_name.clone().into());
                 }
             }
-            if dependents.len() > 0 {
+            if !dependents.is_empty() {
                 return Err(DimensionError::RemovalBlocked {
                     name: name.into(),
                     dependents,
@@ -765,7 +765,7 @@ mod tests {
             ];
             for (i, definition) in definitions.iter().enumerate() {
                 let name = format!("{i}");
-                registry.add_derived(&name, &definition).unwrap();
+                registry.add_derived(&name, definition).unwrap();
                 let str_definition = definition.factors().to_string();
                 let parsed = registry.parse(&str_definition).unwrap();
                 assert_exactly_eq(&parsed, definition);

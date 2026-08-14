@@ -165,7 +165,7 @@ mod tests {
             graph.insert("A".into(), vec!["B".into()]);
             graph.insert("C".into(), vec!["A".into()]);
             let err = topological_order(&graph);
-            let expected = &DimensionError::CyclicDefinition {
+            let expected = DimensionError::CyclicDefinition {
                 names: vec!["A".into(), "B".into(), "C".into()],
             };
             assert!(errors_match(&err.unwrap_err(), &expected));

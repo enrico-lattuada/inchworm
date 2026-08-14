@@ -67,15 +67,15 @@ impl Form {
             let (id_b, exp_b) = &rhs.entries[j];
             match id_a.cmp(id_b) {
                 Ordering::Less => {
-                    entries.push((id_a.clone(), exp_a.clone()));
+                    entries.push((id_a.clone(), *exp_a));
                     i += 1;
                 }
                 Ordering::Greater => {
-                    entries.push((id_b.clone(), exp_b.clone()));
+                    entries.push((id_b.clone(), *exp_b));
                     j += 1;
                 }
                 Ordering::Equal => {
-                    let exp_sum = exp_a.checked_add(exp_b.clone())?;
+                    let exp_sum = exp_a.checked_add(*exp_b)?;
                     if !exp_sum.is_zero() {
                         entries.push((id_a.clone(), exp_sum));
                     }
@@ -135,7 +135,7 @@ impl fmt::Display for Form {
             if i > 0 {
                 write!(f, "·")?;
             }
-            write!(f, "{}", &atom.name)?;
+            write!(f, "{}", atom.name)?;
             if !exp.is_one() {
                 let body = if exp.is_int() {
                     exp.num().to_string()

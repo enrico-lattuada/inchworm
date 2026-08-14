@@ -128,20 +128,18 @@ impl<'a> Iterator for Lexer<'a> {
             match maybe_number {
                 Ok(number) => {
                     let (token, offset) = (Token::Number(number), start);
-                    return Some(Ok(Spanned { token, offset }));
+                    Some(Ok(Spanned { token, offset }))
                 }
-                Err(e) => {
-                    return Some(Err(DimensionError::Parse {
-                        src: self.src.into(),
-                        offset: start,
-                        message: e.to_string(),
-                    }));
-                }
+                Err(e) => Some(Err(DimensionError::Parse {
+                    src: self.src.into(),
+                    offset: start,
+                    message: e.to_string(),
+                })),
             }
         } else if c.is_ascii_alphanumeric() || c == '_' {
             let consumed = self.consume_while(start, |c| c.is_ascii_alphanumeric() || c == '_');
             let (token, offset) = (Token::Ident(consumed.into()), start);
-            return Some(Ok(Spanned { token, offset }));
+            Some(Ok(Spanned { token, offset }))
         } else if let Some(token) = match c {
             '*' | '·' => Some(Token::Star),
             '-' => Some(Token::Minus),
@@ -153,14 +151,14 @@ impl<'a> Iterator for Lexer<'a> {
         } {
             self.chars.next();
             let offset = start;
-            return Some(Ok(Spanned { token, offset }));
+            Some(Ok(Spanned { token, offset }))
         } else {
             self.chars.next();
-            return Some(Err(DimensionError::Parse {
+            Some(Err(DimensionError::Parse {
                 src: self.src.into(),
                 offset: start,
                 message: format!("unsupported char '{c}'"),
-            }));
+            }))
         }
     }
 }
