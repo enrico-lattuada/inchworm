@@ -98,7 +98,7 @@ pub(crate) fn load_registry(src: &str) -> Result<DimRegistry, DimensionError> {
 /// Returns [`DimensionError::DuplicateName`] if duplicate names are found in the source.
 /// Returns [`DimensionError::CyclicDefinition`] if cyclic definitions are found in the source.
 /// Returns [`DimensionError::NotDimensionless`] if a declared dimensionless dimension is not in fact dimensionless.
-/// Returns [`DimensionError::Parse`] if the information in the source cannot be parsed correctly.
+/// Returns [`DimensionError::Parse`] if the information in the source cannot be parsed.
 /// Returns [`DimensionError::ExponentOverflow`] if any exponents in the source definitions incur overflow.
 /// Returns [`DimensionError::ZeroDenominator`] if any exponents' denominators in the source definitions are zero.
 pub(crate) fn extend_registry(registry: &mut DimRegistry, src: &str) -> Result<(), DimensionError> {
