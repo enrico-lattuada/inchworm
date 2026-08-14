@@ -8,8 +8,12 @@ fmt:
 fmt-check:
     cargo fmt --all -- --check
 
-# Check the workspace to catch common mistakes (treat warnings as errors)
+# Check the workspace to catch common mistakes
 clippy:
+    cargo clippy --workspace --all-targets --all-features
+
+# Check the workspace to catch common mistakes (treat warnings as errors)
+clippy-strict:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # Run the Rust test suites.
