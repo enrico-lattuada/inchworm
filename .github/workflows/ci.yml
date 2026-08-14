@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  # trigger on all commits to main
+  push:
+    branches:
+      - main
+
+  # trigger on pull requests to main
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+  # trigger on request
+  workflow_dispatch:
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v7
+
+      - name: 📦 Install pre-commit
+        run: pip install pre-commit
+
+      - name: 🔍 Run pre-commit checks on all files
+        run: pre-commit run --all-files --verbose --color=always --show-diff-on-failure
+
+  clippy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features: ["--all-features", "--no-default-features"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 📦 Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          shared-key: rust-${{ matrix.features }}
+
+      - name: 🔎 Run clippy
+        run: cargo clippy --workspace --all-targets ${{ matrix.features }} -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features: ["--all-features", "--no-default-features"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 📦 Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          shared-key: rust-${{ matrix.features }}
+
+      - name: 🧪 Run tests
+        run: cargo test --workspace ${{ matrix.features }} --color always
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 📦 Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          shared-key: rust---all-features
+
+      - name: 📄 Build docs
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --all-features --no-deps
