@@ -686,7 +686,7 @@ mod tests {
             let mut registry = DimRegistry::new("test_reg");
             assert!(registry.get("base").is_none());
             let src = r#"schema = 1
-            
+
             [[base]]
             name = "base"
             symbol = "B"
@@ -702,7 +702,7 @@ mod tests {
         fn propagates_error_from_source() {
             let mut registry = DimRegistry::new("test-reg");
             let bad_toml = r#"schema = 1
-            
+
             [registry
             name = "test-reg"
             version = "0.0.0"
@@ -723,7 +723,7 @@ mod tests {
             let mut file = tempfile::NamedTempFile::new().unwrap();
             file.write_all(
                 br#"schema = 1
-            
+
                 [[base]]
                 name = "base"
                 symbol = "B"

@@ -187,11 +187,11 @@ mod tests {
         #[test]
         fn builds_registry_from_minimal_file() {
             let src = r#"schema = 1
-            
+
             [registry]
             name = "test-reg"
             version = "0.0.0"
-            
+
             [[base]]
             name = "base"
             symbol = "B"
@@ -211,11 +211,11 @@ mod tests {
         #[test]
         fn resolves_forward_reference() {
             let src = r#"schema = 1
-            
+
             [registry]
             name = "test-reg"
             version = "0.0.0"
-            
+
             [[base]]
             name = "a"
             symbol = "A"
@@ -238,11 +238,11 @@ mod tests {
         #[test]
         fn builds_valid_dimensionless_entry() {
             let src = r#"schema = 1
-            
+
             [registry]
             name = "test-reg"
             version = "0.0.0"
-            
+
             [[base]]
             name = "base"
             symbol = "B"
@@ -261,11 +261,11 @@ mod tests {
         #[test]
         fn rejects_invalid_dimensionless_entry() {
             let src = r#"schema = 1
-            
+
             [registry]
             name = "test-reg"
             version = "0.0.0"
-            
+
             [[base]]
             name = "base"
             symbol = "B"
@@ -285,11 +285,11 @@ mod tests {
         #[test]
         fn rejects_duplicate_name_across_sections() {
             let src = r#"schema = 1
-            
+
             [registry]
             name = "test-reg"
             version = "0.0.0"
-            
+
             [[base]]
             name = "base"
             symbol = "B"
@@ -309,7 +309,7 @@ mod tests {
         #[test]
         fn rejects_missing_registry_section() {
             let src = r#"schema = 1
-            
+
             [[base]]
             name = "base"
             symbol = "B"
@@ -324,11 +324,11 @@ mod tests {
         #[test]
         fn rejects_cyclic_definitions() {
             let src = r#"schema = 1
-            
+
             [registry]
             name = "test-reg"
             version = "0.0.0"
-            
+
             [[derived]]
             name = "a"
             definition = "b"
@@ -347,7 +347,7 @@ mod tests {
         #[test]
         fn rejects_malformed_toml() {
             let bad_toml = r#"schema = 1
-            
+
             [registry
             name = "test-reg"
             version = "0.0.0"
@@ -361,11 +361,11 @@ mod tests {
         #[test]
         fn rejects_unknown_referenced_name() {
             let src = r#"schema = 1
-            
+
             [registry]
             name = "test-reg"
             version = "0.0.0"
-            
+
             [[derived]]
             name = "b"
             definition = "a"
@@ -393,7 +393,7 @@ mod tests {
                 "unregistered dimension should not be present in the registry"
             );
             let src = r#"schema = 1
-            
+
             [[derived]]
             name = "b"
             definition = "a"
@@ -415,7 +415,7 @@ mod tests {
             [registry]
             name = "test-reg-override"
             version = "0.0.0"
-            
+
             [[derived]]
             name = "b"
             definition = "a"
@@ -438,7 +438,7 @@ mod tests {
             [registry]
             name = "test-reg-override"
             version = "0.0.0"
-            
+
             [[base]]
             name = "a"
             symbol = "B"
