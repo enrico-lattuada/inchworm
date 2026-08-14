@@ -46,6 +46,19 @@ pub(crate) fn parse_dim_expr<'a>(
     }
 }
 
+pub(crate) fn extract_idents(src: &str) -> Result<Vec<String>, DimensionError> {
+    let chars = src.char_indices().peekable();
+    let lexer = Lexer { src, chars };
+    let mut idents = Vec::new();
+    for item in lexer {
+        let spanned = item?;
+        if let Token::Ident(ident) = spanned.token {
+            idents.push(ident);
+        }
+    }
+    Ok(idents)
+}
+
 #[derive(Debug, PartialEq)]
 enum Token {
     Ident(String), // IDENT
@@ -290,5 +303,50 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod extract_idents {
+        use crate::test_utils::errors_match;
+
+        use super::*;
+
+        #[test]
+        fn multi_factor_expr() {
+            let expr = "length * time^2";
+            let idents = extract_idents(expr).unwrap();
+            assert_eq!(idents, vec!["length", "time"]);
+        }
+
+        #[test]
+        fn dimensionless() {
+            let expr = "1";
+            let idents = extract_idents(expr).unwrap();
+            let empty_vec: Vec<String> = Vec::new();
+            assert_eq!(idents, empty_vec);
+        }
+
+        #[test]
+        fn keeps_duplicate() {
+            let expr = "length / length";
+            let idents = extract_idents(expr).unwrap();
+            assert_eq!(idents, vec!["length", "length"]);
+        }
+
+        #[test]
+        fn propagates_bad_char() {
+            let expr = "length @ length";
+            let err = extract_idents(expr).unwrap_err();
+            let expected_err = DimensionError::Parse {
+                src: expr.into(),
+                offset: 7,
+                message: "".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
     }
 }

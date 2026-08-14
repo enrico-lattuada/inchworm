@@ -34,6 +34,9 @@ mod registry;
 #[cfg(test)]
 mod test_utils;
 
+#[cfg(feature = "toml")]
+mod loader;
+
 pub use atom::{AtomId, RegistryId};
 pub use dimension::{Compatibility, Dimension};
 pub use error::DimensionError;

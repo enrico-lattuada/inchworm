@@ -15,6 +15,7 @@ use crate::{
 /// carried by every atom.
 ///
 /// TODO: Add examples
+#[cfg_attr(test, derive(Debug))]
 pub struct DimRegistry {
     id: RegistryId,
     name: Box<str>,
