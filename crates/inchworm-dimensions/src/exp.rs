@@ -179,6 +179,15 @@ impl Exp {
         self.checked_mul(Self::int(-1)?)
     }
 
+    /// Checked exponent subtraction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DimensionError::ExponentOverflow`] if overflow occurs in `self - rhs`.
+    pub fn checked_sub(self, rhs: Self) -> Result<Self, DimensionError> {
+        self.checked_add(rhs.checked_neg()?)
+    }
+
     /// Checked exponent reciprocal.
     ///
     /// # Errors
@@ -450,6 +459,25 @@ mod tests {
                 &exp.checked_neg().unwrap_err(),
                 &DimensionError::ExponentOverflow
             ));
+        }
+    }
+
+    mod checked_sub {
+        use super::*;
+        use crate::test_utils::errors_match;
+
+        #[test]
+        fn basic() {
+            let exp = Exp::new(2, 3).unwrap();
+            assert_eq!(exp.checked_sub(exp).unwrap(), Exp::ZERO);
+        }
+
+        #[test]
+        fn propagates_exponent_overflow_error() {
+            let exp = Exp::int((i64::MAX - 1) / 2 + 1).unwrap();
+            let err = exp.checked_sub(exp.checked_neg().unwrap()).unwrap_err();
+            let expected_err = DimensionError::ExponentOverflow;
+            assert!(errors_match(&err, &expected_err));
         }
     }
 
