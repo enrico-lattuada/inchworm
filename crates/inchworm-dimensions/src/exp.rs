@@ -178,6 +178,15 @@ impl Exp {
     pub fn checked_neg(self) -> Result<Self, DimensionError> {
         self.checked_mul(Self::int(-1)?)
     }
+
+    /// Checked exponent reciprocal.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DimensionError::ZeroDenominator`] if the resulting denominator is zero.
+    pub fn checked_recip(self) -> Result<Self, DimensionError> {
+        Self::new(self.den, self.num)
+    }
 }
 
 // ---- test utils ----
@@ -441,6 +450,25 @@ mod tests {
                 &exp.checked_neg().unwrap_err(),
                 &DimensionError::ExponentOverflow
             ));
+        }
+    }
+
+    mod checked_recip {
+        use super::*;
+        use crate::test_utils::errors_match;
+
+        #[test]
+        fn basic() {
+            let exp = Exp { num: -1, den: 2 };
+            assert_eq!(exp.checked_recip().unwrap(), Exp { num: -2, den: 1 });
+        }
+
+        #[test]
+        fn propagates_zero_denominator_error() {
+            let exp = Exp { num: 0, den: 1 };
+            let err = exp.checked_recip().unwrap_err();
+            let expected_err = DimensionError::ZeroDenominator;
+            assert!(errors_match(&err, &expected_err))
         }
     }
 }
