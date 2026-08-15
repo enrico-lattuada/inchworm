@@ -142,10 +142,10 @@ impl fmt::Display for Form {
                 } else {
                     format!("{}/{}", exp.num(), exp.den())
                 };
-                if exp.num() < 0 {
-                    write!(f, "^({body})")?;
-                } else {
+                if exp.is_int() {
                     write!(f, "^{body}")?;
+                } else {
+                    write!(f, "^({body})")?;
                 }
             }
         }
@@ -473,7 +473,7 @@ mod tests {
                 kind: AtomKind::Base { symbol: "L".into() },
             };
             let form = Form::single(&Arc::new(atom_data), exp);
-            assert_eq!(form.to_string(), "length^(-3)");
+            assert_eq!(form.to_string(), "length^-3");
         }
 
         #[test]
@@ -486,7 +486,7 @@ mod tests {
                 kind: AtomKind::Base { symbol: "L".into() },
             };
             let form = Form::single(&Arc::new(atom_data), exp);
-            assert_eq!(form.to_string(), "length^1/3");
+            assert_eq!(form.to_string(), "length^(1/3)");
         }
     }
 }

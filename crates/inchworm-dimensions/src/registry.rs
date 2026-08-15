@@ -514,7 +514,7 @@ mod tests {
         fn parses_fractional_exponents() {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", "L").unwrap();
-            let parsed = registry.parse("length ^ 1/2").unwrap();
+            let parsed = registry.parse("length ^ (1/2)").unwrap();
             assert_eq!(length.pow(Exp::new(1, 2).unwrap()).unwrap(), parsed);
         }
 
@@ -522,16 +522,24 @@ mod tests {
         fn parses_negative_fractional_exponents() {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", "L").unwrap();
-            let parsed = registry.parse("length ^ -1/2").unwrap();
+            let parsed = registry.parse("length ^ (-1/2)").unwrap();
             assert_eq!(length.pow(Exp::new(-1, 2).unwrap()).unwrap(), parsed);
         }
 
         #[test]
-        fn parses_parenthesized_exponents() {
+        fn parses_outer_negative_fractional_exponents() {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", "L").unwrap();
-            let parsed = registry.parse("length ^ (-1/2)").unwrap();
+            let parsed = registry.parse("length ^ -(1/2)").unwrap();
             assert_eq!(length.pow(Exp::new(-1, 2).unwrap()).unwrap(), parsed);
+        }
+
+        #[test]
+        fn parses_double_negative_fractional_exponents() {
+            let mut registry = DimRegistry::new("test_reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let parsed = registry.parse("length ^ -(-1/2)").unwrap();
+            assert_eq!(length.pow(Exp::new(1, 2).unwrap()).unwrap(), parsed);
         }
 
         #[test]
@@ -539,6 +547,14 @@ mod tests {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", "L").unwrap();
             let parsed = registry.parse("length ^ 3").unwrap();
+            assert_eq!(length.pow(Exp::int(3).unwrap()).unwrap(), parsed);
+        }
+
+        #[test]
+        fn parses_parenthesized_int_exponents() {
+            let mut registry = DimRegistry::new("test_reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let parsed = registry.parse("length ^ (3)").unwrap();
             assert_eq!(length.pow(Exp::int(3).unwrap()).unwrap(), parsed);
         }
 
@@ -572,6 +588,15 @@ mod tests {
             let registry = DimRegistry::new("test_reg");
             let parsed = registry.parse("1").unwrap();
             assert_eq!(Dimension::dimensionless(), parsed);
+        }
+
+        #[test]
+        fn parses_bare_integer_exponent_followed_by_division() {
+            let mut registry = DimRegistry::new("test_reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let parsed = registry.parse("length^2 / length^2").unwrap();
+            let length_squared = length.pow(Exp::int(2).unwrap()).unwrap();
+            assert_eq!(length_squared.try_div(&length_squared).unwrap(), parsed);
         }
 
         #[test]
@@ -617,10 +642,36 @@ mod tests {
         fn rejects_invalid_exponent_fraction() {
             let mut registry = DimRegistry::new("test_reg");
             let _length = registry.add_base("length", "L").unwrap();
-            let err = registry.parse("length ^ 1/").unwrap_err();
+            let err = registry.parse("length ^ (1/)").unwrap_err();
+            let expected_err = DimensionError::Parse {
+                src: "".into(),
+                offset: 12,
+                message: "".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_bare_fractional_exponent() {
+            let mut registry = DimRegistry::new("test_reg");
+            registry.add_base("length", "L").unwrap();
+            let err = registry.parse("length ^ 1/2").unwrap_err();
             let expected_err = DimensionError::Parse {
                 src: "".into(),
                 offset: 11,
+                message: "".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_bare_negative_fractional_exponent() {
+            let mut registry = DimRegistry::new("test_reg");
+            registry.add_base("length", "L").unwrap();
+            let err = registry.parse("length ^ -1/2").unwrap_err();
+            let expected_err = DimensionError::Parse {
+                src: "".into(),
+                offset: 12,
                 message: "".into(),
             };
             assert!(errors_match(&err, &expected_err));

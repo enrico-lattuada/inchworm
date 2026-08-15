@@ -46,7 +46,7 @@ aliases = ["angle"]
 
 [[dimensionless]]
 name = "solid_angle"
-definition = "length^(2) / length^(2)"
+definition = "length^2 / length^2"
 
 # ---- named derived dimensions ----
 

@@ -2,9 +2,9 @@
 //!
 //! ```text
 //! expr     := term { ("*" | "·" | "/") term }        # left-assoc; "/" binds like "*"
-//! term     := factor [ "^" ( "(" exponent ")" | exponent ) ]
+//! term     := factor [ "^" ["-"] ( "(" exponent ")" | INT ) ]
 //! factor   := IDENT | "1" | "(" expr ")"
-//! exponent := ["-"] INT [ "/" INT ]                   # 2, -1, 1/2, -3/2
+//! exponent := ["-"] INT [ "/" INT ]                   # 2, -1, 1/2, -3/2, only reachable inside parens
 //! IDENT    := [A-Za-z_][A-Za-z0-9_]*
 //! ```
 
@@ -251,7 +251,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_exponent(&mut self) -> Result<Exp, DimensionError> {
+    fn parse_exponent(&mut self, allow_fraction: bool) -> Result<Exp, DimensionError> {
         // 1. peek: is the next token Minus? if so, advance() and remember negative = true
         let negative = self.consume_if(&Token::Minus)?;
         // 2. advance(): must be a Number — that's the numerator (negate if step 1 saw '-')
@@ -260,7 +260,7 @@ impl<'a> Parser<'a> {
         let num = if negative { -num } else { num };
         // 3. peek: is the next token Slash? if so, advance() it, then advance() again expecting
         //    a Number — that's the denominator. If no Slash, denominator is 1.
-        if self.consume_if(&Token::Slash)? {
+        if allow_fraction && self.consume_if(&Token::Slash)? {
             let den = self.expect_number()?;
             Exp::new(num, den)
         } else {
@@ -275,11 +275,17 @@ impl<'a> Parser<'a> {
         if !self.consume_if(&Token::Caret)? {
             return Ok(base);
         }
+        let outer_negative = self.consume_if(&Token::Minus)?;
         let parenthesized = self.consume_if(&Token::LParen)?;
-        let exp = self.parse_exponent()?;
+        let exp = self.parse_exponent(parenthesized)?;
         if parenthesized {
             self.expect_rparen()?;
         }
+        let exp = if outer_negative {
+            exp.checked_neg()?
+        } else {
+            exp
+        };
         base.pow(exp)
     }
 
