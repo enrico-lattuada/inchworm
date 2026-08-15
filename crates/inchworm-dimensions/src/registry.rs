@@ -116,6 +116,21 @@ impl DimRegistry {
         Ok(dimension)
     }
 
+    /// Add a derived dimension to the registry via literal expression and return the corresponding [`Dimension`].
+    ///
+    /// # Errors
+    /// Returns [`DimensionError::UnknownDimension`] if `expr` contains a dimension unknown to the registry.
+    /// Returns [`DimensionError::Parse`] if `expr` cannot be correctly parsed.
+    /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
+    pub fn add_derived_expr(
+        &mut self,
+        name: &str,
+        expr: &str,
+    ) -> Result<Dimension, DimensionError> {
+        let definition = self.parse(expr)?;
+        self.add_derived(name, &definition)
+    }
+
     /// Add a dimensionless, derived dimension to the registry and return the corresponding [`Dimension`].
     ///
     /// The returned [`Dimension`] is an atom-identified dimension, distinct from the `definition`.
@@ -137,6 +152,22 @@ impl DimRegistry {
         } else {
             self.add_derived(name, definition)
         }
+    }
+
+    /// Add a dimensionless, derived dimension to the registry via literal expression and return the corresponding [`Dimension`].
+    ///
+    /// # Errors
+    /// Returns [`DimensionError::UnknownDimension`] if `expr` contains a dimension unknown to the registry.
+    /// Returns [`DimensionError::Parse`] if `expr` cannot be correctly parsed.
+    /// Returns [`DimensionError::NotDimensionless`] if `definition` does not have a dimensionless signature.
+    /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
+    pub fn add_dimensionless_expr(
+        &mut self,
+        name: &str,
+        expr: &str,
+    ) -> Result<Dimension, DimensionError> {
+        let definition = self.parse(expr)?;
+        self.add_dimensionless(name, &definition)
     }
 
     /// Returns the [`Dimension`] corresponding to `name`.
@@ -356,6 +387,46 @@ mod tests {
         }
     }
 
+    mod add_derived_expr {
+        use super::*;
+        use crate::test_utils::errors_match;
+
+        #[test]
+        fn adds_dimension_from_expression() {
+            let mut registry = DimRegistry::new("test-reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let time = registry.add_base("time", "T").unwrap();
+            let velocity = registry
+                .add_derived_expr("velocity", "length / time")
+                .unwrap();
+            assert_eq!(velocity, length.try_div(&time).unwrap());
+        }
+
+        #[test]
+        fn propagates_parse_error() {
+            let mut registry = DimRegistry::new("test-reg");
+            assert!(registry.get("nonexistent").is_none());
+            let err = registry.add_derived_expr("foo", "nonexistent").unwrap_err();
+            let expected_err = DimensionError::UnknownDimension {
+                name: "nonexistent".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn propagates_duplicate_name_error() {
+            let mut registry = DimRegistry::new("test-reg");
+            registry.add_base("length", "L").unwrap();
+            let err = registry.add_derived_expr("length", "1").unwrap_err();
+            let expected_err = DimensionError::DuplicateName {
+                name: "length".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+    }
+
     mod add_dimensionless {
         use super::*;
         use crate::test_utils::errors_match;
@@ -380,6 +451,50 @@ mod tests {
             let expected_err = DimensionError::NotDimensionless {
                 name: "distance".into(),
                 signature: "length".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+    }
+
+    mod add_dimensionless_expr {
+        use super::*;
+        use crate::test_utils::errors_match;
+
+        #[test]
+        fn add_dimensionless_dimension_from_expr() {
+            let mut registry = DimRegistry::new("test_reg");
+            registry.add_base("length", "L").unwrap();
+            let plane_angle = registry
+                .add_dimensionless_expr("plane_angle", "length / length")
+                .unwrap();
+            assert!(plane_angle.has_dimensionless_signature());
+            assert!(!plane_angle.is_dimensionless());
+        }
+
+        #[test]
+        fn propagates_not_dimensionless_error() {
+            let mut registry = DimRegistry::new("test_reg");
+            registry.add_base("length", "L").unwrap();
+            let err = registry
+                .add_dimensionless_expr("distance", "length")
+                .unwrap_err();
+            let expected_err = DimensionError::NotDimensionless {
+                name: "distance".into(),
+                signature: "length".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn propagates_parse_error() {
+            let mut registry = DimRegistry::new("test-reg");
+            assert!(registry.get("nonexistent").is_none());
+            let err = registry
+                .add_dimensionless_expr("foo", "nonexistent / nonexistent")
+                .unwrap_err();
+            let expected_err = DimensionError::UnknownDimension {
+                name: "nonexistent".into(),
+                registry: registry.name().into(),
             };
             assert!(errors_match(&err, &expected_err));
         }

@@ -164,11 +164,9 @@ fn load_entries(registry: &mut DimRegistry, file: DimFile) -> Result<(), Dimensi
             .expect("name from topological sort must be a def_entries key")
         {
             DefEntry::Base(b) => registry.add_base(&b.name, &b.symbol)?,
-            DefEntry::Derived(d) => {
-                registry.add_derived(&d.name, &registry.parse(&d.definition)?)?
-            }
+            DefEntry::Derived(d) => registry.add_derived_expr(&d.name, &d.definition)?,
             DefEntry::Dimensionless(d) => {
-                registry.add_dimensionless(&d.name, &registry.parse(&d.definition)?)?
+                registry.add_dimensionless_expr(&d.name, &d.definition)?
             }
         };
     }
