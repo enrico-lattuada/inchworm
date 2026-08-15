@@ -29,6 +29,7 @@ mod error;
 mod exp;
 mod form;
 mod graph;
+mod linalg;
 mod parser;
 mod registry;
 #[cfg(test)]
