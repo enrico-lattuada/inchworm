@@ -52,6 +52,7 @@ impl DimRegistry {
     /// Add a base dimension to the registry and return the corresponding [`Dimension`].
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
     pub fn add_base(&mut self, name: &str, symbol: &str) -> Result<Dimension, DimensionError> {
         // Check name is not duplicated
@@ -80,6 +81,7 @@ impl DimRegistry {
     /// The returned [`Dimension`] is an atom-identified dimension, distinct from the `definition`.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
     /// Returns [`DimensionError::CrossRegistry`] if `definition` comes from a different registry.
     pub fn add_derived(
@@ -119,6 +121,7 @@ impl DimRegistry {
     /// Add a derived dimension to the registry via literal expression and return the corresponding [`Dimension`].
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::UnknownDimension`] if `expr` contains a dimension unknown to the registry.
     /// Returns [`DimensionError::Parse`] if `expr` cannot be correctly parsed.
     /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
@@ -136,6 +139,7 @@ impl DimRegistry {
     /// The returned [`Dimension`] is an atom-identified dimension, distinct from the `definition`.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::NotDimensionless`] if `definition` does not have a dimensionless signature.
     /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
     /// Returns [`DimensionError::CrossRegistry`] if `definition` comes from a different registry.
@@ -157,6 +161,7 @@ impl DimRegistry {
     /// Add a dimensionless, derived dimension to the registry via literal expression and return the corresponding [`Dimension`].
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::UnknownDimension`] if `expr` contains a dimension unknown to the registry.
     /// Returns [`DimensionError::Parse`] if `expr` cannot be correctly parsed.
     /// Returns [`DimensionError::NotDimensionless`] if `definition` does not have a dimensionless signature.
@@ -178,6 +183,7 @@ impl DimRegistry {
     /// Removes `name` from the registry, returning the [`Dimension`] at `name` if `name` was previously in the registry.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::RemovalBlocked`] if any *registered* definition still references `name`.
     pub fn remove(&mut self, name: &str) -> Result<Option<Dimension>, DimensionError> {
         if let Some(atom) = self.atoms.get(name)
@@ -217,6 +223,7 @@ impl DimRegistry {
     /// Parses a dimension expression (e.g., "length / time^2") against this registry's names.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::UnknownDimension`] if `expr` contains a dimension unknown to the registry.
     /// Returns [`DimensionError::Parse`] if `expr` cannot be correctly parsed.
     pub fn parse(&self, expr: &str) -> Result<Dimension, DimensionError> {
@@ -232,6 +239,7 @@ impl DimRegistry {
     /// Extends the registry with the source definitions in TOML format.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::DefinitionFile`] if the TOML source cannot be deserialized correctly.
     /// Returns [`DimensionError::UnknownDimension`] if any dimension referenced by the source was never defined.
     /// Returns [`DimensionError::DuplicateName`] if duplicate names are found in the source.
@@ -248,6 +256,7 @@ impl DimRegistry {
     /// Extends the registry with the source definitions from the TOML file at `path`.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::DefinitionFile`] if the TOML file cannot be read or deserialized correctly.
     /// Returns [`DimensionError::UnknownDimension`] if any dimension referenced by the source was never defined.
     /// Returns [`DimensionError::DuplicateName`] if duplicate names are found in the source.
@@ -266,6 +275,7 @@ impl DimRegistry {
     /// Creates a new [`DimRegistry`] from the source definitions in TOML format.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::DefinitionFile`] if the TOML source cannot be deserialized correctly.
     /// Returns [`DimensionError::UnknownDimension`] if any dimension referenced by the source was never defined.
     /// Returns [`DimensionError::DuplicateName`] if duplicate names are found in the source.
@@ -282,6 +292,7 @@ impl DimRegistry {
     /// Creates a new [`DimRegistry`] with the source definitions from the TOML file at `path`.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::DefinitionFile`] if the TOML file cannot be read or deserialized correctly.
     /// Returns [`DimensionError::UnknownDimension`] if any dimension referenced by the source was never defined.
     /// Returns [`DimensionError::DuplicateName`] if duplicate names are found in the source.

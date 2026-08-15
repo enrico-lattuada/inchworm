@@ -14,6 +14,7 @@ use crate::DimensionError;
 /// Dependencies which are not a key in the graph are treated as already resolved.
 ///
 /// # Errors
+///
 /// Returns [`DimensionError::CyclicDefinition`] if cycles in the definitions are detected.
 /// The error will contain the names involved in the cycle, including those blocked by the cycle.
 pub(crate) fn topological_order(

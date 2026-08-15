@@ -57,6 +57,7 @@ impl Form {
     /// Merges two forms, combining exponents of shared atoms, pruning any that cancel to zero.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::ExponentOverflow`] if combining a shared atom's exponents overflows.
     pub(crate) fn mul(&self, rhs: &Self) -> Result<Self, DimensionError> {
         let mut entries = SmallVec::new();
@@ -91,6 +92,7 @@ impl Form {
     /// Raises `self` to the power of `e`, pruning any that cancels to zero.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::ExponentOverflow`] if multiplying an atom's exponent by `e` overflows.
     pub(crate) fn pow(&self, e: Exp) -> Result<Self, DimensionError> {
         let mut entries = SmallVec::new();
@@ -106,6 +108,7 @@ impl Form {
     /// Computes the reciprocal of `self` by raising it to the power of `-1`.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::ExponentOverflow`] if computing the reciprocal of an atom's exponents overflows.
     pub(crate) fn recip(&self) -> Result<Self, DimensionError> {
         let mut entries = SmallVec::new();

@@ -118,6 +118,7 @@ impl Dimension {
     /// Multiplies two dimensions.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::ExponentOverflow`] if combining a shared atom's exponents overflows.
     /// Returns [`DimensionError::CrossRegistry`] if combining atoms from different registries.
     pub fn try_mul(&self, rhs: &Self) -> Result<Self, DimensionError> {
@@ -142,6 +143,7 @@ impl Dimension {
     /// Divides `self` by `rhs`.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::ExponentOverflow`] if combining a shared atom's exponents overflows.
     /// Returns [`DimensionError::CrossRegistry`] if combining atoms from different registries.
     pub fn try_div(&self, rhs: &Self) -> Result<Self, DimensionError> {
@@ -151,6 +153,7 @@ impl Dimension {
     /// Raises `self` to the power of `e`.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::ExponentOverflow`] if multiplying an atom's exponent by `e` overflows.
     pub fn pow(&self, e: Exp) -> Result<Self, DimensionError> {
         let factors = self.factors.pow(e)?;
@@ -166,6 +169,7 @@ impl Dimension {
     /// Computes the reciprocal of `self` by raising it to the power of `-1`.
     ///
     /// # Errors
+    ///
     /// Returns [`DimensionError::ExponentOverflow`] if computing the reciprocal of an atom's exponents overflows.
     pub fn recip(&self) -> Result<Self, DimensionError> {
         let factors = self.factors.recip()?;

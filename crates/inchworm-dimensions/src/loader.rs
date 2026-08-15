@@ -64,6 +64,7 @@ enum DefEntry {
 /// Builds a new [`DimRegistry`] from the source.
 ///
 /// # Errors
+///
 /// Returns [`DimensionError::DefinitionFile`] if the TOML source cannot be deserialized correctly or if it does not contain the `[registry]` section.
 /// Returns [`DimensionError::UnknownDimension`] if any dimension referenced by the source was never defined.
 /// Returns [`DimensionError::DuplicateName`] if duplicate names are found in the source.
@@ -93,6 +94,7 @@ pub(crate) fn load_registry(src: &str) -> Result<DimRegistry, DimensionError> {
 /// Extends the registry with the source definitions.
 ///
 /// # Errors
+///
 /// Returns [`DimensionError::DefinitionFile`] if the TOML source cannot be deserialized correctly.
 /// Returns [`DimensionError::UnknownDimension`] if any dimension referenced by the source was never defined.
 /// Returns [`DimensionError::DuplicateName`] if duplicate names are found in the source.
