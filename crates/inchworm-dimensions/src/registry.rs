@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[cfg(feature = "toml")]
-use crate::loader::extend_registry;
+use crate::loader::{extend_registry, load_registry};
 
 /// A mutable namespace and factory for named dimensions.
 ///
@@ -261,6 +261,40 @@ impl DimRegistry {
         let src = std::fs::read_to_string(path)
             .map_err(|e| DimensionError::DefinitionFile(e.to_string()))?;
         self.load_toml_str(&src)
+    }
+
+    /// Creates a new [`DimRegistry`] from the source definitions in TOML format.
+    ///
+    /// # Errors
+    /// Returns [`DimensionError::DefinitionFile`] if the TOML source cannot be deserialized correctly.
+    /// Returns [`DimensionError::UnknownDimension`] if any dimension referenced by the source was never defined.
+    /// Returns [`DimensionError::DuplicateName`] if duplicate names are found in the source.
+    /// Returns [`DimensionError::CyclicDefinition`] if cyclic definitions are found in the source.
+    /// Returns [`DimensionError::NotDimensionless`] if a declared dimensionless dimension is not in fact dimensionless.
+    /// Returns [`DimensionError::Parse`] if the information in the source cannot be parsed.
+    /// Returns [`DimensionError::ExponentOverflow`] if any exponents in the source definitions incur overflow.
+    /// Returns [`DimensionError::ZeroDenominator`] if any exponents' denominators in the source definitions are zero.
+    #[cfg(feature = "toml")]
+    pub fn from_toml_str(src: &str) -> Result<Self, DimensionError> {
+        load_registry(src)
+    }
+
+    /// Creates a new [`DimRegistry`] with the source definitions from the TOML file at `path`.
+    ///
+    /// # Errors
+    /// Returns [`DimensionError::DefinitionFile`] if the TOML file cannot be read or deserialized correctly.
+    /// Returns [`DimensionError::UnknownDimension`] if any dimension referenced by the source was never defined.
+    /// Returns [`DimensionError::DuplicateName`] if duplicate names are found in the source.
+    /// Returns [`DimensionError::CyclicDefinition`] if cyclic definitions are found in the source.
+    /// Returns [`DimensionError::NotDimensionless`] if a declared dimensionless dimension is not in fact dimensionless.
+    /// Returns [`DimensionError::Parse`] if the information in the source cannot be parsed.
+    /// Returns [`DimensionError::ExponentOverflow`] if any exponents in the source definitions incur overflow.
+    /// Returns [`DimensionError::ZeroDenominator`] if any exponents' denominators in the source definitions are zero.
+    #[cfg(feature = "toml")]
+    pub fn from_toml_file(path: &std::path::Path) -> Result<Self, DimensionError> {
+        let src = std::fs::read_to_string(path)
+            .map_err(|e| DimensionError::DefinitionFile(e.to_string()))?;
+        load_registry(&src)
     }
 }
 
@@ -907,6 +941,79 @@ mod tests {
             let mut registry = DimRegistry::new("test-reg");
             assert!(matches!(
                 registry.load_toml_file(bad_path.as_path()),
+                Err(DimensionError::DefinitionFile(_))
+            ))
+        }
+    }
+
+    mod from_toml_str {
+        use super::*;
+
+        #[test]
+        fn builds_registry_with_valid_source() {
+            let src = r#"schema = 1
+
+            [registry]
+            name = "test-registry"
+            version = "0.1.0"
+
+            [[base]]
+            name = "base"
+            symbol = "B"
+            "#;
+            let registry = DimRegistry::from_toml_str(src).unwrap();
+            assert_eq!(registry.name(), "test-registry");
+            assert!(
+                registry.get("base").is_some(),
+                "source defined dimension should be in the registry"
+            );
+        }
+
+        #[test]
+        fn propagates_error_from_source() {
+            let bad_toml = r#"schema = 1
+
+            [registry
+            name = "test-reg"
+            version = "0.0.0"
+            "#;
+            assert!(matches!(
+                DimRegistry::from_toml_str(bad_toml),
+                Err(DimensionError::DefinitionFile(_))
+            ));
+        }
+    }
+
+    mod from_toml_file {
+        use super::*;
+        use std::io::Write;
+
+        #[test]
+        fn builds_registry_from_existing_file() {
+            let mut file = tempfile::NamedTempFile::new().unwrap();
+            file.write_all(
+                br#"schema = 1
+
+                [registry]
+                name = "test-registry"
+                version = "0.1.0"
+
+                [[base]]
+                name = "base"
+                symbol = "B"
+                "#,
+            )
+            .unwrap();
+            let registry = DimRegistry::from_toml_file(file.path()).unwrap();
+            assert_eq!(registry.name(), "test-registry");
+            assert!(registry.get("base").is_some());
+        }
+
+        #[test]
+        fn propagates_io_error_for_missing_file() {
+            let bad_path = std::env::temp_dir().join("nonexistent.toml");
+            assert!(matches!(
+                DimRegistry::from_toml_file(bad_path.as_path()),
                 Err(DimensionError::DefinitionFile(_))
             ))
         }

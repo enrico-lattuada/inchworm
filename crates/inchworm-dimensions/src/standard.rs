@@ -2,7 +2,7 @@
 //!
 //! Built by parsing the embedded `data/standard.toml`. Infallibility is guaranteed by a unit test.
 
-use crate::{DimRegistry, loader::load_registry};
+use crate::DimRegistry;
 
 pub(crate) const STANDARD_TOML: &str = include_str!("../data/standard.toml");
 
@@ -10,8 +10,8 @@ impl DimRegistry {
     /// A fresh, independently mutable copy of the standard-dimensions
     /// registry (ISQ base dimensions, common named derived dimensions,
     /// plane/solid angle as irreducible dimensionless kinds, ...).
-    pub fn standard() -> DimRegistry {
-        load_registry(STANDARD_TOML).expect("standard registry must be loaded correctly")
+    pub fn standard() -> Self {
+        Self::from_toml_str(STANDARD_TOML).expect("standard registry must be loaded correctly")
     }
 }
 
