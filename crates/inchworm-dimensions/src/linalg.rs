@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{DimensionError, Exp};
 
 /// Dense row-major matrix of rational exponents.
@@ -69,6 +71,40 @@ impl RatMatrix {
             }
         }
         Ok(pivot_cols)
+    }
+
+    /// Nullspace basis via free-variable back-substitution on the RREF.
+    pub(crate) fn nullspace(&self) -> Result<Vec<Vec<Exp>>, DimensionError> {
+        // Find the pivot column for each row
+        let mut pivot_cols_by_row: Vec<Option<usize>> = Vec::new();
+        for r in 0..self.rows {
+            pivot_cols_by_row.push(
+                self.data[r * self.cols..(r + 1) * self.cols]
+                    .iter()
+                    .position(|e| e.is_one()),
+            );
+        }
+        let mut free_columns: HashSet<usize> = (0..self.cols).collect();
+        for pivot in pivot_cols_by_row.iter().flatten() {
+            free_columns.remove(pivot);
+        }
+        let mut free_columns: Vec<usize> = free_columns.into_iter().collect();
+        free_columns.sort();
+        // For every free column, set the free variable to 1 and every other free variables to 0
+        let mut nullspace = Vec::new();
+        for fc in free_columns {
+            let mut basis_vector: Vec<Exp> = std::iter::repeat_n(Exp::ZERO, self.cols).collect();
+            basis_vector[fc] = Exp::ONE;
+            for (row, pc) in pivot_cols_by_row
+                .iter()
+                .enumerate()
+                .filter_map(|(i, pc)| pc.map(|pc| (i, pc)))
+            {
+                basis_vector[pc] = self[(row, fc)].checked_neg()?;
+            }
+            nullspace.push(basis_vector);
+        }
+        Ok(nullspace)
     }
 }
 
@@ -218,9 +254,97 @@ mod tests {
                 .map(|&e| Exp::int(e).unwrap())
                 .collect();
             let mut matrix = RatMatrix { rows, cols, data };
-            // Pivot columns are [0,1]
-            // RREF is [[1,0],[0,1]]
             let err = matrix.rref().unwrap_err();
+            let expected_err = DimensionError::ExponentOverflow;
+            assert!(errors_match(&err, &expected_err));
+        }
+    }
+
+    mod nullspace {
+        use super::*;
+        use crate::test_utils::errors_match;
+
+        #[test]
+        fn computes_reynolds_number_basis() {
+            // Build RatMatrix for
+            // density = [M] * [L]^3
+            // velocity = [L] * [T]^(-1)
+            // length = [L]
+            // dynamic viscosity = [L]^(-1) * [T]^(-1) * [M]
+            //
+            // RREF is [[1,0,0,1],[0,1,0,1],[0,0,1,1]]
+            let (rows, cols) = (3, 4);
+            let data: Vec<Exp> = [1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1]
+                .iter()
+                .map(|&e| Exp::int(e).unwrap())
+                .collect();
+            let matrix = RatMatrix { rows, cols, data };
+            // Nullspace is: [[-1,-1,-1,1]]
+            let nullspace = matrix.nullspace().unwrap();
+            let expected_nullspace: Vec<Vec<Exp>> = vec![
+                [-1, -1, -1, 1]
+                    .iter()
+                    .map(|&e| Exp::int(e).unwrap())
+                    .collect(),
+            ];
+            assert_eq!(nullspace, expected_nullspace);
+        }
+
+        #[test]
+        fn returns_empty_nullspace_for_full_rank_matrix() {
+            let (rows, cols) = (2, 2);
+            let data = [1, 0, 0, 1].iter().map(|&e| Exp::int(e).unwrap()).collect();
+            let matrix = RatMatrix { rows, cols, data };
+            let nullspace = matrix.nullspace().unwrap();
+            assert!(nullspace.is_empty());
+        }
+
+        #[test]
+        fn returns_standard_basis_for_zero_matrix() {
+            let (rows, cols) = (2, 3);
+            let matrix = RatMatrix::zeros(rows, cols);
+            let nullspace = matrix.nullspace().unwrap();
+            let expected_nullspace = vec![
+                vec![Exp::ONE, Exp::ZERO, Exp::ZERO],
+                vec![Exp::ZERO, Exp::ONE, Exp::ZERO],
+                vec![Exp::ZERO, Exp::ZERO, Exp::ONE],
+            ];
+            assert_eq!(nullspace, expected_nullspace);
+        }
+
+        #[test]
+        fn builds_one_basis_vector_per_free_column() {
+            let (rows, cols) = (1, 4);
+            let data: Vec<Exp> = [1, 2, 3, 4].iter().map(|&e| Exp::int(e).unwrap()).collect();
+            let matrix = RatMatrix { rows, cols, data };
+            let nullspace = matrix.nullspace().unwrap();
+            let expected_nullspace = vec![
+                vec![Exp::int(-2).unwrap(), Exp::ONE, Exp::ZERO, Exp::ZERO],
+                vec![Exp::int(-3).unwrap(), Exp::ZERO, Exp::ONE, Exp::ZERO],
+                vec![Exp::int(-4).unwrap(), Exp::ZERO, Exp::ZERO, Exp::ONE],
+            ];
+            assert_eq!(nullspace, expected_nullspace);
+        }
+
+        #[test]
+        fn handles_free_column_between_two_pivots() {
+            let (rows, cols) = (2, 3);
+            let data: Vec<Exp> = [1, 0, 0, 0, 0, 1]
+                .iter()
+                .map(|&e| Exp::int(e).unwrap())
+                .collect();
+            let matrix = RatMatrix { rows, cols, data };
+            let nullspace = matrix.nullspace().unwrap();
+            let expected_nullspace = vec![vec![Exp::ZERO, Exp::ONE, Exp::ZERO]];
+            assert_eq!(nullspace, expected_nullspace);
+        }
+
+        #[test]
+        fn propagates_exponent_overflow_error() {
+            let (rows, cols) = (1, 2);
+            let data = vec![Exp::ONE, Exp::raw(i64::MIN, 1)];
+            let matrix = RatMatrix { rows, cols, data };
+            let err = matrix.nullspace().unwrap_err();
             let expected_err = DimensionError::ExponentOverflow;
             assert!(errors_match(&err, &expected_err));
         }
