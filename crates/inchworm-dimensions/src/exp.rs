@@ -207,7 +207,7 @@ impl Exp {
 }
 
 // Computes the greatest common divisor of `a` and `b`.
-fn gcd(mut a: u64, mut b: u64) -> u64 {
+pub(crate) fn gcd(mut a: u64, mut b: u64) -> u64 {
     while b != 0 {
         (a, b) = (b, a % b);
     }

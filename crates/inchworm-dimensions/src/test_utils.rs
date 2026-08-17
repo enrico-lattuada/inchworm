@@ -111,6 +111,7 @@ pub(crate) fn errors_match(actual: &DimensionError, expected: &DimensionError) -
             (DimensionError::DefinitionFile(src), DimensionError::DefinitionFile(expected_src)) => {
                 src == expected_src
             }
+            (DimensionError::EmptyPiInput, DimensionError::EmptyPiInput) => true,
             _ => false,
         }
     } else {

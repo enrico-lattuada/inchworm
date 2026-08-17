@@ -41,4 +41,7 @@ pub enum DimensionError {
 
     #[error("invalid definition file: {0}")]
     DefinitionFile(String),
+
+    #[error("Buckingham pi requires at least one variable")]
+    EmptyPiInput,
 }

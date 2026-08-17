@@ -46,5 +46,5 @@ pub use dimension::{Compatibility, Dimension};
 pub use error::DimensionError;
 pub use exp::Exp;
 pub use form::{Form, Signature};
-pub use pi::{PiAnalysis, PiGroup, PiOptions, PiVariable};
+pub use pi::{PiAnalysis, PiGroup, PiOptions, PiVariable, buckingham_pi};
 pub use registry::DimRegistry;
