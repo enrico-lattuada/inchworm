@@ -101,3 +101,17 @@ definition = "plane_angle / time"
 [[derived]]
 name = "angular_acceleration"
 definition = "plane_angle / time^2"
+
+[[derived]]
+name = "torque"
+definition = "energy / plane_angle"
+
+[[derived]]
+name = "luminous_flux"
+definition = "luminous_intensity * solid_angle"
+
+# ---- named dimensionless kinds ----
+
+[[dimensionless]]
+name = "strain"
+definition = "length / length"
