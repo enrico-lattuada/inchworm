@@ -644,7 +644,7 @@ mod tests {
             let length = registry.add_base("length", "L").unwrap();
             let time = registry.add_base("time", "T").unwrap();
             let parsed = registry.parse("length * time").unwrap();
-            assert_eq!(length.try_mul(&time).unwrap(), parsed);
+            assert_eq!(length * time, parsed);
         }
 
         #[test]
@@ -653,7 +653,7 @@ mod tests {
             let length = registry.add_base("length", "L").unwrap();
             let time = registry.add_base("time", "T").unwrap();
             let parsed = registry.parse("length · time").unwrap();
-            assert_eq!(length.try_mul(&time).unwrap(), parsed);
+            assert_eq!(length * time, parsed);
         }
 
         #[test]
@@ -662,7 +662,7 @@ mod tests {
             let length = registry.add_base("length", "L").unwrap();
             let time = registry.add_base("time", "T").unwrap();
             let parsed = registry.parse("length / time").unwrap();
-            assert_eq!(length.try_div(&time).unwrap(), parsed);
+            assert_eq!(length / time, parsed);
         }
 
         #[test]
@@ -751,7 +751,7 @@ mod tests {
             let length = registry.add_base("length", "L").unwrap();
             let parsed = registry.parse("length^2 / length^2").unwrap();
             let length_squared = length.pow(Exp::int(2).unwrap()).unwrap();
-            assert_eq!(length_squared.try_div(&length_squared).unwrap(), parsed);
+            assert_eq!(&length_squared / &length_squared, parsed);
         }
 
         #[test]
@@ -1036,11 +1036,9 @@ mod tests {
             let time = registry.add_base("time", "T").unwrap();
             let mass = registry.add_base("mass", "M").unwrap();
             let definitions = [
-                length
-                    .try_div(&time.pow(Exp::int(2).unwrap()).unwrap())
-                    .unwrap(),
+                &length / &time.pow(Exp::int(2).unwrap()).unwrap(),
                 length.pow(Exp::new(3, 2).unwrap()).unwrap(),
-                length.try_mul(&time).unwrap().try_mul(&mass).unwrap(),
+                &length * &time * &mass,
             ];
             for (i, definition) in definitions.iter().enumerate() {
                 let name = format!("{i}");

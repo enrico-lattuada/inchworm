@@ -208,10 +208,86 @@ impl PartialEq for Dimension {
 
 impl Eq for Dimension {}
 
+/// Multiplies two dimensions, delegating to [`Dimension::try_mul`].
+///
+/// # Panics
+///
+/// Panics on cross-registry mixing or exponent overflow, the same two cases
+/// [`Dimension::try_mul`] returns as errors.
+impl std::ops::Mul for &Dimension {
+    type Output = Dimension;
+    fn mul(self, rhs: &Dimension) -> Self::Output {
+        self.try_mul(rhs).expect("dimension multiplication failed")
+    }
+}
+
+/// Delegates to the `&Dimension * &Dimension` impl; panics under the same conditions.
+impl std::ops::Mul for Dimension {
+    type Output = Dimension;
+    fn mul(self, rhs: Dimension) -> Self::Output {
+        &self * &rhs
+    }
+}
+
+/// Delegates to the `&Dimension * &Dimension` impl; panics under the same conditions.
+impl std::ops::Mul<&Dimension> for Dimension {
+    type Output = Dimension;
+    fn mul(self, rhs: &Dimension) -> Self::Output {
+        &self * rhs
+    }
+}
+
+/// Delegates to the `&Dimension * &Dimension` impl; panics under the same conditions.
+impl std::ops::Mul<Dimension> for &Dimension {
+    type Output = Dimension;
+    fn mul(self, rhs: Dimension) -> Self::Output {
+        self * &rhs
+    }
+}
+
+/// Divides two dimensions, delegating to [`Dimension::try_div`].
+///
+/// # Panics
+///
+/// Panics on cross-registry mixing or exponent overflow, the same two cases
+/// [`Dimension::try_div`] returns as errors.
+impl std::ops::Div for &Dimension {
+    type Output = Dimension;
+    fn div(self, rhs: &Dimension) -> Self::Output {
+        self.try_div(rhs).expect("dimension division failed")
+    }
+}
+
+/// Delegates to the `&Dimension / &Dimension` impl; panics under the same conditions.
+impl std::ops::Div for Dimension {
+    type Output = Dimension;
+    fn div(self, rhs: Dimension) -> Self::Output {
+        &self / &rhs
+    }
+}
+
+/// Delegates to the `&Dimension / &Dimension` impl; panics under the same conditions.
+impl std::ops::Div<&Dimension> for Dimension {
+    type Output = Dimension;
+    fn div(self, rhs: &Dimension) -> Self::Output {
+        &self / rhs
+    }
+}
+
+/// Delegates to the `&Dimension / &Dimension` impl; panics under the same conditions.
+impl std::ops::Div<Dimension> for &Dimension {
+    type Output = Dimension;
+    fn div(self, rhs: Dimension) -> Self::Output {
+        self / &rhs
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{assert_exactly_eq, errors_match, make_form_entry};
+    use crate::test_utils::{
+        assert_exactly_eq, errors_match, make_form_entry, make_form_entry_in_registry,
+    };
 
     mod dimensionless {
         use super::*;
@@ -484,6 +560,74 @@ mod tests {
         }
     }
 
+    mod mul_operator {
+        use super::*;
+
+        #[test]
+        fn all_reference_combinations_agree_with_try_mul() {
+            let factors1 = Form::raw(vec![
+                make_form_entry(0, (-1, 2)),
+                make_form_entry(2, (4, 3)),
+            ]);
+            let signature1 = Signature::raw(vec![make_form_entry(1, (-3, 2))]);
+            let canonical1 = Form::raw(vec![
+                make_form_entry(3, (10, 7)),
+                make_form_entry(5, (-6, 7)),
+            ]);
+            let factors2 = Form::raw(vec![make_form_entry(0, (1, 2)), make_form_entry(1, (2, 3))]);
+            let signature2 = Signature::raw(vec![make_form_entry(1, (1, 2))]);
+            let canonical2 = Form::raw(vec![
+                make_form_entry(3, (-10, 7)),
+                make_form_entry(5, (6, 7)),
+            ]);
+            let dimension1 = Dimension {
+                factors: factors1,
+                signature: signature1,
+                canonical: canonical1,
+            };
+            let dimension2 = Dimension {
+                factors: factors2,
+                signature: signature2,
+                canonical: canonical2,
+            };
+            let dim1_times_dim2 = dimension1.try_mul(&dimension2).unwrap();
+            assert_exactly_eq(&(&dimension1 * &dimension2), &dim1_times_dim2);
+            assert_exactly_eq(&(&dimension1 * dimension2.clone()), &dim1_times_dim2);
+            assert_exactly_eq(&(dimension1.clone() * &dimension2), &dim1_times_dim2);
+            assert_exactly_eq(&(dimension1 * dimension2), &dim1_times_dim2);
+        }
+
+        #[test]
+        #[should_panic]
+        fn panics_on_cross_registry_mixing() {
+            let a = Dimension {
+                factors: Form::raw(vec![make_form_entry_in_registry(0, (1, 1), 0)]),
+                ..Dimension::dimensionless()
+            };
+            let b = Dimension {
+                factors: Form::raw(vec![make_form_entry_in_registry(1, (1, 1), 1)]),
+                ..Dimension::dimensionless()
+            };
+            let _ = &a * &b;
+        }
+
+        #[test]
+        #[should_panic]
+        fn panics_on_exponent_overflow() {
+            let lhs_factors = Form::raw(vec![make_form_entry(0, (i64::MAX, 1))]);
+            let lhs = Dimension {
+                factors: lhs_factors,
+                ..Dimension::dimensionless()
+            };
+            let rhs_factors = Form::raw(vec![make_form_entry(0, (2, 1))]);
+            let rhs = Dimension {
+                factors: rhs_factors,
+                ..Dimension::dimensionless()
+            };
+            let _ = lhs * rhs;
+        }
+    }
+
     mod try_div {
         use super::*;
 
@@ -504,6 +648,63 @@ mod tests {
                 canonical,
             };
             assert!(dimension.try_div(&dimension).unwrap().is_dimensionless());
+        }
+    }
+
+    mod div_operator {
+        use super::*;
+
+        #[test]
+        fn all_reference_combinations_agree_with_try_div() {
+            let factors = Form::raw(vec![
+                make_form_entry(0, (-1, 2)),
+                make_form_entry(2, (4, 3)),
+            ]);
+            let signature = Signature::raw(vec![make_form_entry(1, (-3, 2))]);
+            let canonical = Form::raw(vec![
+                make_form_entry(3, (10, 7)),
+                make_form_entry(5, (6, 7)),
+            ]);
+            let dimension = Dimension {
+                factors,
+                signature,
+                canonical,
+            };
+            let dim_div_dim = dimension.try_div(&dimension).unwrap();
+            assert_exactly_eq(&(&dimension / &dimension), &dim_div_dim);
+            assert_exactly_eq(&(&dimension / dimension.clone()), &dim_div_dim);
+            assert_exactly_eq(&(dimension.clone() / &dimension), &dim_div_dim);
+            assert_exactly_eq(&(dimension.clone() / dimension), &dim_div_dim);
+        }
+
+        #[test]
+        #[should_panic]
+        fn panics_on_cross_registry_mixing() {
+            let a = Dimension {
+                factors: Form::raw(vec![make_form_entry_in_registry(0, (1, 1), 0)]),
+                ..Dimension::dimensionless()
+            };
+            let b = Dimension {
+                factors: Form::raw(vec![make_form_entry_in_registry(1, (1, 1), 1)]),
+                ..Dimension::dimensionless()
+            };
+            let _ = &a / &b;
+        }
+
+        #[test]
+        #[should_panic]
+        fn panics_on_exponent_overflow() {
+            let lhs_factors = Form::raw(vec![make_form_entry(0, (i64::MAX, 1))]);
+            let lhs = Dimension {
+                factors: lhs_factors,
+                ..Dimension::dimensionless()
+            };
+            let rhs_factors = Form::raw(vec![make_form_entry(0, (-2, 1))]);
+            let rhs = Dimension {
+                factors: rhs_factors,
+                ..Dimension::dimensionless()
+            };
+            let _ = lhs / rhs;
         }
     }
 
