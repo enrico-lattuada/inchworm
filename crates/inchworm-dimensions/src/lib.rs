@@ -31,6 +31,7 @@ mod form;
 mod graph;
 mod linalg;
 mod parser;
+mod pi;
 mod registry;
 #[cfg(test)]
 mod test_utils;
@@ -45,4 +46,5 @@ pub use dimension::{Compatibility, Dimension};
 pub use error::DimensionError;
 pub use exp::Exp;
 pub use form::{Form, Signature};
+pub use pi::{PiAnalysis, PiGroup, PiOptions, PiVariable};
 pub use registry::DimRegistry;
