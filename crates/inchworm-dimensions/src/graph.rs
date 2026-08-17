@@ -76,10 +76,9 @@ pub(crate) fn topological_order(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::errors_match;
 
     mod topological_order {
-        use crate::test_utils::errors_match;
-
         use super::*;
 
         #[test]

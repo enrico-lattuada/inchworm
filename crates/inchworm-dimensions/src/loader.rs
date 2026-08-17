@@ -178,10 +178,9 @@ fn load_entries(registry: &mut DimRegistry, file: DimFile) -> Result<(), Dimensi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::errors_match;
 
     mod load_registry {
-        use crate::test_utils::errors_match;
-
         use super::*;
 
         #[test]
@@ -380,8 +379,6 @@ mod tests {
     }
 
     mod extend_registry {
-        use crate::test_utils::errors_match;
-
         use super::*;
 
         #[test]

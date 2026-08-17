@@ -313,10 +313,9 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::errors_match;
 
     mod extract_idents {
-        use crate::test_utils::errors_match;
-
         use super::*;
 
         #[test]

@@ -125,10 +125,10 @@ pub fn buckingham_pi(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::errors_match;
 
     mod normalize {
         use super::*;
-        use crate::test_utils::errors_match;
 
         #[test]
         fn leaves_already_normalized_vector_unchanged() {
@@ -191,7 +191,7 @@ mod tests {
 
     mod buckingham_pi {
         use super::*;
-        use crate::{DimRegistry, test_utils::errors_match};
+        use crate::DimRegistry;
 
         #[test]
         fn returns_empty_pi_input_error_for_no_variables() {

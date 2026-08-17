@@ -185,6 +185,7 @@ impl std::ops::IndexMut<(usize, usize)> for RatMatrix {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::errors_match;
 
     mod zeros {
         use super::*;
@@ -204,7 +205,7 @@ mod tests {
 
     mod from_dims {
         use super::*;
-        use crate::{AtomId, DimRegistry, Dimension, test_utils::errors_match};
+        use crate::{AtomId, DimRegistry, Dimension};
 
         /// Extract atom id from base dimension.
         fn get_base_dim_atom_id(base_dim: &Dimension) -> AtomId {
@@ -474,7 +475,6 @@ mod tests {
 
     mod rref {
         use super::*;
-        use crate::test_utils::errors_match;
 
         #[test]
         fn reduces_dimensional_matrix_to_rref() {
@@ -567,7 +567,6 @@ mod tests {
 
     mod nullspace {
         use super::*;
-        use crate::test_utils::errors_match;
 
         #[test]
         fn computes_reynolds_number_basis() {

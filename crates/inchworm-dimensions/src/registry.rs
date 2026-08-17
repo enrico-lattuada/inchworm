@@ -312,10 +312,11 @@ impl DimRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::{assert_exactly_eq, errors_match};
 
     mod add_base {
         use super::*;
-        use crate::{Exp, dimension::Compatibility, test_utils::errors_match};
+        use crate::{Exp, dimension::Compatibility};
 
         #[test]
         fn dimension_has_matching_factors_signature_canonical() {
@@ -354,9 +355,8 @@ mod tests {
     }
 
     mod add_derived {
-        use crate::{Exp, test_utils::errors_match};
-
         use super::*;
+        use crate::Exp;
 
         #[test]
         fn dimensionless_kind_keeps_itself_in_canonical() {
@@ -434,7 +434,6 @@ mod tests {
 
     mod add_derived_expr {
         use super::*;
-        use crate::test_utils::errors_match;
 
         #[test]
         fn adds_dimension_from_expression() {
@@ -474,7 +473,6 @@ mod tests {
 
     mod add_dimensionless {
         use super::*;
-        use crate::test_utils::errors_match;
 
         #[test]
         fn allows_dimensionless_definition() {
@@ -503,7 +501,6 @@ mod tests {
 
     mod add_dimensionless_expr {
         use super::*;
-        use crate::test_utils::errors_match;
 
         #[test]
         fn add_dimensionless_dimension_from_expr() {
@@ -563,8 +560,6 @@ mod tests {
     }
 
     mod remove {
-        use crate::test_utils::{assert_exactly_eq, errors_match};
-
         use super::*;
 
         #[test]
@@ -633,7 +628,7 @@ mod tests {
 
     mod parse {
         use super::*;
-        use crate::{Exp, test_utils::errors_match};
+        use crate::Exp;
 
         #[test]
         fn parses_simple_identifier() {
@@ -1032,7 +1027,7 @@ mod tests {
 
     mod roundtrips {
         use super::*;
-        use crate::{Exp, test_utils::assert_exactly_eq};
+        use crate::Exp;
 
         #[test]
         fn roundtrips_through_display_and_parse() {
