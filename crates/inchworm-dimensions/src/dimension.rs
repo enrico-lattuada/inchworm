@@ -4,6 +4,7 @@ use crate::{
 };
 
 /// How two [`Dimension`]s relate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Compatibility {
     /// Equal canonical forms: the same physical kind by definition.
     /// e.g. `length/time` vs `velocity`; `force·length` vs `energy`.
