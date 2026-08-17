@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
-use crate::{DimensionError, Exp};
+use crate::{AtomId, DimensionError, Exp, PiVariable, RegistryId};
 
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 /// Dense row-major matrix of rational exponents.
 pub(crate) struct RatMatrix {
     rows: usize,
@@ -27,6 +29,65 @@ impl RatMatrix {
     pub(crate) fn zeros(rows: usize, cols: usize) -> Self {
         let data = std::iter::repeat_n(Exp::ZERO, rows * cols).collect();
         Self::new(rows, cols, data)
+    }
+
+    /// Creates a new matrix from the given [`PiVariable`]s
+    ///
+    /// # Arguments
+    ///
+    /// * `dims` - A slice of variables of Buckingham pi analysis.
+    /// * `use_canonical` - If true, the matrix is built using each variable's dimension canonical form, else the signature.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DimensionError::CrossRegistry`] if the given `dims` contain dimensions defined in different registries.
+    pub(crate) fn from_dims(
+        dims: &[PiVariable],
+        use_canonical: bool,
+    ) -> Result<(Self, Vec<AtomId>), DimensionError> {
+        let mut atom_ids = Vec::new();
+        let mut atoms_exps: Vec<Vec<(AtomId, Exp)>> = Vec::new();
+        let mut registry_id: Option<RegistryId> = None;
+        for variable in dims {
+            if let Some(this_registry_id) = variable.dimension.registry_id() {
+                match registry_id {
+                    None => registry_id = Some(this_registry_id),
+                    Some(seen_registry_id) => {
+                        if seen_registry_id != this_registry_id {
+                            return Err(DimensionError::CrossRegistry {
+                                left: seen_registry_id,
+                                right: this_registry_id,
+                            });
+                        }
+                    }
+                }
+            }
+            let form = if use_canonical {
+                variable.dimension.canonical_form()
+            } else {
+                &variable.dimension.signature().0
+            };
+            atom_ids.extend(form.entries().iter().map(|(data, _)| data.id));
+            atoms_exps.push(
+                form.entries()
+                    .iter()
+                    .map(|(atom_data, exp)| (atom_data.id, *exp))
+                    .collect(),
+            );
+        }
+        atom_ids.sort();
+        atom_ids.dedup();
+        let mut matrix = RatMatrix::zeros(atom_ids.len(), dims.len());
+        for (col, atom_exps) in atoms_exps.into_iter().enumerate() {
+            for (atom_id, exp) in atom_exps {
+                let idx = atom_ids
+                    .iter()
+                    .position(|&i| i == atom_id)
+                    .expect("atom id should be in the collected atom_ids");
+                matrix[(idx, col)] = exp;
+            }
+        }
+        Ok((matrix, atom_ids))
     }
 
     /// Swap elements of `row1` and `row2` in place.
@@ -138,6 +199,250 @@ mod tests {
         #[test]
         fn builds_empty_matrix() {
             RatMatrix::zeros(0, 0);
+        }
+    }
+
+    mod from_dims {
+        use super::*;
+        use crate::{AtomId, DimRegistry, Dimension, test_utils::errors_match};
+
+        /// Extract atom id from base dimension.
+        fn get_base_dim_atom_id(base_dim: &Dimension) -> AtomId {
+            base_dim.canonical_form().entries()[0].0.id
+        }
+
+        #[test]
+        fn builds_single_row_single_column_matrix() {
+            let mut registry = DimRegistry::new("test-reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let dims = [PiVariable {
+                name: "length".into(),
+                dimension: length.clone(),
+            }];
+            let (matrix, atom_ids) = RatMatrix::from_dims(&dims, true).unwrap();
+            let expected_matrix = RatMatrix {
+                rows: 1,
+                cols: 1,
+                data: vec![Exp::ONE],
+            };
+            assert_eq!(matrix, expected_matrix);
+            let length_atom_id = get_base_dim_atom_id(&length);
+            let expected_atom_ids = vec![length_atom_id];
+            assert_eq!(atom_ids, expected_atom_ids);
+        }
+
+        #[test]
+        fn builds_matrix_with_shared_atoms_across_variables() {
+            let mut registry = DimRegistry::new("test-reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let time = registry.add_base("time", "T").unwrap();
+            let dims = [
+                PiVariable {
+                    name: "velocity".into(),
+                    dimension: registry.parse("length / time").unwrap(),
+                },
+                PiVariable {
+                    name: "acceleration".into(),
+                    dimension: registry.parse("length / time^2").unwrap(),
+                },
+            ];
+            let (matrix, atom_ids) = RatMatrix::from_dims(&dims, true).unwrap();
+            let expected_data = vec![
+                Exp::ONE,
+                Exp::ONE,
+                Exp::int(-1).unwrap(),
+                Exp::int(-2).unwrap(),
+            ];
+            let expected_matrix = RatMatrix {
+                rows: 2,
+                cols: 2,
+                data: expected_data,
+            };
+            assert_eq!(matrix, expected_matrix);
+            let length_atom_id = get_base_dim_atom_id(&length);
+            let time_atom_id = get_base_dim_atom_id(&time);
+            let expected_atom_ids = vec![length_atom_id, time_atom_id];
+            assert_eq!(atom_ids, expected_atom_ids);
+        }
+
+        #[test]
+        fn zero_fills_atoms_missing_from_a_variable() {
+            let mut registry = DimRegistry::new("test-reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let time = registry.add_base("time", "T").unwrap();
+            let mass = registry.add_base("mass", "M").unwrap();
+            let dims = [
+                PiVariable {
+                    name: "dist".into(),
+                    dimension: registry.parse("length").unwrap(),
+                },
+                PiVariable {
+                    name: "duration".into(),
+                    dimension: registry.parse("time").unwrap(),
+                },
+                PiVariable {
+                    name: "weight".into(),
+                    dimension: registry.parse("mass").unwrap(),
+                },
+            ];
+            let (matrix, atom_ids) = RatMatrix::from_dims(&dims, true).unwrap();
+            let mut expected_matrix = RatMatrix::zeros(3, 3);
+            expected_matrix[(0, 0)] = Exp::ONE;
+            expected_matrix[(1, 1)] = Exp::ONE;
+            expected_matrix[(2, 2)] = Exp::ONE;
+            assert_eq!(matrix, expected_matrix);
+            let length_atom_id = get_base_dim_atom_id(&length);
+            let time_atom_id = get_base_dim_atom_id(&time);
+            let mass_atom_id = get_base_dim_atom_id(&mass);
+            let expected_atom_ids = vec![length_atom_id, time_atom_id, mass_atom_id];
+            assert_eq!(atom_ids, expected_atom_ids);
+        }
+
+        #[test]
+        fn builds_dimensional_matrix_for_reynolds_number() {
+            let mut registry = DimRegistry::new("test-reg");
+            let length = registry.add_base("length", "L").unwrap();
+            let time = registry.add_base("time", "T").unwrap();
+            let mass = registry.add_base("mass", "M").unwrap();
+            let dims = [
+                PiVariable {
+                    name: "density".into(),
+                    dimension: registry.parse("mass / length^3").unwrap(),
+                },
+                PiVariable {
+                    name: "velocity".into(),
+                    dimension: registry.parse("length / time").unwrap(),
+                },
+                PiVariable {
+                    name: "length".into(),
+                    dimension: registry.parse("length").unwrap(),
+                },
+                PiVariable {
+                    name: "dynamic_viscosity".into(),
+                    dimension: registry.parse("mass / (length * time)").unwrap(),
+                },
+            ];
+            let (matrix, atom_ids) = RatMatrix::from_dims(&dims, true).unwrap();
+            let mut data = vec![
+                Exp::int(-3).unwrap(),
+                Exp::ONE,
+                Exp::ONE,
+                Exp::int(-1).unwrap(),
+            ];
+            data.extend([
+                Exp::ZERO,
+                Exp::int(-1).unwrap(),
+                Exp::ZERO,
+                Exp::int(-1).unwrap(),
+            ]);
+            data.extend([Exp::ONE, Exp::ZERO, Exp::ZERO, Exp::ONE]);
+            let expected_matrix = RatMatrix::new(3, 4, data);
+            assert_eq!(matrix, expected_matrix);
+            let length_atom_id = get_base_dim_atom_id(&length);
+            let time_atom_id = get_base_dim_atom_id(&time);
+            let mass_atom_id = get_base_dim_atom_id(&mass);
+            let expected_atom_ids = vec![length_atom_id, time_atom_id, mass_atom_id];
+            assert_eq!(atom_ids, expected_atom_ids);
+        }
+
+        #[test]
+        fn distinguishes_named_dimensionless_atoms_when_use_canonical_is_true() {
+            let mut registry = DimRegistry::new("test-reg");
+            registry.add_base("length", "L").unwrap();
+            let time = registry.add_base("time", "T").unwrap();
+            let plane_angle = registry
+                .add_dimensionless_expr("plane_angle", "length / length")
+                .unwrap();
+            let dims = [
+                PiVariable {
+                    name: "frequency".into(),
+                    dimension: registry.parse("1 / time").unwrap(),
+                },
+                PiVariable {
+                    name: "angular_velocity".into(),
+                    dimension: registry.parse("plane_angle / time").unwrap(),
+                },
+            ];
+            let (matrix, atom_ids) = RatMatrix::from_dims(&dims, true).unwrap();
+            let time_atom_id = get_base_dim_atom_id(&time);
+            let plane_angle_atom_id = get_base_dim_atom_id(&plane_angle);
+            assert_eq!(matrix.rows, 2);
+            let time_idx = atom_ids.iter().position(|&i| i == time_atom_id).unwrap();
+            let plane_angle_idx = atom_ids
+                .iter()
+                .position(|&i| i == plane_angle_atom_id)
+                .unwrap();
+            assert_ne!(
+                vec![matrix[(time_idx, 0)], matrix[(plane_angle_idx, 0)]],
+                vec![matrix[(time_idx, 1)], matrix[(plane_angle_idx, 1)]]
+            );
+        }
+
+        #[test]
+        fn collapses_named_dimensionless_atoms_when_use_canonical_is_false() {
+            let mut registry = DimRegistry::new("test-reg");
+            registry.add_base("length", "L").unwrap();
+            let time = registry.add_base("time", "T").unwrap();
+            registry
+                .add_dimensionless_expr("plane_angle", "length / length")
+                .unwrap();
+            let dims = [
+                PiVariable {
+                    name: "frequency".into(),
+                    dimension: registry.parse("1 / time").unwrap(),
+                },
+                PiVariable {
+                    name: "angular_velocity".into(),
+                    dimension: registry.parse("plane_angle / time").unwrap(),
+                },
+            ];
+            let (matrix, atom_ids) = RatMatrix::from_dims(&dims, false).unwrap();
+            let time_atom_id = get_base_dim_atom_id(&time);
+            let time_idx = atom_ids.iter().position(|&i| i == time_atom_id).unwrap();
+            assert_eq!(matrix.rows, 1);
+            assert_eq!(matrix[(time_idx, 0)], matrix[(time_idx, 1)]);
+        }
+
+        #[test]
+        fn propagates_cross_registry_error() {
+            let mut registry1 = DimRegistry::new("test-reg1");
+            registry1.add_base("length", "L").unwrap();
+            let mut registry2 = DimRegistry::new("test-reg2");
+            registry2.add_base("time", "T").unwrap();
+            let dims = [
+                PiVariable {
+                    name: "time".into(),
+                    dimension: registry2.parse("time").unwrap(),
+                },
+                PiVariable {
+                    name: "length".into(),
+                    dimension: registry1.parse("length").unwrap(),
+                },
+            ];
+            let err = RatMatrix::from_dims(&dims, true).unwrap_err();
+            let expected_err = DimensionError::CrossRegistry {
+                left: registry2.id(),
+                right: registry1.id(),
+            };
+            assert!(errors_match(&err, &expected_err))
+        }
+
+        #[test]
+        fn allows_dimensionless_variables_alongside_any_registry() {
+            let registry1 = DimRegistry::new("test-reg1");
+            let mut registry2 = DimRegistry::new("test-reg2");
+            registry2.add_base("time", "T").unwrap();
+            let dims = [
+                PiVariable {
+                    name: "time".into(),
+                    dimension: registry2.parse("time").unwrap(),
+                },
+                PiVariable {
+                    name: "count".into(),
+                    dimension: registry1.parse("1").unwrap(),
+                },
+            ];
+            assert!(RatMatrix::from_dims(&dims, true).is_ok());
         }
     }
 
