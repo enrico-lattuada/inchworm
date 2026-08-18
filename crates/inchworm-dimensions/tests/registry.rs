@@ -53,5 +53,10 @@ mod tests {
                 "get and parse of same dimension should be equal"
             );
         }
+        assert_eq!(
+            registry.get("angle").unwrap(),
+            registry.get("plane_angle").unwrap(),
+            "alias should be equal to its canonical"
+        );
     }
 }

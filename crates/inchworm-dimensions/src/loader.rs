@@ -160,10 +160,20 @@ fn load_entries(registry: &mut DimRegistry, file: DimFile) -> Result<(), Dimensi
             .get(&name)
             .expect("name from topological sort must be a def_entries key")
         {
-            DefEntry::Base(b) => registry.add_base(&b.name, &b.symbol)?,
-            DefEntry::Derived(d) => registry.add_derived_expr(&d.name, &d.definition)?,
+            DefEntry::Base(b) => {
+                registry.add_base(&b.name, &b.symbol)?;
+            }
+            DefEntry::Derived(d) => {
+                registry.add_derived_expr(&d.name, &d.definition)?;
+                for alias in &d.aliases {
+                    registry.add_alias(alias, &d.name)?;
+                }
+            }
             DefEntry::Dimensionless(d) => {
-                registry.add_dimensionless_expr(&d.name, &d.definition)?
+                registry.add_dimensionless_expr(&d.name, &d.definition)?;
+                for alias in &d.aliases {
+                    registry.add_alias(alias, &d.name)?;
+                }
             }
         };
     }
@@ -173,7 +183,7 @@ fn load_entries(registry: &mut DimRegistry, file: DimFile) -> Result<(), Dimensi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::errors_match;
+    use crate::test_utils::{assert_exactly_eq, errors_match};
 
     mod load_registry {
         use super::*;
@@ -255,6 +265,48 @@ mod tests {
                 registry.get("dimensionless").is_some(),
                 "load_registry should build valid dimensionless entry"
             );
+        }
+
+        #[test]
+        fn wires_up_derived_entry_aliases() {
+            let src = r#"schema = 1
+
+            [registry]
+            name = "test-reg"
+            version = "0.0.0"
+
+            [[base]]
+            name = "a"
+            symbol = "A"
+
+            [[derived]]
+            name = "b"
+            definition = "a"
+            aliases = ["c"]
+            "#;
+            let registry = load_registry(src).unwrap();
+            assert_exactly_eq(&registry.get("c").unwrap(), &registry.get("b").unwrap());
+        }
+
+        #[test]
+        fn wires_up_dimensionless_entry_aliases() {
+            let src = r#"schema = 1
+
+            [registry]
+            name = "test-reg"
+            version = "0.0.0"
+
+            [[base]]
+            name = "a"
+            symbol = "A"
+
+            [[dimensionless]]
+            name = "b"
+            definition = "a / a"
+            aliases = ["c"]
+            "#;
+            let registry = load_registry(src).unwrap();
+            assert_exactly_eq(&registry.get("c").unwrap(), &registry.get("b").unwrap());
         }
 
         #[test]
@@ -371,6 +423,31 @@ mod tests {
             "#;
             let err = load_registry(src).unwrap_err();
             let expected_err = DimensionError::UnknownDimension {
+                name: "a".into(),
+                registry: "test-reg".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn propagates_duplicate_name_error_from_alias() {
+            let src = r#"schema = 1
+
+            [registry]
+            name = "test-reg"
+            version = "0.0.0"
+
+            [[base]]
+            name = "a"
+            symbol = "A"
+
+            [[dimensionless]]
+            name = "b"
+            definition = "a / a"
+            aliases = ["a"]
+            "#;
+            let err = load_registry(src).unwrap_err();
+            let expected_err = DimensionError::DuplicateName {
                 name: "a".into(),
                 registry: "test-reg".into(),
             };

@@ -27,6 +27,7 @@ pub struct DimRegistry {
     version: Box<str>,
     /// Map name to atom.
     atoms: HashMap<Box<str>, Atom>,
+    aliases: HashMap<Box<str>, Box<str>>,
 }
 
 impl DimRegistry {
@@ -42,6 +43,7 @@ impl DimRegistry {
             name: name.into(),
             version: version.into(),
             atoms: HashMap::new(),
+            aliases: HashMap::new(),
         }
     }
 
@@ -189,16 +191,52 @@ impl DimRegistry {
         self.add_dimensionless(name, &definition)
     }
 
-    /// Returns the [`Dimension`] corresponding to `name`.
-    pub fn get(&self, name: &str) -> Option<Dimension> {
-        self.atoms.get(name).map(Dimension::from_atom)
+    pub fn add_alias(&mut self, alias: &str, target: &str) -> Result<(), DimensionError> {
+        if self.atoms.contains_key(alias) || self.aliases.contains_key(alias) {
+            return Err(DimensionError::DuplicateName {
+                name: alias.into(),
+                registry: self.name().into(),
+            });
+        }
+        let canonical = if self.atoms.contains_key(target) {
+            target.into()
+        } else {
+            self.aliases
+                .get(target)
+                .cloned()
+                .ok_or_else(|| DimensionError::UnknownDimension {
+                    name: target.into(),
+                    registry: self.name().into(),
+                })?
+        };
+        self.aliases.insert(alias.into(), canonical);
+        Ok(())
     }
 
-    /// Removes `name` from the registry, returning the [`Dimension`] at `name` if `name` was previously in the registry.
+    /// Returns the [`Dimension`] corresponding to `name`.
+    pub fn get(&self, name: &str) -> Option<Dimension> {
+        self.atoms
+            .get(name)
+            .or_else(|| {
+                self.aliases
+                    .get(name)
+                    .and_then(|canonical| self.atoms.get(canonical))
+            })
+            .map(Dimension::from_atom)
+    }
+
+    /// Removes `name` from the registry, returning the [`Dimension`] at `name` if `name` was a
+    /// registered canonical name.
+    ///
+    /// If `name` is canonical, removing it also removes every alias that pointed to it. If `name`
+    /// is itself only an alias, only that alias is removed: the canonical dimension and any of its
+    /// other aliases are left untouched, and `Ok(None)` is returned, since an alias never has a
+    /// [`Dimension`] identity of its own to hand back.
     ///
     /// # Errors
     ///
-    /// Returns [`DimensionError::RemovalBlocked`] if any *registered* definition still references `name`.
+    /// Returns [`DimensionError::RemovalBlocked`] if any *registered* definition still references
+    /// `name`. Aliases are never counted as dependents and never block removal.
     pub fn remove(&mut self, name: &str) -> Result<Option<Dimension>, DimensionError> {
         if let Some(atom) = self.atoms.get(name)
             && Arc::strong_count(atom) > 1
@@ -225,10 +263,21 @@ impl DimRegistry {
                 });
             }
         }
-        Ok(self
+        let dimension = self
             .atoms
             .remove(name)
-            .map(|atom| Dimension::from_atom(&atom)))
+            .map(|atom| Dimension::from_atom(&atom));
+        match &dimension {
+            None => {
+                self.aliases.remove(name);
+                return Ok(None);
+            }
+            Some(_) => {
+                self.aliases
+                    .retain(|_, canonical| canonical.as_ref() != name);
+            }
+        }
+        Ok(dimension)
     }
 }
 
@@ -556,6 +605,59 @@ mod tests {
         }
     }
 
+    mod add_alias {
+        use super::*;
+
+        #[test]
+        fn aliasing_an_alias_resolves_to_the_original_canonical_name() {
+            let mut registry = DimRegistry::new("test_reg");
+            let a = registry.add_base("a", "A").unwrap();
+            registry.add_alias("b", "a").unwrap();
+            registry.add_alias("c", "b").unwrap();
+            assert_exactly_eq(&registry.get("c").unwrap(), &a);
+            registry.remove("b").unwrap();
+            assert_exactly_eq(&registry.get("c").unwrap(), &a);
+        }
+
+        #[test]
+        fn rejects_alias_that_shadows_existing_canonical_name() {
+            let mut registry = DimRegistry::new("test_reg");
+            registry.add_base("a", "A").unwrap();
+            registry.add_base("b", "B").unwrap();
+            let err = registry.add_alias("a", "b").unwrap_err();
+            let expected_err = DimensionError::DuplicateName {
+                name: "a".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_alias_that_shadows_existing_alias() {
+            let mut registry = DimRegistry::new("test_reg");
+            registry.add_base("a", "A").unwrap();
+            registry.add_base("b", "B").unwrap();
+            registry.add_alias("c", "a").unwrap();
+            let err = registry.add_alias("c", "b").unwrap_err();
+            let expected_err = DimensionError::DuplicateName {
+                name: "c".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_unknown_canonical_target() {
+            let mut registry = DimRegistry::new("test_reg");
+            let err = registry.add_alias("b", "a").unwrap_err();
+            let expected_err = DimensionError::UnknownDimension {
+                name: "a".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+    }
+
     mod get {
         use super::*;
 
@@ -570,6 +672,14 @@ mod tests {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", "L").unwrap();
             assert_eq!(registry.get("length").unwrap(), length);
+        }
+
+        #[test]
+        fn resolves_alias_to_same_dimension_as_canonical_name() {
+            let mut registry = DimRegistry::new("test_reg");
+            let a = registry.add_base("a", "A").unwrap();
+            registry.add_alias("b", "a").unwrap();
+            assert_exactly_eq(&registry.get("b").unwrap(), &a);
         }
     }
 
@@ -637,6 +747,29 @@ mod tests {
             };
             assert!(errors_match(&err, &expected_err,));
             assert!(registry.get("length").is_some());
+        }
+
+        #[test]
+        fn removing_canonical_name_cascades_removal_of_its_aliases() {
+            let mut registry = DimRegistry::new("test_reg");
+            registry.add_base("a", "A").unwrap();
+            registry.add_alias("b", "a").unwrap();
+            registry.add_alias("c", "a").unwrap();
+            assert!(registry.get("b").is_some() && registry.get("c").is_some());
+            registry.remove("a").unwrap();
+            assert!(registry.get("b").is_none() && registry.get("c").is_none());
+        }
+
+        #[test]
+        fn removing_alias_leaves_canonical_and_other_aliases_untouched() {
+            let mut registry = DimRegistry::new("test_reg");
+            registry.add_base("a", "A").unwrap();
+            registry.add_alias("b", "a").unwrap();
+            registry.add_alias("c", "a").unwrap();
+            registry.remove("b").unwrap();
+            assert!(registry.get("a").is_some());
+            assert!(registry.get("b").is_none());
+            assert!(registry.get("c").is_some());
         }
     }
 
