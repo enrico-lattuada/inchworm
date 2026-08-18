@@ -15,6 +15,8 @@ use std::collections::HashMap;
 
 use crate::{DimRegistry, DimensionError, graph::topological_order, parser::extract_idents};
 
+pub(crate) const SUPPORTED_SCHEMA: u32 = 1;
+
 #[derive(serde::Deserialize)]
 pub(crate) struct DimFile {
     pub schema: u32,
@@ -108,6 +110,12 @@ pub(crate) fn extend_registry(registry: &mut DimRegistry, src: &str) -> Result<(
 /// Shared by [`load_registry`] and [`extend_registry`]: builds the dependency graph, sorts it,
 /// and adds entries to `registry`.
 fn load_entries(registry: &mut DimRegistry, file: DimFile) -> Result<(), DimensionError> {
+    if file.schema != SUPPORTED_SCHEMA {
+        return Err(DimensionError::DefinitionFile(format!(
+            "unsupported schema {}; this version of inchworm-dimensions only supports schema {SUPPORTED_SCHEMA}",
+            file.schema
+        )));
+    }
     let mut def_entries = HashMap::new();
     for base in file.base {
         let name = base.name.clone();
