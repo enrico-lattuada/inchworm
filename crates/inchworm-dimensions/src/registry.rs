@@ -11,6 +11,8 @@ use crate::{
 #[cfg(feature = "toml")]
 use crate::loader::{extend_registry, load_registry};
 
+pub(crate) const DEFAULT_REGISTRY_VERSION: &str = "0.0.0";
+
 /// A mutable namespace and factory for named dimensions.
 ///
 /// Instance-based: multiple registries coexist. Dimensions from different
@@ -22,6 +24,7 @@ use crate::loader::{extend_registry, load_registry};
 pub struct DimRegistry {
     id: RegistryId,
     name: Box<str>,
+    version: Box<str>,
     /// Map name to atom.
     atoms: HashMap<Box<str>, Atom>,
 }
@@ -29,9 +32,15 @@ pub struct DimRegistry {
 impl DimRegistry {
     /// Creates an empty registry.
     pub fn new(name: &str) -> Self {
+        Self::new_with_meta(name, DEFAULT_REGISTRY_VERSION)
+    }
+
+    /// Creates an empty registry with a name and a version.
+    pub(crate) fn new_with_meta(name: &str, version: &str) -> Self {
         Self {
             id: RegistryId::next(),
             name: name.into(),
+            version: version.into(),
             atoms: HashMap::new(),
         }
     }
@@ -44,6 +53,11 @@ impl DimRegistry {
     /// Returns the `name` of the registry.
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Returns the `version` of the registry.
+    pub fn version(&self) -> &str {
+        &self.version
     }
 }
 

@@ -76,17 +76,12 @@ enum DefEntry {
 pub(crate) fn load_registry(src: &str) -> Result<DimRegistry, DimensionError> {
     let file: DimFile =
         toml::from_str(src).map_err(|e| DimensionError::DefinitionFile(e.to_string()))?;
-    let name = file
-        .registry
-        .as_ref()
-        .ok_or_else(|| {
-            DimensionError::DefinitionFile(
-                "missing [registry] section; a name is required to build a new registry".into(),
-            )
-        })?
-        .name
-        .clone();
-    let mut registry = DimRegistry::new(&name);
+    let registry_meta = file.registry.as_ref().ok_or_else(|| {
+        DimensionError::DefinitionFile(
+            "missing [registry] section; a name is required to build a new registry".into(),
+        )
+    })?;
+    let mut registry = DimRegistry::new_with_meta(&registry_meta.name, &registry_meta.version);
     load_entries(&mut registry, file)?;
     Ok(registry)
 }
@@ -189,7 +184,7 @@ mod tests {
 
             [registry]
             name = "test-reg"
-            version = "0.0.0"
+            version = "0.1.0"
 
             [[base]]
             name = "base"
@@ -200,6 +195,11 @@ mod tests {
                 registry.name(),
                 "test-reg",
                 "registry name must match the one defined by source"
+            );
+            assert_eq!(
+                registry.version(),
+                "0.1.0",
+                "registry version must match the one defined by source"
             );
             assert!(
                 registry.get("base").is_some(),
@@ -380,6 +380,7 @@ mod tests {
 
     mod extend_registry {
         use super::*;
+        use crate::registry::DEFAULT_REGISTRY_VERSION;
 
         #[test]
         fn adds_entries_against_preexisting_names() {
@@ -407,11 +408,12 @@ mod tests {
             let mut registry = DimRegistry::new("test-reg");
             registry.add_base("a", "A").unwrap();
             assert_eq!(registry.name(), "test-reg");
+            assert_eq!(registry.version(), DEFAULT_REGISTRY_VERSION);
             let src = r#"schema = 1
 
             [registry]
             name = "test-reg-override"
-            version = "0.0.0"
+            version = "1.0.12"
 
             [[derived]]
             name = "b"
@@ -423,6 +425,11 @@ mod tests {
                 "test-reg",
                 "registry name must match before and after extension"
             );
+            assert_eq!(
+                registry.version(),
+                DEFAULT_REGISTRY_VERSION,
+                "registry version must match before and after extension"
+            )
         }
 
         #[test]
