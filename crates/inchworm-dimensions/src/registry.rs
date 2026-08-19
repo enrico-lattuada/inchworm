@@ -220,6 +220,17 @@ impl DimRegistry {
         self.add_dimensionless(name, &definition)
     }
 
+    /// Registers `alias` as an alternate name for the dimension already registered under `target`.
+    ///
+    /// `target` may itself be an existing alias; it resolves to the canonical name it ultimately
+    /// points to, so aliases never chain.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DimensionError::DuplicateName`] if `alias` is already taken, either as a canonical
+    /// name or as an existing alias.
+    /// Returns [`DimensionError::UnknownDimension`] if `target` is not a registered canonical name
+    /// or alias.
     pub fn add_alias(&mut self, alias: &str, target: &str) -> Result<(), DimensionError> {
         if self.atoms.contains_key(alias) || self.aliases.contains_key(alias) {
             return Err(DimensionError::DuplicateName {

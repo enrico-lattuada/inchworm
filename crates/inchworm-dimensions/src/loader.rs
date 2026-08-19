@@ -17,24 +17,34 @@ use crate::{DimRegistry, DimensionError, graph::topological_order, parser::extra
 
 pub(crate) const SUPPORTED_SCHEMA: u32 = 1;
 
+/// The deserialized shape of a definition TOML file/string.
 #[derive(serde::Deserialize)]
 pub(crate) struct DimFile {
+    /// Format version; checked against [`SUPPORTED_SCHEMA`].
     pub schema: u32,
+    /// The `[registry]` table. Required when building a new registry via
+    /// [`load_registry`]; ignored when extending an existing one via
+    /// [`extend_registry`].
     pub registry: Option<RegistryMeta>,
+    /// `[[base]]` entries.
     #[serde(default)]
     pub base: Vec<BaseEntry>,
+    /// `[[derived]]` entries.
     #[serde(default)]
     pub derived: Vec<DerivedEntry>,
+    /// `[[dimensionless]]` entries.
     #[serde(default)]
     pub dimensionless: Vec<DimensionlessEntry>,
 }
 
+/// The `[registry]` table: metadata for a freshly built registry.
 #[derive(serde::Deserialize)]
 pub(crate) struct RegistryMeta {
     pub name: String,
     pub version: String,
 }
 
+/// A `[[base]]` entry.
 #[derive(serde::Deserialize)]
 pub(crate) struct BaseEntry {
     pub name: String,
@@ -42,18 +52,24 @@ pub(crate) struct BaseEntry {
     pub symbol: Option<String>,
 }
 
+/// A `[[derived]]` entry.
 #[derive(serde::Deserialize)]
 pub(crate) struct DerivedEntry {
     pub name: String,
     pub definition: String,
+    /// Alternate names registered for `name` via
+    /// [`DimRegistry::add_alias`](crate::DimRegistry::add_alias).
     #[serde(default)]
     pub aliases: Vec<String>,
 }
 
+/// A `[[dimensionless]]` entry.
 #[derive(serde::Deserialize)]
 pub(crate) struct DimensionlessEntry {
     pub name: String,
     pub definition: String,
+    /// Alternate names registered for `name` via
+    /// [`DimRegistry::add_alias`](crate::DimRegistry::add_alias).
     #[serde(default)]
     pub aliases: Vec<String>,
 }

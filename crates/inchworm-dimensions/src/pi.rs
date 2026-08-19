@@ -6,13 +6,16 @@
 
 use crate::{Dimension, DimensionError, Exp, exp::gcd, linalg::RatMatrix};
 
+/// A physical variable given to [`buckingham_pi`], with its name and dimension.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct PiVariable {
-    /// e.g., "v", "rho", "mu"
+    /// The variable's name, e.g., "v", "rho", "mu".
     pub name: String,
+    /// The variable's dimension.
     pub dimension: Dimension,
 }
 
+/// A single dimensionless group produced by [`buckingham_pi`].
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct PiGroup {
     /// One exponent per input variable, same order as the input slice.
@@ -22,6 +25,8 @@ pub struct PiGroup {
     pub exponents: Vec<Exp>,
 }
 
+/// The result of a [`buckingham_pi`] analysis: how many independent dimensionless
+/// groups exist, and what they are.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct PiAnalysis {
     /// Rank of the dimensional matrix.

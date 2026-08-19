@@ -86,12 +86,15 @@ pub(crate) enum AtomKind {
 
 #[derive(Debug)]
 pub(crate) struct AtomData {
+    /// This atom's process-unique identity.
     pub id: AtomId,
+    /// The registry that created this atom.
     pub registry_id: RegistryId,
     /// Dimension name (e.g. "plane_angle").
     pub name: Box<str>,
     /// Dimension symbol (e.g. "L", "Θ").
     pub symbol: Option<Box<str>>,
+    /// Whether this is a base dimension or a derived one (and if derived, its definition).
     pub kind: AtomKind,
 }
 
