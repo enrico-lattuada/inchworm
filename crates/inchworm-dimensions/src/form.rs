@@ -1,3 +1,10 @@
+//! [`Form`], a reduced product of atom powers, and [`Signature`], its
+//! base-only specialization.
+//!
+//! A `Form` backs both the stored `factors` of a [`Dimension`](crate::Dimension)
+//! and its canonical form; a `Signature` is the further reduction used to
+//! answer "same physical quantity, ignoring names?"
+
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -12,13 +19,26 @@ const MAX_INLINE_FACTORS: usize = 4;
 /// A reduced product of powers over named atoms.
 ///
 /// Invariants:
-/// - sorted by `AtomId` ascending
+/// - sorted by [`AtomId`](crate::AtomId) ascending
 /// - no zero exponents
 /// - no duplicates.
 ///
-/// Used for both the base signature and the canonical form of a `Dimension`.
+/// Used for both the base signature and the canonical form of a [`Dimension`](crate::Dimension).
 ///
-/// TODO: Add examples.
+/// # Examples
+///
+/// ```
+/// use inchworm_dimensions::{DimRegistry, Exp};
+///
+/// let mut registry = DimRegistry::new("mechanics");
+/// let length = registry.add_base("length", Some("L")).unwrap();
+///
+/// assert!(!length.factors().is_empty());
+/// assert_eq!(length.factors().to_string(), "length");
+///
+/// let squared = length.pow(Exp::int(2).unwrap()).unwrap();
+/// assert_eq!(squared.factors().to_string(), "length^2");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Form {
     entries: SmallVec<[(Atom, Exp); MAX_INLINE_FACTORS]>,

@@ -1,3 +1,11 @@
+//! The core [`Dimension`] value type and dimension-to-dimension [`Compatibility`].
+//!
+//! Every dimension carries three related forms: `factors` (the stored,
+//! display-facing composite the user built), `signature` (fully expanded to
+//! base atoms, used for [`Compatibility::Partial`]), and `canonical`
+//! (expanded, but keeping named-dimensionless atoms like `plane_angle`
+//! irreducible, used for [`Compatibility::Full`] and `==`).
+
 use crate::{
     DimensionError, Exp, Form, RegistryId, Signature,
     atom::{Atom, AtomKind},
@@ -21,7 +29,32 @@ pub enum Compatibility {
 
 /// An immutable dimension value.
 ///
-/// TODO: Add examples.
+/// Values are self-contained ([`Arc`](std::sync::Arc)-backed) and never need the
+/// [`DimRegistry`](crate::DimRegistry) that produced them to stay alive or to
+/// be used in arithmetic. `==` compares canonical forms: an expression like
+/// `length / time` and a dimension named `velocity` compare equal even though
+/// they carry different [`factors`](Dimension::factors) — the stored form
+/// distinguishes "the named atom" from "the raw computation" while `==`
+/// treats them as the same physical dimension.
+///
+/// # Examples
+///
+/// ```
+/// use inchworm_dimensions::DimRegistry;
+///
+/// let mut registry = DimRegistry::new("mechanics");
+/// let length = registry.add_base("length", Some("L")).unwrap();
+/// let time = registry.add_base("time", Some("T")).unwrap();
+/// let velocity = registry.add_derived_expr("velocity", "length / time").unwrap();
+///
+/// // Arithmetic on the base dimensions is canonically equal to the named one.
+/// let length_over_time = length.try_div(&time).unwrap();
+/// assert_eq!(length_over_time, velocity);
+///
+/// // But the named dimension keeps its own identity in its stored form.
+/// assert_eq!(velocity.name(), Some("velocity"));
+/// assert_ne!(velocity.factors(), length_over_time.factors());
+/// ```
 #[derive(Clone, Debug)]
 pub struct Dimension {
     /// Stored (display/identity) form: the named composite the user built,

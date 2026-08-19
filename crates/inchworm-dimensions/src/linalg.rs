@@ -1,3 +1,12 @@
+//! Exact rational linear algebra over [`Exp`](crate::Exp) entries, backing
+//! [`buckingham_pi`](crate::buckingham_pi).
+//!
+//! `RatMatrix::from_dims` builds the dimensional matrix for a set of
+//! [`PiVariable`](crate::PiVariable)s; `rref` row-reduces it and `nullspace`
+//! extracts a basis for the π groups. All arithmetic stays exact, since `Exp`
+//! is rational, so results never accumulate floating-point error. Entirely
+//! internal — `RatMatrix` is `pub(crate)`, not part of the public API.
+
 use std::collections::HashSet;
 
 use crate::{AtomId, DimensionError, Exp, PiVariable, RegistryId};

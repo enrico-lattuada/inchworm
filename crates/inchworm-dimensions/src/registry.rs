@@ -1,3 +1,10 @@
+//! [`DimRegistry`]: the mutable, instance-based namespace dimensions are
+//! registered against.
+//!
+//! Covers definition (`add_base`/`add_derived`/`add_dimensionless`/`add_alias`),
+//! removal, lookup (`get`/`parse`), and (behind the `toml` feature)
+//! TOML-backed loading and construction.
+
 use std::collections::HashMap;
 
 use std::sync::Arc;
@@ -19,7 +26,25 @@ pub(crate) const DEFAULT_REGISTRY_VERSION: &str = "0.0.0";
 /// registries cannot be mixed; the mismatch is detected via the [`RegistryId`]
 /// carried by every atom.
 ///
-/// TODO: Add examples
+/// # Examples
+///
+/// ```
+/// use inchworm_dimensions::DimRegistry;
+///
+/// let mut registry = DimRegistry::new("mechanics");
+/// registry.add_base("length", Some("L")).unwrap();
+/// registry.add_base("time", Some("T")).unwrap();
+/// let velocity = registry.add_derived_expr("velocity", "length / time").unwrap();
+///
+/// // `get` and `parse` agree for anything already registered.
+/// assert_eq!(registry.get("velocity"), Some(velocity.clone()));
+/// assert_eq!(registry.parse("length / time").unwrap(), velocity);
+///
+/// // Removal is blocked while something still depends on a name.
+/// assert!(registry.remove("length").is_err());
+/// registry.remove("velocity").unwrap();
+/// assert!(registry.remove("length").is_ok());
+/// ```
 #[cfg_attr(test, derive(Debug))]
 pub struct DimRegistry {
     id: RegistryId,

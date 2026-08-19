@@ -1,3 +1,13 @@
+//! Atom identity and registration records.
+//!
+//! An [`Atom`](crate::atom::Atom) (`Arc<AtomData>`) is the crate's unit of
+//! registered identity: every base or derived dimension added to a
+//! [`DimRegistry`](crate::DimRegistry) becomes one, tagged with a
+//! process-unique [`AtomId`] and the [`RegistryId`] of the registry that
+//! created it. [`Dimension`](crate::Dimension) values hold [`Arc`](std::sync::Arc)
+//! clones of the atoms in their signature, so they stay valid independent of
+//! the registry's own lifetime.
+
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};

@@ -1,3 +1,12 @@
+//! Rational exponents ([`Exp`]) with overflow-checked arithmetic.
+//!
+//! Every [`Exp`] is stored in lowest terms with a positive denominator. All
+//! arithmetic (`checked_add`, `checked_mul`, `checked_neg`, `checked_sub`,
+//! `checked_recip`) is fallible, returning
+//! [`DimensionError::ExponentOverflow`](crate::DimensionError::ExponentOverflow)
+//! or [`DimensionError::ZeroDenominator`](crate::DimensionError::ZeroDenominator)
+//! rather than panicking or wrapping.
+
 use crate::error::DimensionError;
 
 /// A rational exponent, always stored in lowest terms with `den > 0`.
@@ -8,7 +17,9 @@ pub struct Exp {
 }
 
 impl Exp {
+    /// The additive identity: exponent `0`.
     pub const ZERO: Self = Self { num: 0, den: 1 };
+    /// The multiplicative identity: exponent `1`.
     pub const ONE: Self = Self { num: 1, den: 1 };
 
     /// Constructs a new rational exponent with the specified numerator and denominator.
