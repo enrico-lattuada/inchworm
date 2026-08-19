@@ -16,6 +16,10 @@ clippy:
 clippy-strict:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+# Check the workspace to catch common mistakes (treat warnings as errors)
+clippy-strict-ndf:
+    cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+
 # Run the Rust test suites.
 test:
     cargo test --workspace --all-features --color always
@@ -25,4 +29,4 @@ doc:
     cargo doc --workspace --open
 
 # Run fmt-check, clippy, and test
-ci: fmt-check clippy test
+ci: fmt-check clippy-strict-ndf clippy-strict test
