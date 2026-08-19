@@ -25,8 +25,6 @@ pub enum Compatibility {
     Incompatible,
 }
 
-// TODO: Do not derive Hash, impl Hash for Dimension to be compatible with PartialEq
-
 /// An immutable dimension value.
 ///
 /// Values are self-contained ([`Arc`](std::sync::Arc)-backed) and never need the
@@ -253,6 +251,13 @@ impl Dimension {
         } else {
             Compatibility::Incompatible
         }
+    }
+}
+
+impl std::hash::Hash for Dimension {
+    /// Two dimensions are equal iff they are canonically equivalent.
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.canonical.hash(state);
     }
 }
 

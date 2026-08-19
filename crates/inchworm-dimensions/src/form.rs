@@ -39,7 +39,7 @@ const MAX_INLINE_FACTORS: usize = 4;
 /// let squared = length.pow(Exp::int(2).unwrap()).unwrap();
 /// assert_eq!(squared.factors().to_string(), "length^2");
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Form {
     entries: SmallVec<[(Atom, Exp); MAX_INLINE_FACTORS]>,
 }
@@ -180,7 +180,7 @@ impl fmt::Display for Form {
 ///
 /// A [`Signature`] answers "are these the same physical quantity, ignoring names?"
 /// while a canonical [`Form`] additionally keeps named-dimensionless atoms as irreducible factors.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Signature(pub(crate) Form);
 
 impl Signature {
