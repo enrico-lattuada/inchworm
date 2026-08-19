@@ -317,7 +317,6 @@ mod tests {
     use super::*;
     use crate::test_utils::errors_match;
 
-    #[cfg(feature = "toml")]
     mod extract_idents {
         use super::*;
 
