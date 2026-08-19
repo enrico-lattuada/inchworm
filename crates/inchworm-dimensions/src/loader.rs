@@ -38,7 +38,8 @@ pub(crate) struct RegistryMeta {
 #[derive(serde::Deserialize)]
 pub(crate) struct BaseEntry {
     pub name: String,
-    pub symbol: String,
+    #[serde(default)]
+    pub symbol: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -169,7 +170,7 @@ fn load_entries(registry: &mut DimRegistry, file: DimFile) -> Result<(), Dimensi
             .expect("name from topological sort must be a def_entries key")
         {
             DefEntry::Base(b) => {
-                registry.add_base(&b.name, &b.symbol)?;
+                registry.add_base(&b.name, b.symbol.as_deref())?;
             }
             DefEntry::Derived(d) => {
                 registry.add_derived_expr(&d.name, &d.definition)?;
@@ -470,7 +471,7 @@ mod tests {
         #[test]
         fn adds_entries_against_preexisting_names() {
             let mut registry = DimRegistry::new("test-reg");
-            registry.add_base("a", "A").unwrap();
+            registry.add_base("a", Some("A")).unwrap();
             assert!(
                 registry.get("b").is_none(),
                 "unregistered dimension should not be present in the registry"
@@ -491,7 +492,7 @@ mod tests {
         #[test]
         fn ignores_registry_section() {
             let mut registry = DimRegistry::new("test-reg");
-            registry.add_base("a", "A").unwrap();
+            registry.add_base("a", Some("A")).unwrap();
             assert_eq!(registry.name(), "test-reg");
             assert_eq!(registry.version(), DEFAULT_REGISTRY_VERSION);
             let src = r#"schema = 1
@@ -520,7 +521,7 @@ mod tests {
         #[test]
         fn rejects_duplicate_name_against_existing_registry() {
             let mut registry = DimRegistry::new("test-reg");
-            registry.add_base("a", "A").unwrap();
+            registry.add_base("a", Some("A")).unwrap();
             assert_eq!(registry.name(), "test-reg");
             let src = r#"schema = 1
 

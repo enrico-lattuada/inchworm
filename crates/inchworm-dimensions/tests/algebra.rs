@@ -8,9 +8,9 @@ mod tests {
     #[test]
     fn same_named_atoms_in_different_registries_are_cross_registry() {
         let mut registry1 = DimRegistry::new("test_reg_1");
-        let length1 = registry1.add_base("length", "L").unwrap();
+        let length1 = registry1.add_base("length", Some("L")).unwrap();
         let mut registry2 = DimRegistry::new("test_reg_2");
-        let length2 = registry2.add_base("length", "L").unwrap();
+        let length2 = registry2.add_base("length", Some("L")).unwrap();
         let err = length1.try_mul(&length2).unwrap_err();
         let expected_err = DimensionError::CrossRegistry {
             left: registry1.id(),

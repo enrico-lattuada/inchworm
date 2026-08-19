@@ -60,10 +60,7 @@ impl RegistryId {
 #[derive(Debug)]
 pub(crate) enum AtomKind {
     /// An axis of the signature space (e.g., length, time).
-    Base {
-        /// Base dimension symbol (e.g. "L", "Θ").
-        symbol: Box<str>,
-    },
+    Base,
     /// Named derived dimension with a definition.
     ///
     /// `dimensionless_kind` is precomputed at registration: true iff
@@ -81,8 +78,10 @@ pub(crate) enum AtomKind {
 pub(crate) struct AtomData {
     pub id: AtomId,
     pub registry_id: RegistryId,
-    /// e.g. "plane_angle"
+    /// Dimension name (e.g. "plane_angle").
     pub name: Box<str>,
+    /// Dimension symbol (e.g. "L", "Θ").
+    pub symbol: Option<Box<str>>,
     pub kind: AtomKind,
 }
 

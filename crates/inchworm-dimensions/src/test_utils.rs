@@ -19,7 +19,8 @@ pub(crate) fn make_form_entry_in_registry(
         id: AtomId::raw(id),
         registry_id: RegistryId::raw(registry_id),
         name: "foo".into(),
-        kind: AtomKind::Base { symbol: "F".into() },
+        symbol: None,
+        kind: AtomKind::Base,
     };
     (Arc::new(atom_data), exp)
 }

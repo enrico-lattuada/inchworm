@@ -215,7 +215,7 @@ mod tests {
         #[test]
         fn builds_single_row_single_column_matrix() {
             let mut registry = DimRegistry::new("test-reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let dims = [PiVariable {
                 name: "length".into(),
                 dimension: length.clone(),
@@ -235,8 +235,8 @@ mod tests {
         #[test]
         fn builds_matrix_with_shared_atoms_across_variables() {
             let mut registry = DimRegistry::new("test-reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             let dims = [
                 PiVariable {
                     name: "velocity".into(),
@@ -269,9 +269,9 @@ mod tests {
         #[test]
         fn zero_fills_atoms_missing_from_a_variable() {
             let mut registry = DimRegistry::new("test-reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
-            let mass = registry.add_base("mass", "M").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
+            let mass = registry.add_base("mass", Some("M")).unwrap();
             let dims = [
                 PiVariable {
                     name: "dist".into(),
@@ -302,9 +302,9 @@ mod tests {
         #[test]
         fn builds_dimensional_matrix_for_reynolds_number() {
             let mut registry = DimRegistry::new("test-reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
-            let mass = registry.add_base("mass", "M").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
+            let mass = registry.add_base("mass", Some("M")).unwrap();
             let dims = [
                 PiVariable {
                     name: "density".into(),
@@ -349,8 +349,8 @@ mod tests {
         #[test]
         fn distinguishes_named_dimensionless_atoms_when_use_canonical_is_true() {
             let mut registry = DimRegistry::new("test-reg");
-            registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             let plane_angle = registry
                 .add_dimensionless_expr("plane_angle", "length / length")
                 .unwrap();
@@ -382,8 +382,8 @@ mod tests {
         #[test]
         fn collapses_named_dimensionless_atoms_when_use_canonical_is_false() {
             let mut registry = DimRegistry::new("test-reg");
-            registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             registry
                 .add_dimensionless_expr("plane_angle", "length / length")
                 .unwrap();
@@ -407,9 +407,9 @@ mod tests {
         #[test]
         fn propagates_cross_registry_error() {
             let mut registry1 = DimRegistry::new("test-reg1");
-            registry1.add_base("length", "L").unwrap();
+            registry1.add_base("length", Some("L")).unwrap();
             let mut registry2 = DimRegistry::new("test-reg2");
-            registry2.add_base("time", "T").unwrap();
+            registry2.add_base("time", Some("T")).unwrap();
             let dims = [
                 PiVariable {
                     name: "time".into(),
@@ -432,7 +432,7 @@ mod tests {
         fn allows_dimensionless_variables_alongside_any_registry() {
             let registry1 = DimRegistry::new("test-reg1");
             let mut registry2 = DimRegistry::new("test-reg2");
-            registry2.add_base("time", "T").unwrap();
+            registry2.add_base("time", Some("T")).unwrap();
             let dims = [
                 PiVariable {
                     name: "time".into(),

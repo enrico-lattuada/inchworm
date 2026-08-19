@@ -70,7 +70,11 @@ impl DimRegistry {
     /// # Errors
     ///
     /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
-    pub fn add_base(&mut self, name: &str, symbol: &str) -> Result<Dimension, DimensionError> {
+    pub fn add_base(
+        &mut self,
+        name: &str,
+        symbol: Option<&str>,
+    ) -> Result<Dimension, DimensionError> {
         // Check name is not duplicated
         if self.atoms.contains_key(name) {
             return Err(DimensionError::DuplicateName {
@@ -80,11 +84,10 @@ impl DimRegistry {
         }
         let data = AtomData {
             id: AtomId::next(),
-            name: name.into(),
             registry_id: self.id(),
-            kind: AtomKind::Base {
-                symbol: symbol.into(),
-            },
+            name: name.into(),
+            symbol: symbol.map(Into::into),
+            kind: AtomKind::Base,
         };
         let atom = Atom::new(data);
         let dimension = Dimension::from_atom(&atom);
@@ -121,8 +124,9 @@ impl DimRegistry {
         }
         let data = AtomData {
             id: AtomId::next(),
-            name: name.into(),
             registry_id: self.id(),
+            name: name.into(),
+            symbol: None,
             kind: AtomKind::Derived {
                 definition: Box::new(definition.clone()),
                 dimensionless_kind: definition.is_dimensionless(),
@@ -384,7 +388,7 @@ mod tests {
         #[test]
         fn dimension_has_matching_factors_signature_canonical() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             assert_eq!(length.factors().entries().len(), 1);
             let (_, exp) = length.factors().entries().first().unwrap().to_owned();
             assert_eq!(exp, Exp::ONE);
@@ -395,8 +399,8 @@ mod tests {
         #[test]
         fn rejects_duplicate_name() {
             let mut registry = DimRegistry::new("test_reg");
-            registry.add_base("length", "L").unwrap();
-            let err = registry.add_base("length", "l").unwrap_err();
+            registry.add_base("length", Some("L")).unwrap();
+            let err = registry.add_base("length", Some("l")).unwrap_err();
             let expected_err = DimensionError::DuplicateName {
                 name: String::from("length"),
                 registry: registry.name().into(),
@@ -407,8 +411,8 @@ mod tests {
         #[test]
         fn distinct_names_are_incompatible() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             assert_ne!(length, time);
             assert!(matches!(
                 length.compatibility(&time),
@@ -424,7 +428,7 @@ mod tests {
         #[test]
         fn dimensionless_kind_keeps_itself_in_canonical() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let definition = length.try_div(&length).unwrap();
             let strain = registry.add_derived("strain", &definition).unwrap();
             assert!(strain.has_dimensionless_signature());
@@ -434,8 +438,8 @@ mod tests {
         #[test]
         fn non_dimensionless_kind_expands_canonical_to_definition() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             let definition = length.try_div(&time).unwrap();
             let velocity = registry.add_derived("velocity", &definition).unwrap();
             assert!(!velocity.is_dimensionless());
@@ -451,8 +455,8 @@ mod tests {
         #[test]
         fn rejects_duplicate_name() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             let definition = length.try_div(&time).unwrap();
             registry.add_derived("velocity", &definition).unwrap();
             let err = registry
@@ -468,7 +472,7 @@ mod tests {
         #[test]
         fn rejects_definition_from_different_registry() {
             let mut registry1 = DimRegistry::new("test_reg_1");
-            let length = registry1.add_base("length", "L").unwrap();
+            let length = registry1.add_base("length", Some("L")).unwrap();
             let mut registry2 = DimRegistry::new("test_reg_2");
             let err = registry2.add_derived("length", &length).unwrap_err();
             let expected_err = DimensionError::CrossRegistry {
@@ -501,8 +505,8 @@ mod tests {
         #[test]
         fn adds_dimension_from_expression() {
             let mut registry = DimRegistry::new("test-reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             let velocity = registry
                 .add_derived_expr("velocity", "length / time")
                 .unwrap();
@@ -524,7 +528,7 @@ mod tests {
         #[test]
         fn propagates_duplicate_name_error() {
             let mut registry = DimRegistry::new("test-reg");
-            registry.add_base("length", "L").unwrap();
+            registry.add_base("length", Some("L")).unwrap();
             let err = registry.add_derived_expr("length", "1").unwrap_err();
             let expected_err = DimensionError::DuplicateName {
                 name: "length".into(),
@@ -540,7 +544,7 @@ mod tests {
         #[test]
         fn allows_dimensionless_definition() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let definition = length.try_div(&length).unwrap();
             let plane_angle = registry
                 .add_dimensionless("plane_angle", &definition)
@@ -552,7 +556,7 @@ mod tests {
         #[test]
         fn rejects_non_dimensionless_signature_definition() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let err = registry.add_dimensionless("distance", &length).unwrap_err();
             let expected_err = DimensionError::NotDimensionless {
                 name: "distance".into(),
@@ -568,7 +572,7 @@ mod tests {
         #[test]
         fn add_dimensionless_dimension_from_expr() {
             let mut registry = DimRegistry::new("test_reg");
-            registry.add_base("length", "L").unwrap();
+            registry.add_base("length", Some("L")).unwrap();
             let plane_angle = registry
                 .add_dimensionless_expr("plane_angle", "length / length")
                 .unwrap();
@@ -579,7 +583,7 @@ mod tests {
         #[test]
         fn propagates_not_dimensionless_error() {
             let mut registry = DimRegistry::new("test_reg");
-            registry.add_base("length", "L").unwrap();
+            registry.add_base("length", Some("L")).unwrap();
             let err = registry
                 .add_dimensionless_expr("distance", "length")
                 .unwrap_err();
@@ -611,7 +615,7 @@ mod tests {
         #[test]
         fn aliasing_an_alias_resolves_to_the_original_canonical_name() {
             let mut registry = DimRegistry::new("test_reg");
-            let a = registry.add_base("a", "A").unwrap();
+            let a = registry.add_base("a", Some("A")).unwrap();
             registry.add_alias("b", "a").unwrap();
             registry.add_alias("c", "b").unwrap();
             assert_exactly_eq(&registry.get("c").unwrap(), &a);
@@ -622,8 +626,8 @@ mod tests {
         #[test]
         fn rejects_alias_that_shadows_existing_canonical_name() {
             let mut registry = DimRegistry::new("test_reg");
-            registry.add_base("a", "A").unwrap();
-            registry.add_base("b", "B").unwrap();
+            registry.add_base("a", Some("A")).unwrap();
+            registry.add_base("b", Some("B")).unwrap();
             let err = registry.add_alias("a", "b").unwrap_err();
             let expected_err = DimensionError::DuplicateName {
                 name: "a".into(),
@@ -635,8 +639,8 @@ mod tests {
         #[test]
         fn rejects_alias_that_shadows_existing_alias() {
             let mut registry = DimRegistry::new("test_reg");
-            registry.add_base("a", "A").unwrap();
-            registry.add_base("b", "B").unwrap();
+            registry.add_base("a", Some("A")).unwrap();
+            registry.add_base("b", Some("B")).unwrap();
             registry.add_alias("c", "a").unwrap();
             let err = registry.add_alias("c", "b").unwrap_err();
             let expected_err = DimensionError::DuplicateName {
@@ -670,14 +674,14 @@ mod tests {
         #[test]
         fn matches_what_add_base_returned() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             assert_eq!(registry.get("length").unwrap(), length);
         }
 
         #[test]
         fn resolves_alias_to_same_dimension_as_canonical_name() {
             let mut registry = DimRegistry::new("test_reg");
-            let a = registry.add_base("a", "A").unwrap();
+            let a = registry.add_base("a", Some("A")).unwrap();
             registry.add_alias("b", "a").unwrap();
             assert_exactly_eq(&registry.get("b").unwrap(), &a);
         }
@@ -689,14 +693,14 @@ mod tests {
         #[test]
         fn returns_none_for_unregistered_name() {
             let mut registry = DimRegistry::new("test_reg");
-            let _ = registry.add_base("length", "L");
+            let _ = registry.add_base("length", Some("L"));
             assert!(registry.remove("time").unwrap().is_none());
         }
 
         #[test]
         fn removes_registered_name_and_returns_its_dimension() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let removed = registry.remove("length").unwrap().unwrap();
             assert_exactly_eq(&length, &removed);
             assert!(registry.get("length").is_none());
@@ -705,7 +709,7 @@ mod tests {
         #[test]
         fn unblocked_by_external_dimension_handle() {
             let mut registry = DimRegistry::new("test_reg");
-            let _length = registry.add_base("length", "L").unwrap();
+            let _length = registry.add_base("length", Some("L")).unwrap();
             let removed = registry.remove("length");
             assert!(removed.is_ok());
             assert!(registry.get("length").is_none());
@@ -714,8 +718,8 @@ mod tests {
         #[test]
         fn blocked_by_direct_dependent() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             let definition = length.try_div(&time).unwrap();
             let _velocity = registry.add_derived("velocity", &definition).unwrap();
             let err = registry.remove("length").unwrap_err();
@@ -730,8 +734,8 @@ mod tests {
         #[test]
         fn blocked_by_transitive_canonical_dependent() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             let velocity_definition = length.try_div(&time).unwrap();
             let velocity = registry
                 .add_derived("velocity", &velocity_definition)
@@ -752,7 +756,7 @@ mod tests {
         #[test]
         fn removing_canonical_name_cascades_removal_of_its_aliases() {
             let mut registry = DimRegistry::new("test_reg");
-            registry.add_base("a", "A").unwrap();
+            registry.add_base("a", Some("A")).unwrap();
             registry.add_alias("b", "a").unwrap();
             registry.add_alias("c", "a").unwrap();
             assert!(registry.get("b").is_some() && registry.get("c").is_some());
@@ -763,7 +767,7 @@ mod tests {
         #[test]
         fn removing_alias_leaves_canonical_and_other_aliases_untouched() {
             let mut registry = DimRegistry::new("test_reg");
-            registry.add_base("a", "A").unwrap();
+            registry.add_base("a", Some("A")).unwrap();
             registry.add_alias("b", "a").unwrap();
             registry.add_alias("c", "a").unwrap();
             registry.remove("b").unwrap();
@@ -780,7 +784,7 @@ mod tests {
         #[test]
         fn parses_simple_identifier() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length").unwrap();
             assert_eq!(length, parsed);
         }
@@ -788,8 +792,8 @@ mod tests {
         #[test]
         fn parses_multiplication_with_star() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             let parsed = registry.parse("length * time").unwrap();
             assert_eq!(length * time, parsed);
         }
@@ -797,8 +801,8 @@ mod tests {
         #[test]
         fn parses_multiplication_with_cdot() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             let parsed = registry.parse("length · time").unwrap();
             assert_eq!(length * time, parsed);
         }
@@ -806,8 +810,8 @@ mod tests {
         #[test]
         fn parses_division() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             let parsed = registry.parse("length / time").unwrap();
             assert_eq!(length / time, parsed);
         }
@@ -815,7 +819,7 @@ mod tests {
         #[test]
         fn parses_fractional_exponents() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length ^ (1/2)").unwrap();
             assert_eq!(length.pow(Exp::new(1, 2).unwrap()).unwrap(), parsed);
         }
@@ -823,7 +827,7 @@ mod tests {
         #[test]
         fn parses_negative_fractional_exponents() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length ^ (-1/2)").unwrap();
             assert_eq!(length.pow(Exp::new(-1, 2).unwrap()).unwrap(), parsed);
         }
@@ -831,7 +835,7 @@ mod tests {
         #[test]
         fn parses_outer_negative_fractional_exponents() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length ^ -(1/2)").unwrap();
             assert_eq!(length.pow(Exp::new(-1, 2).unwrap()).unwrap(), parsed);
         }
@@ -839,7 +843,7 @@ mod tests {
         #[test]
         fn parses_double_negative_fractional_exponents() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length ^ -(-1/2)").unwrap();
             assert_eq!(length.pow(Exp::new(1, 2).unwrap()).unwrap(), parsed);
         }
@@ -847,7 +851,7 @@ mod tests {
         #[test]
         fn parses_int_exponents() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length ^ 3").unwrap();
             assert_eq!(length.pow(Exp::int(3).unwrap()).unwrap(), parsed);
         }
@@ -855,7 +859,7 @@ mod tests {
         #[test]
         fn parses_parenthesized_int_exponents() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length ^ (3)").unwrap();
             assert_eq!(length.pow(Exp::int(3).unwrap()).unwrap(), parsed);
         }
@@ -863,8 +867,8 @@ mod tests {
         #[test]
         fn parses_parenthesized_expressions() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
             let parsed = registry.parse("(length / time) ^ 2").unwrap();
             assert_eq!(
                 length
@@ -879,8 +883,8 @@ mod tests {
         #[test]
         fn parses_parenthesized_expressions_ops() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let _time = registry.add_base("time", "T").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let _time = registry.add_base("time", Some("T")).unwrap();
             let parsed = registry.parse("(length / time) * (time)").unwrap();
             assert_eq!(length, parsed);
         }
@@ -895,7 +899,7 @@ mod tests {
         #[test]
         fn parses_bare_integer_exponent_followed_by_division() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length^2 / length^2").unwrap();
             let length_squared = length.pow(Exp::int(2).unwrap()).unwrap();
             assert_eq!(&length_squared / &length_squared, parsed);
@@ -904,7 +908,7 @@ mod tests {
         #[test]
         fn rejects_unknown_dimension() {
             let mut registry = DimRegistry::new("test_reg");
-            let _length = registry.add_base("length", "L").unwrap();
+            let _length = registry.add_base("length", Some("L")).unwrap();
             let err = registry.parse("time").unwrap_err();
             let expected_err = DimensionError::UnknownDimension {
                 name: "time".into(),
@@ -916,8 +920,8 @@ mod tests {
         #[test]
         fn rejects_trailing_garbage() {
             let mut registry = DimRegistry::new("test_reg");
-            let _length = registry.add_base("length", "L").unwrap();
-            let _time = registry.add_base("time", "T").unwrap();
+            let _length = registry.add_base("length", Some("L")).unwrap();
+            let _time = registry.add_base("time", Some("T")).unwrap();
             let err = registry.parse("length time").unwrap_err();
             let expected_err = DimensionError::Parse {
                 src: "".into(),
@@ -930,7 +934,7 @@ mod tests {
         #[test]
         fn rejects_unmatched_parenthesis() {
             let mut registry = DimRegistry::new("test_reg");
-            let _length = registry.add_base("length", "L").unwrap();
+            let _length = registry.add_base("length", Some("L")).unwrap();
             let err = registry.parse("(length").unwrap_err();
             let expected_err = DimensionError::Parse {
                 src: "".into(),
@@ -943,7 +947,7 @@ mod tests {
         #[test]
         fn rejects_invalid_exponent_fraction() {
             let mut registry = DimRegistry::new("test_reg");
-            let _length = registry.add_base("length", "L").unwrap();
+            let _length = registry.add_base("length", Some("L")).unwrap();
             let err = registry.parse("length ^ (1/)").unwrap_err();
             let expected_err = DimensionError::Parse {
                 src: "".into(),
@@ -956,7 +960,7 @@ mod tests {
         #[test]
         fn rejects_bare_fractional_exponent() {
             let mut registry = DimRegistry::new("test_reg");
-            registry.add_base("length", "L").unwrap();
+            registry.add_base("length", Some("L")).unwrap();
             let err = registry.parse("length ^ 1/2").unwrap_err();
             let expected_err = DimensionError::Parse {
                 src: "".into(),
@@ -969,7 +973,7 @@ mod tests {
         #[test]
         fn rejects_bare_negative_fractional_exponent() {
             let mut registry = DimRegistry::new("test_reg");
-            registry.add_base("length", "L").unwrap();
+            registry.add_base("length", Some("L")).unwrap();
             let err = registry.parse("length ^ -1/2").unwrap_err();
             let expected_err = DimensionError::Parse {
                 src: "".into(),
@@ -1006,8 +1010,8 @@ mod tests {
         #[test]
         fn rejects_invalid_pow() {
             let mut registry = DimRegistry::new("test_reg");
-            let _length = registry.add_base("length", "L").unwrap();
-            let _time = registry.add_base("time", "T").unwrap();
+            let _length = registry.add_base("length", Some("L")).unwrap();
+            let _time = registry.add_base("time", Some("T")).unwrap();
             let err = registry.parse("length ^ time").unwrap_err();
             let expected_err = DimensionError::Parse {
                 src: "".into(),
@@ -1020,7 +1024,7 @@ mod tests {
         #[test]
         fn rejects_unsupported_character() {
             let mut registry = DimRegistry::new("test_reg");
-            let _length = registry.add_base("length", "L").unwrap();
+            let _length = registry.add_base("length", Some("L")).unwrap();
             let err = registry.parse("length @").unwrap_err();
             let expected_err = DimensionError::Parse {
                 src: "".into(),
@@ -1179,9 +1183,9 @@ mod tests {
         #[test]
         fn roundtrips_through_display_and_parse() {
             let mut registry = DimRegistry::new("test_reg");
-            let length = registry.add_base("length", "L").unwrap();
-            let time = registry.add_base("time", "T").unwrap();
-            let mass = registry.add_base("mass", "M").unwrap();
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let time = registry.add_base("time", Some("T")).unwrap();
+            let mass = registry.add_base("mass", Some("M")).unwrap();
             let definitions = [
                 &length / &time.pow(Exp::int(2).unwrap()).unwrap(),
                 length.pow(Exp::new(3, 2).unwrap()).unwrap(),

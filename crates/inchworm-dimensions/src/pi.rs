@@ -203,8 +203,8 @@ mod tests {
         #[test]
         fn returns_no_groups_for_full_rank_variables() {
             let mut registry = DimRegistry::new("test-reg");
-            registry.add_base("length", "L").unwrap();
-            registry.add_base("time", "T").unwrap();
+            registry.add_base("length", Some("L")).unwrap();
+            registry.add_base("time", Some("T")).unwrap();
             let variables = [
                 PiVariable {
                     name: "T".into(),
@@ -226,9 +226,9 @@ mod tests {
         #[test]
         fn computes_reynolds_number_group() {
             let mut registry = DimRegistry::new("test-reg");
-            registry.add_base("length", "L").unwrap();
-            registry.add_base("time", "T").unwrap();
-            registry.add_base("mass", "M").unwrap();
+            registry.add_base("length", Some("L")).unwrap();
+            registry.add_base("time", Some("T")).unwrap();
+            registry.add_base("mass", Some("M")).unwrap();
             let variables = [
                 PiVariable {
                     name: "ρ".into(),
@@ -260,8 +260,8 @@ mod tests {
         #[test]
         fn computes_multiple_pi_groups() {
             let mut registry = DimRegistry::new("test-reg");
-            registry.add_base("length", "L").unwrap();
-            registry.add_base("time", "T").unwrap();
+            registry.add_base("length", Some("L")).unwrap();
+            registry.add_base("time", Some("T")).unwrap();
             let variables = [
                 PiVariable {
                     name: "D".into(),
@@ -308,9 +308,9 @@ mod tests {
         #[test]
         fn propagates_cross_registry_error() {
             let mut registry1 = DimRegistry::new("test-reg1");
-            registry1.add_base("length", "L").unwrap();
+            registry1.add_base("length", Some("L")).unwrap();
             let mut registry2 = DimRegistry::new("test-reg2");
-            registry2.add_base("time", "T").unwrap();
+            registry2.add_base("time", Some("T")).unwrap();
             let variables = [
                 PiVariable {
                     name: "time".into(),

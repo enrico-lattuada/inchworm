@@ -50,7 +50,7 @@ impl Dimension {
     /// Returns a dimension from an [`Atom`].
     pub(crate) fn from_atom(atom: &Atom) -> Self {
         match &atom.kind {
-            AtomKind::Base { symbol: _ } => {
+            AtomKind::Base => {
                 let factors = Form::single(atom, Exp::ONE);
                 let signature = Signature(factors.clone());
                 let canonical = factors.clone();
@@ -111,6 +111,31 @@ impl Dimension {
             .entries()
             .first()
             .map(|(atom, _)| atom.registry_id)
+    }
+
+    /// Returns an Atom if `factors` is a single `(atom, Exp::ONE)` entry.
+    fn as_named_atom(&self) -> Option<&Atom> {
+        let entries = self.factors().entries();
+        if entries.len() == 1 && entries[0].1.is_one() {
+            let atom = &entries[0].0;
+            return Some(atom);
+        }
+        None
+    }
+
+    /// Returns `true` iff `factors` is a single `(atom, Exp::ONE)` entry.
+    pub fn is_named(&self) -> bool {
+        self.as_named_atom().is_some()
+    }
+
+    /// Returns the dimension name iff [`Self::is_named`] returns `true`.
+    pub fn name(&self) -> Option<&str> {
+        self.as_named_atom().map(|atom| atom.name.as_ref())
+    }
+
+    /// Returns the dimension symbol iff [`Self::is_named`] returns `true` and a symbol is stored.
+    pub fn symbol(&self) -> Option<&str> {
+        self.as_named_atom().and_then(|atom| atom.symbol.as_deref())
     }
 }
 
@@ -325,6 +350,68 @@ mod tests {
         #[test]
         fn dimensionless_registry_id_is_none() {
             assert_eq!(Dimension::dimensionless().registry_id(), None);
+        }
+    }
+
+    mod is_named {
+        use super::*;
+        use crate::DimRegistry;
+
+        #[test]
+        fn base_dimension_with_symbol_reports_name_and_symbol() {
+            let mut registry = DimRegistry::new("test-reg");
+            let length = registry.add_base("length", Some("L")).unwrap();
+            assert!(length.is_named());
+            assert_eq!(length.name(), Some("length"));
+            assert_eq!(length.symbol(), Some("L"));
+        }
+
+        #[test]
+        fn base_dimension_without_symbol_reports_name_but_no_symbol() {
+            let mut registry = DimRegistry::new("test-reg");
+            let length = registry.add_base("length", None).unwrap();
+            assert!(length.is_named());
+            assert_eq!(length.name(), Some("length"));
+            assert_eq!(length.symbol(), None);
+        }
+
+        #[test]
+        fn derived_dimension_reports_name_but_no_symbol() {
+            let mut registry = DimRegistry::new("test-reg");
+            registry.add_base("length", Some("L")).unwrap();
+            let distance = registry.add_derived_expr("distance", "length").unwrap();
+            assert!(distance.is_named());
+            assert_eq!(distance.name(), Some("distance"));
+            assert_eq!(distance.symbol(), None);
+        }
+
+        #[test]
+        fn unnamed_composite_dimension_is_not_named() {
+            let mut registry = DimRegistry::new("test-reg");
+            registry.add_base("length", Some("L")).unwrap();
+            registry.add_base("time", Some("T")).unwrap();
+            let velocity = registry.parse("length / time").unwrap();
+            assert!(!velocity.is_named());
+            assert!(velocity.name().is_none());
+            assert!(velocity.symbol().is_none());
+        }
+
+        #[test]
+        fn bare_dimensionless_is_not_named() {
+            let dimensionless = Dimension::dimensionless();
+            assert!(!dimensionless.is_named());
+            assert!(dimensionless.name().is_none());
+            assert!(dimensionless.symbol().is_none());
+        }
+
+        #[test]
+        fn single_atom_with_non_unit_exponent_is_not_named() {
+            let mut registry = DimRegistry::new("test-reg");
+            let length = registry.add_base("length", Some("L")).unwrap();
+            let area = length.pow(Exp::int(2).unwrap()).unwrap();
+            assert!(!area.is_named());
+            assert!(area.name().is_none());
+            assert!(area.symbol().is_none());
         }
     }
 

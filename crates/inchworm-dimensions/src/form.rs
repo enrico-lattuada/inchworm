@@ -447,7 +447,8 @@ mod tests {
                 id: AtomId::raw(0),
                 registry_id: RegistryId::raw(0),
                 name: "length".into(),
-                kind: AtomKind::Base { symbol: "L".into() },
+                symbol: None,
+                kind: AtomKind::Base,
             };
             let form = Form::single(&Arc::new(atom_data), exp);
             assert_eq!(form.to_string(), "length");
@@ -460,7 +461,8 @@ mod tests {
                 id: AtomId::raw(0),
                 registry_id: RegistryId::raw(0),
                 name: "length".into(),
-                kind: AtomKind::Base { symbol: "L".into() },
+                symbol: None,
+                kind: AtomKind::Base,
             };
             let form = Form::single(&Arc::new(atom_data), exp);
             assert_eq!(form.to_string(), "length^3");
@@ -473,7 +475,8 @@ mod tests {
                 id: AtomId::raw(0),
                 registry_id: RegistryId::raw(0),
                 name: "length".into(),
-                kind: AtomKind::Base { symbol: "L".into() },
+                symbol: None,
+                kind: AtomKind::Base,
             };
             let form = Form::single(&Arc::new(atom_data), exp);
             assert_eq!(form.to_string(), "length^-3");
@@ -486,7 +489,8 @@ mod tests {
                 id: AtomId::raw(0),
                 registry_id: RegistryId::raw(0),
                 name: "length".into(),
-                kind: AtomKind::Base { symbol: "L".into() },
+                symbol: None,
+                kind: AtomKind::Base,
             };
             let form = Form::single(&Arc::new(atom_data), exp);
             assert_eq!(form.to_string(), "length^(1/3)");

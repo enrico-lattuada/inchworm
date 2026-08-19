@@ -8,8 +8,8 @@ mod tests {
     #[test]
     fn public_api_lifecycle_workflow() {
         let mut registry = DimRegistry::new("my-registry");
-        let length = registry.add_base("length", "L").unwrap();
-        registry.add_base("time", "T").unwrap();
+        let length = registry.add_base("length", Some("L")).unwrap();
+        registry.add_base("time", Some("T")).unwrap();
         let velocity = registry
             .add_derived_expr("velocity", "length / time")
             .unwrap();
