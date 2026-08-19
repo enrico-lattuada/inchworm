@@ -42,6 +42,7 @@ mod tests {
         assert_eq!(removed.unwrap(), length, "removed should be length");
     }
 
+    #[cfg(feature = "toml")]
     #[test]
     fn standard_registry_is_usable_end_to_end() {
         let registry = DimRegistry::standard();

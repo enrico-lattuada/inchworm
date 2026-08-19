@@ -28,6 +28,7 @@ mod dimension;
 mod error;
 mod exp;
 mod form;
+#[cfg(feature = "toml")]
 mod graph;
 mod linalg;
 mod parser;

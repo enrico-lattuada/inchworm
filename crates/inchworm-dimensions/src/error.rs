@@ -39,6 +39,7 @@ pub enum DimensionError {
     #[error("zero denominator in exponent")]
     ZeroDenominator,
 
+    #[cfg(feature = "toml")]
     #[error("invalid definition file: {0}")]
     DefinitionFile(String),
 

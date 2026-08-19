@@ -1,3 +1,5 @@
+#![cfg(feature = "toml")]
+
 mod commons;
 
 #[cfg(test)]

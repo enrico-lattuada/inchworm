@@ -65,6 +65,7 @@ pub fn errors_match(actual: &DimensionError, expected: &DimensionError) -> bool 
                     signature: expected_signature,
                 },
             ) => name == expected_name && signature == expected_signature,
+            #[cfg(feature = "toml")]
             (DimensionError::DefinitionFile(src), DimensionError::DefinitionFile(expected_src)) => {
                 src == expected_src
             }

@@ -1035,6 +1035,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "toml")]
     mod load_toml_str {
         use super::*;
 
@@ -1071,6 +1072,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "toml")]
     mod load_toml_file {
         use super::*;
         use std::io::Write;
@@ -1103,6 +1105,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "toml")]
     mod from_toml_str {
         use super::*;
 
@@ -1141,6 +1144,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "toml")]
     mod from_toml_file {
         use super::*;
         use std::io::Write;

@@ -1,3 +1,5 @@
+#![cfg(feature = "toml")]
+
 #[cfg(test)]
 mod tests {
     use inchworm_dimensions::{Compatibility, DimRegistry, Dimension};
