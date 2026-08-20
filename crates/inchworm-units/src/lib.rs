@@ -1,14 +1,11 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! # inchworm-units
+//!
+//! Named units built on inchworm-dimensions: unit atoms (meter, degree,
+//! celsius) and Unit values (reduced multisets of atom/rational-power
+//! factors with cached dimension and scale-to-coherent-base). No
+//! magnitudes (see inchworm-quantities).
+#![forbid(unsafe_code)]
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod atom;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use atom::{UnitId, UnitRegistryId};
