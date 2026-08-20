@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/inchworm-dimensions"]
+members = ["crates/inchworm-dimensions", "crates/inchworm-units"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,6 +11,7 @@ repository = "https://github.com/enrico-lattuada/inchworm"
 
 [workspace.dependencies]
 inchworm-dimensions = { version = "0.1.0", path = "crates/inchworm-dimensions", default-features = false }
+inchworm-units = { version = "0.1.0", path = "crates/inchworm-units", default-features = false }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 smallvec = "1"
