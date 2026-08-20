@@ -87,7 +87,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn new() {
+        fn next() {
             assert_ne!(UnitId::next(), UnitId::next());
         }
     }
@@ -96,7 +96,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn new() {
+        fn next() {
             assert_ne!(UnitRegistryId::next(), UnitRegistryId::next());
         }
     }
