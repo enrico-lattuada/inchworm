@@ -36,7 +36,7 @@ const MAX_INLINE_FACTORS: usize = 4;
 /// assert!(!length.factors().is_empty());
 /// assert_eq!(length.factors().to_string(), "length");
 ///
-/// let squared = length.pow(Exp::int(2).unwrap()).unwrap();
+/// let squared = length.pow(Exp::int(2)).unwrap();
 /// assert_eq!(squared.factors().to_string(), "length^2");
 /// ```
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -462,7 +462,7 @@ mod tests {
 
         #[test]
         fn omits_unit_exp() {
-            let exp = Exp::int(1).unwrap();
+            let exp = Exp::ONE;
             let atom_data = AtomData {
                 id: AtomId::raw(0),
                 registry_id: RegistryId::raw(0),
@@ -476,7 +476,7 @@ mod tests {
 
         #[test]
         fn integer_nonunit_exp() {
-            let exp = Exp::int(3).unwrap();
+            let exp = Exp::int(3);
             let atom_data = AtomData {
                 id: AtomId::raw(0),
                 registry_id: RegistryId::raw(0),
@@ -490,7 +490,7 @@ mod tests {
 
         #[test]
         fn negative_integer_nonunit_exp() {
-            let exp = Exp::int(-3).unwrap();
+            let exp = Exp::int(-3);
             let atom_data = AtomData {
                 id: AtomId::raw(0),
                 registry_id: RegistryId::raw(0),

@@ -265,7 +265,7 @@ impl<'a> Parser<'a> {
             let den = self.expect_number()?;
             Exp::new(num, den)
         } else {
-            Exp::int(num)
+            Ok(Exp::int(num))
         }
     }
 

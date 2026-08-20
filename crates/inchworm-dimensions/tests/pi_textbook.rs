@@ -38,7 +38,7 @@ mod tests {
         let expected = PiAnalysis {
             rank: 3,
             groups: vec![PiGroup {
-                exponents: vec![Exp::ONE, Exp::ONE, Exp::ONE, Exp::int(-1).unwrap()],
+                exponents: vec![Exp::ONE, Exp::ONE, Exp::ONE, Exp::int(-1)],
             }],
         };
         assert_eq!(pi_analysis, expected);
@@ -76,12 +76,7 @@ mod tests {
         let expected = PiAnalysis {
             rank: 3,
             groups: vec![PiGroup {
-                exponents: vec![
-                    Exp::int(2).unwrap(),
-                    Exp::int(-1).unwrap(),
-                    Exp::ONE,
-                    Exp::ZERO,
-                ],
+                exponents: vec![Exp::int(2), Exp::int(-1), Exp::ONE, Exp::ZERO],
             }],
         };
         assert_eq!(pi_analysis, expected);
@@ -115,11 +110,7 @@ mod tests {
         let expected = PiAnalysis {
             rank: 2,
             groups: vec![PiGroup {
-                exponents: vec![
-                    Exp::int(2).unwrap(),
-                    Exp::int(-1).unwrap(),
-                    Exp::int(-1).unwrap(),
-                ],
+                exponents: vec![Exp::int(2), Exp::int(-1), Exp::int(-1)],
             }],
         };
         assert_eq!(pi_analysis, expected);

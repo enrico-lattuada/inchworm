@@ -27,7 +27,8 @@ impl Exp {
     /// # Errors
     ///
     /// Returns [`DimensionError::ZeroDenominator`] if the denominator is zero.
-    /// Returns [`DimensionError::ExponentOverflow`] if either `num` or `den` is `i64::MIN`.
+    /// Returns [`DimensionError::ExponentOverflow`] if reducing to lowest terms and
+    /// normalizing the sign would overflow [`i64`].
     ///
     /// # Examples
     /// ```
@@ -40,36 +41,20 @@ impl Exp {
         if den == 0 {
             return Err(DimensionError::ZeroDenominator);
         }
-        if num == i64::MIN || den == i64::MIN {
-            return Err(DimensionError::ExponentOverflow);
-        }
-        let gcd = gcd(num.unsigned_abs(), den.unsigned_abs()) as i64;
-        let den_sign = if den < 0 { -1 } else { 1 };
-        let exp = Self {
-            num: den_sign * num / gcd,
-            den: den_sign * den / gcd,
-        };
-        Ok(exp)
+        Self::new_from_i128(i128::from(num), i128::from(den))
     }
 
     /// Constructs a new integer exponent.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`DimensionError::ExponentOverflow`] if `n` is `i64::MIN`.
     ///
     /// # Examples
     /// ```
     /// use inchworm_dimensions::Exp;
     ///
-    /// let exp = Exp::int(2).unwrap();
+    /// let exp = Exp::int(2);
     /// assert_eq!(Exp::new(4, 2).unwrap(), exp);
     /// ```
-    pub fn int(n: i64) -> Result<Self, DimensionError> {
-        if n == i64::MIN {
-            return Err(DimensionError::ExponentOverflow);
-        }
-        Ok(Self { num: n, den: 1 })
+    pub const fn int(n: i64) -> Self {
+        Self { num: n, den: 1 }
     }
 
     /// The numerator of the rational exponent.
@@ -98,6 +83,12 @@ impl Exp {
     }
 }
 
+impl From<i64> for Exp {
+    fn from(value: i64) -> Self {
+        Self::int(value)
+    }
+}
+
 // ---- algebra ----
 impl Exp {
     fn new_from_i128(num: i128, den: i128) -> Result<Self, DimensionError> {
@@ -111,9 +102,9 @@ impl Exp {
         let den_sign = if den < 0 { -1 } else { 1 };
         let new_num = den_sign * num / gcd;
         let new_den = den_sign * den / gcd;
-        if new_num <= i128::from(i64::MIN)
+        if new_num < i128::from(i64::MIN)
             || new_num > i128::from(i64::MAX)
-            || new_den <= i128::from(i64::MIN)
+            || new_den < i128::from(i64::MIN)
             || new_den > i128::from(i64::MAX)
         {
             return Err(DimensionError::ExponentOverflow);
@@ -143,7 +134,7 @@ impl Exp {
     ///
     /// let exp = Exp::new(1, 4).unwrap();
     /// let rhs = Exp::new(3, 4).unwrap();
-    /// assert_eq!(exp.checked_add(rhs).unwrap(), Exp::int(1).unwrap());
+    /// assert_eq!(exp.checked_add(rhs).unwrap(), Exp::int(1));
     ///
     /// let overflowing_rhs = Exp::new(i64::MAX, 1).unwrap();
     /// assert!(matches!(exp.checked_add(overflowing_rhs), Err(DimensionError::ExponentOverflow)))
@@ -187,7 +178,7 @@ impl Exp {
     ///
     /// Returns [`DimensionError::ExponentOverflow`] if overflow occurs in `-self`
     pub fn checked_neg(self) -> Result<Self, DimensionError> {
-        self.checked_mul(Self::int(-1)?)
+        self.checked_mul(Self::int(-1))
     }
 
     /// Checked exponent subtraction.
@@ -204,6 +195,7 @@ impl Exp {
     /// # Errors
     ///
     /// Returns [`DimensionError::ZeroDenominator`] if the resulting denominator is zero.
+    /// Returns [`DimensionError::ExponentOverflow`] if reciprocating would overflow [`i64`].
     pub fn checked_recip(self) -> Result<Self, DimensionError> {
         Self::new(self.den, self.num)
     }
@@ -252,7 +244,8 @@ mod tests {
                 ((-18, -24), (3, 4)),
                 ((-7, 3), (-7, 3)),
                 ((i64::MAX, 1), (i64::MAX, 1)),
-                ((i64::MIN + 1, 1), (i64::MIN + 1, 1)),
+                ((i64::MIN, 1), (i64::MIN, 1)),
+                ((-1, i64::MIN + 1), (1, i64::MAX)),
             ];
             for (input, expected) in cases {
                 let exp = Exp::new(input.0, input.1).unwrap();
@@ -274,7 +267,7 @@ mod tests {
 
         #[test]
         fn err_on_exponent_overflow() {
-            let cases = [(i64::MIN, 1), (1, i64::MIN)];
+            let cases = [(i64::MIN, -1), (1, i64::MIN)];
             for case in cases {
                 assert!(errors_match(
                     &Exp::new(case.0, case.1).unwrap_err(),
@@ -289,15 +282,26 @@ mod tests {
 
         #[test]
         fn basic() {
-            assert_eq!(Exp::int(3).unwrap(), Exp { num: 3, den: 1 });
+            assert_eq!(Exp::int(3), Exp { num: 3, den: 1 });
         }
 
         #[test]
         fn err_on_exponent_overflow() {
             assert!(errors_match(
-                &Exp::int(i64::MIN).unwrap_err(),
+                &Exp::int(i64::MIN).checked_neg().unwrap_err(),
                 &DimensionError::ExponentOverflow
             ));
+        }
+    }
+
+    mod from_i64 {
+        use super::*;
+
+        #[test]
+        fn matches_int() {
+            for n in [0, 3, -4, i64::MAX, i64::MIN] {
+                assert_eq!(Exp::from(n), Exp::int(n));
+            }
         }
     }
 
@@ -319,7 +323,7 @@ mod tests {
     fn is_int() {
         assert!(Exp::ONE.is_int());
         assert!(Exp::ZERO.is_int());
-        assert!(Exp::int(4).unwrap().is_int());
+        assert!(Exp::int(4).is_int());
         assert!(Exp::new(6, 2).unwrap().is_int());
         assert!(!Exp::new(6, 4).unwrap().is_int());
     }
@@ -340,6 +344,7 @@ mod tests {
                 ((-7, 3), (-7, 3), (49, 9)),
                 ((i64::MAX, 2), (2, i64::MAX), (1, 1)),
                 ((i64::MIN + 1, 3), (-3, i64::MAX), (1, 1)),
+                ((i64::MIN / 2, 1), (2, 1), (i64::MIN, 1)),
             ];
             for (lhs, rhs, expected) in cases {
                 let lhs_exp = Exp {
@@ -364,7 +369,7 @@ mod tests {
                 ((i64::MAX, 1), (2, 1)),
                 ((i64::MIN + 1, 1), (2, 1)),
                 (((i64::MAX - 1) / 2 + 1, 1), (2, 1)),
-                ((i64::MIN / 2, 1), (2, 1)),
+                ((i64::MIN / 2 - 1, 1), (2, 1)),
                 ((1, i64::MAX), (1, 2)),
                 ((1, i64::MIN + 1), (1, 2)),
                 ((1, (i64::MAX - 1) / 2 + 1), (1, 2)),
@@ -430,9 +435,9 @@ mod tests {
         fn err_on_exponent_overflow() {
             let cases = [
                 ((i64::MAX, 1), (1, 1)),
-                ((i64::MIN + 1, 1), (-1, 1)),
+                ((i64::MIN, 1), (-1, 1)),
                 ((1, i64::MAX), (1, 1)),
-                ((1, i64::MIN + 1), (-1, 1)),
+                ((1, i64::MIN), (-1, 1)),
             ];
             for (lhs, rhs) in cases {
                 let lhs_exp = Exp {
@@ -485,7 +490,7 @@ mod tests {
 
         #[test]
         fn propagates_exponent_overflow_error() {
-            let exp = Exp::int((i64::MAX - 1) / 2 + 1).unwrap();
+            let exp = Exp::int((i64::MAX - 1) / 2 + 1);
             let err = exp.checked_sub(exp.checked_neg().unwrap()).unwrap_err();
             let expected_err = DimensionError::ExponentOverflow;
             assert!(errors_match(&err, &expected_err));
@@ -508,6 +513,13 @@ mod tests {
             let err = exp.checked_recip().unwrap_err();
             let expected_err = DimensionError::ZeroDenominator;
             assert!(errors_match(&err, &expected_err))
+        }
+
+        #[test]
+        fn propagates_exponent_overflow_error() {
+            let err = Exp::int(i64::MIN).checked_recip().unwrap_err();
+            let expected_err = DimensionError::ExponentOverflow;
+            assert!(errors_match(&err, &expected_err));
         }
     }
 }

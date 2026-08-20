@@ -57,7 +57,7 @@ pub enum DimensionError {
     },
 
     /// Exponent arithmetic (addition, multiplication, negation, or scaling)
-    /// would overflow, or an operand is [`i64::MIN`].
+    /// would overflow [`i64`].
     #[error("exponent arithmetic overflow")]
     ExponentOverflow,
 

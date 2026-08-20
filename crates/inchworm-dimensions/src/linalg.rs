@@ -257,12 +257,7 @@ mod tests {
                 },
             ];
             let (matrix, atom_ids) = RatMatrix::from_dims(&dims, true).unwrap();
-            let expected_data = vec![
-                Exp::ONE,
-                Exp::ONE,
-                Exp::int(-1).unwrap(),
-                Exp::int(-2).unwrap(),
-            ];
+            let expected_data = vec![Exp::ONE, Exp::ONE, Exp::int(-1), Exp::int(-2)];
             let expected_matrix = RatMatrix {
                 rows: 2,
                 cols: 2,
@@ -333,18 +328,8 @@ mod tests {
                 },
             ];
             let (matrix, atom_ids) = RatMatrix::from_dims(&dims, true).unwrap();
-            let mut data = vec![
-                Exp::int(-3).unwrap(),
-                Exp::ONE,
-                Exp::ONE,
-                Exp::int(-1).unwrap(),
-            ];
-            data.extend([
-                Exp::ZERO,
-                Exp::int(-1).unwrap(),
-                Exp::ZERO,
-                Exp::int(-1).unwrap(),
-            ]);
+            let mut data = vec![Exp::int(-3), Exp::ONE, Exp::ONE, Exp::int(-1)];
+            data.extend([Exp::ZERO, Exp::int(-1), Exp::ZERO, Exp::int(-1)]);
             data.extend([Exp::ONE, Exp::ZERO, Exp::ZERO, Exp::ONE]);
             let expected_matrix = RatMatrix::new(3, 4, data);
             assert_eq!(matrix, expected_matrix);
@@ -462,7 +447,7 @@ mod tests {
         #[test]
         fn swaps_matrix_rows() {
             let (rows, cols) = (3, 4);
-            let data = (0..3 * 4).map(|e| Exp::int(e).unwrap()).collect();
+            let data = (0..3 * 4).map(Exp::int).collect();
             let mut matrix = RatMatrix { rows, cols, data };
             let row0 = matrix.data[0..matrix.cols].to_owned();
             let row1 = matrix.data[matrix.cols..2 * matrix.cols].to_owned();
@@ -495,7 +480,7 @@ mod tests {
             let (rows, cols) = (3, 4);
             let data = [-3, 1, 1, -1, 0, -1, 0, -1, 1, 0, 0, 1]
                 .iter()
-                .map(|&e| Exp::int(e).unwrap())
+                .map(|&e| Exp::int(e))
                 .collect();
             let mut matrix = RatMatrix { rows, cols, data };
             // Pivot columns are [0,1,2]
@@ -504,7 +489,7 @@ mod tests {
             assert_eq!(pivot_cols, vec![0, 1, 2]);
             let rref_data: Vec<Exp> = [1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1]
                 .iter()
-                .map(|&e| Exp::int(e).unwrap())
+                .map(|&e| Exp::int(e))
                 .collect();
             assert_eq!(matrix.data, rref_data);
         }
@@ -512,51 +497,39 @@ mod tests {
         #[test]
         fn swaps_rows_when_pivot_candidate_is_below() {
             let (rows, cols) = (2, 2);
-            let data = [0, 1, 1, 0].iter().map(|&e| Exp::int(e).unwrap()).collect();
+            let data = [0, 1, 1, 0].iter().map(|&e| Exp::int(e)).collect();
             let mut matrix = RatMatrix { rows, cols, data };
             // Pivot columns are [0,1]
             // RREF is [[1,0],[0,1]]
             let pivot_cols = matrix.rref().unwrap();
             assert_eq!(pivot_cols, vec![0, 1]);
-            let rref_data: Vec<Exp> = [1, 0, 0, 1].iter().map(|&e| Exp::int(e).unwrap()).collect();
+            let rref_data: Vec<Exp> = [1, 0, 0, 1].iter().map(|&e| Exp::int(e)).collect();
             assert_eq!(matrix.data, rref_data);
         }
 
         #[test]
         fn identifies_free_column_in_the_middle() {
             let (rows, cols) = (2, 3);
-            let data = [1, 0, 2, 0, 0, 3]
-                .iter()
-                .map(|&e| Exp::int(e).unwrap())
-                .collect();
+            let data = [1, 0, 2, 0, 0, 3].iter().map(|&e| Exp::int(e)).collect();
             let mut matrix = RatMatrix { rows, cols, data };
             // Pivot columns are [0,2]
             // RREF is [[1,0,0],[0,0,1]]
             let pivot_cols = matrix.rref().unwrap();
             assert_eq!(pivot_cols, vec![0, 2]);
-            let rref_data: Vec<Exp> = [1, 0, 0, 0, 0, 1]
-                .iter()
-                .map(|&e| Exp::int(e).unwrap())
-                .collect();
+            let rref_data: Vec<Exp> = [1, 0, 0, 0, 0, 1].iter().map(|&e| Exp::int(e)).collect();
             assert_eq!(matrix.data, rref_data);
         }
 
         #[test]
         fn reduces_linearly_dependent_row_to_zero() {
             let (rows, cols) = (3, 2);
-            let data = [1, 2, 3, 4, 2, 4]
-                .iter()
-                .map(|&e| Exp::int(e).unwrap())
-                .collect();
+            let data = [1, 2, 3, 4, 2, 4].iter().map(|&e| Exp::int(e)).collect();
             let mut matrix = RatMatrix { rows, cols, data };
             // Pivot columns are [0,1]
             // RREF is [[1,0],[0,1],[0,0]]
             let pivot_cols = matrix.rref().unwrap();
             assert_eq!(pivot_cols, vec![0, 1]);
-            let rref_data: Vec<Exp> = [1, 0, 0, 1, 0, 0]
-                .iter()
-                .map(|&e| Exp::int(e).unwrap())
-                .collect();
+            let rref_data: Vec<Exp> = [1, 0, 0, 1, 0, 0].iter().map(|&e| Exp::int(e)).collect();
             assert_eq!(matrix.data, rref_data);
         }
 
@@ -565,7 +538,7 @@ mod tests {
             let (rows, cols) = (2, 2);
             let data = [1, i64::MAX, 1, i64::MIN + 1]
                 .iter()
-                .map(|&e| Exp::int(e).unwrap())
+                .map(|&e| Exp::int(e))
                 .collect();
             let mut matrix = RatMatrix { rows, cols, data };
             let err = matrix.rref().unwrap_err();
@@ -589,24 +562,20 @@ mod tests {
             let (rows, cols) = (3, 4);
             let data: Vec<Exp> = [1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1]
                 .iter()
-                .map(|&e| Exp::int(e).unwrap())
+                .map(|&e| Exp::int(e))
                 .collect();
             let matrix = RatMatrix { rows, cols, data };
             // Nullspace is: [[-1,-1,-1,1]]
             let nullspace = matrix.nullspace().unwrap();
-            let expected_nullspace: Vec<Vec<Exp>> = vec![
-                [-1, -1, -1, 1]
-                    .iter()
-                    .map(|&e| Exp::int(e).unwrap())
-                    .collect(),
-            ];
+            let expected_nullspace: Vec<Vec<Exp>> =
+                vec![[-1, -1, -1, 1].iter().map(|&e| Exp::int(e)).collect()];
             assert_eq!(nullspace, expected_nullspace);
         }
 
         #[test]
         fn returns_empty_nullspace_for_full_rank_matrix() {
             let (rows, cols) = (2, 2);
-            let data = [1, 0, 0, 1].iter().map(|&e| Exp::int(e).unwrap()).collect();
+            let data = [1, 0, 0, 1].iter().map(|&e| Exp::int(e)).collect();
             let matrix = RatMatrix { rows, cols, data };
             let nullspace = matrix.nullspace().unwrap();
             assert!(nullspace.is_empty());
@@ -628,13 +597,13 @@ mod tests {
         #[test]
         fn builds_one_basis_vector_per_free_column() {
             let (rows, cols) = (1, 4);
-            let data: Vec<Exp> = [1, 2, 3, 4].iter().map(|&e| Exp::int(e).unwrap()).collect();
+            let data: Vec<Exp> = [1, 2, 3, 4].iter().map(|&e| Exp::int(e)).collect();
             let matrix = RatMatrix { rows, cols, data };
             let nullspace = matrix.nullspace().unwrap();
             let expected_nullspace = vec![
-                vec![Exp::int(-2).unwrap(), Exp::ONE, Exp::ZERO, Exp::ZERO],
-                vec![Exp::int(-3).unwrap(), Exp::ZERO, Exp::ONE, Exp::ZERO],
-                vec![Exp::int(-4).unwrap(), Exp::ZERO, Exp::ZERO, Exp::ONE],
+                vec![Exp::int(-2), Exp::ONE, Exp::ZERO, Exp::ZERO],
+                vec![Exp::int(-3), Exp::ZERO, Exp::ONE, Exp::ZERO],
+                vec![Exp::int(-4), Exp::ZERO, Exp::ZERO, Exp::ONE],
             ];
             assert_eq!(nullspace, expected_nullspace);
         }
@@ -642,10 +611,7 @@ mod tests {
         #[test]
         fn handles_free_column_between_two_pivots() {
             let (rows, cols) = (2, 3);
-            let data: Vec<Exp> = [1, 0, 0, 0, 0, 1]
-                .iter()
-                .map(|&e| Exp::int(e).unwrap())
-                .collect();
+            let data: Vec<Exp> = [1, 0, 0, 0, 0, 1].iter().map(|&e| Exp::int(e)).collect();
             let matrix = RatMatrix { rows, cols, data };
             let nullspace = matrix.nullspace().unwrap();
             let expected_nullspace = vec![vec![Exp::ZERO, Exp::ONE, Exp::ZERO]];

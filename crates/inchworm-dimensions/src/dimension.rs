@@ -446,7 +446,7 @@ mod tests {
         fn single_atom_with_non_unit_exponent_is_not_named() {
             let mut registry = DimRegistry::new("test-reg");
             let length = registry.add_base("length", Some("L")).unwrap();
-            let area = length.pow(Exp::int(2).unwrap()).unwrap();
+            let area = length.pow(Exp::int(2)).unwrap();
             assert!(!area.is_named());
             assert!(area.name().is_none());
             assert!(area.symbol().is_none());
@@ -873,7 +873,7 @@ mod tests {
                 canonical,
             };
             assert_exactly_eq(
-                &dimension.pow(Exp::int(-1).unwrap()).unwrap(),
+                &dimension.pow(Exp::int(-1)).unwrap(),
                 &dimension.recip().unwrap(),
             );
         }

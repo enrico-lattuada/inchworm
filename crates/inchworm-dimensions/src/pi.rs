@@ -73,7 +73,7 @@ fn normalize(exponents: Vec<Exp>) -> Result<Vec<Exp>, DimensionError> {
         }
         lcm_den = candidate as i64;
     }
-    let lcm = Exp::int(lcm_den)?;
+    let lcm = Exp::int(lcm_den);
     // Scale the exponents by lcm
     let scaled = exponents
         .into_iter()
@@ -137,11 +137,7 @@ mod tests {
 
         #[test]
         fn leaves_already_normalized_vector_unchanged() {
-            let exponents = vec![
-                Exp::int(2).unwrap(),
-                Exp::int(-1).unwrap(),
-                Exp::int(3).unwrap(),
-            ];
+            let exponents = vec![Exp::int(2), Exp::int(-1), Exp::int(3)];
             let normalized = normalize(exponents.clone()).unwrap();
             assert_eq!(normalized, exponents);
         }
@@ -150,28 +146,23 @@ mod tests {
         fn clears_fractional_denominators_via_lcm() {
             let exponents = vec![Exp::new(1, 2).unwrap(), Exp::new(1, 3).unwrap()];
             let normalized = normalize(exponents).unwrap();
-            let expected = vec![Exp::int(3).unwrap(), Exp::int(2).unwrap()];
+            let expected = vec![Exp::int(3), Exp::int(2)];
             assert_eq!(normalized, expected);
         }
 
         #[test]
         fn negates_when_leading_nonzero_is_negative() {
-            let exponents = vec![
-                Exp::int(-1).unwrap(),
-                Exp::int(-1).unwrap(),
-                Exp::int(-1).unwrap(),
-                Exp::ONE,
-            ];
+            let exponents = vec![Exp::int(-1), Exp::int(-1), Exp::int(-1), Exp::ONE];
             let normalized = normalize(exponents).unwrap();
-            let expected = vec![Exp::ONE, Exp::ONE, Exp::ONE, Exp::int(-1).unwrap()];
+            let expected = vec![Exp::ONE, Exp::ONE, Exp::ONE, Exp::int(-1)];
             assert_eq!(normalized, expected);
         }
 
         #[test]
         fn skips_leading_zeros_when_finding_sign() {
-            let exponents = vec![Exp::ZERO, Exp::int(-2).unwrap(), Exp::ONE];
+            let exponents = vec![Exp::ZERO, Exp::int(-2), Exp::ONE];
             let normalized = normalize(exponents).unwrap();
-            let expected = vec![Exp::ZERO, Exp::int(2).unwrap(), Exp::int(-1).unwrap()];
+            let expected = vec![Exp::ZERO, Exp::int(2), Exp::int(-1)];
             assert_eq!(normalized, expected);
         }
 
@@ -186,7 +177,7 @@ mod tests {
 
         #[test]
         fn propagates_overflow_from_scaling() {
-            let exponents = vec![Exp::int(2).unwrap(), Exp::new(1, i64::MAX).unwrap()];
+            let exponents = vec![Exp::int(2), Exp::new(1, i64::MAX).unwrap()];
             // LCM is i64::MAX, multiplication leads to 2 * i64::MAX
             let err = normalize(exponents).unwrap_err();
             let expected_err = DimensionError::ExponentOverflow;
@@ -256,7 +247,7 @@ mod tests {
             let expected = PiAnalysis {
                 rank: 3,
                 groups: vec![PiGroup {
-                    exponents: vec![Exp::ONE, Exp::ONE, Exp::ONE, Exp::int(-1).unwrap()],
+                    exponents: vec![Exp::ONE, Exp::ONE, Exp::ONE, Exp::int(-1)],
                 }],
             };
             assert_eq!(pi_analysis, expected);
@@ -293,15 +284,10 @@ mod tests {
             //   -1,  1, 0, 1 ]
             // (negated)
             let group1 = PiGroup {
-                exponents: vec![Exp::ONE, Exp::ONE, Exp::int(-1).unwrap(), Exp::ZERO],
+                exponents: vec![Exp::ONE, Exp::ONE, Exp::int(-1), Exp::ZERO],
             };
             let group2 = PiGroup {
-                exponents: vec![
-                    Exp::ONE,
-                    Exp::int(-1).unwrap(),
-                    Exp::ZERO,
-                    Exp::int(-1).unwrap(),
-                ],
+                exponents: vec![Exp::ONE, Exp::int(-1), Exp::ZERO, Exp::int(-1)],
             };
             let expected = PiAnalysis {
                 rank: 2,
