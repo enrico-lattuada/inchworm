@@ -82,6 +82,10 @@ impl Exp {
         self.den() == 1
     }
 
+    /// Returns a lossy floating-point approximation of this rational exponent.
+    ///
+    /// `num/den` values near [`i64::MAX`]/[`i64::MIN`] lose precision in the
+    /// conversion to `f64`.
     pub fn to_f64(&self) -> f64 {
         self.num() as f64 / self.den() as f64
     }
