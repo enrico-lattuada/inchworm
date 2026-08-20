@@ -7,5 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod atom;
+mod error;
 
 pub use atom::{UnitId, UnitRegistryId};
+pub use error::UnitError;
