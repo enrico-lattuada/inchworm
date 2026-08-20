@@ -13,6 +13,9 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum UnitError {
+    /// The underlying dimension algebra failed: incompatible dimensions,
+    /// exponent overflow, and so on.
+    /// See [`DimensionError`](inchworm_dimensions::DimensionError) for detail.
     #[error(transparent)]
     Dimension(#[from] inchworm_dimensions::DimensionError),
 }
