@@ -81,6 +81,10 @@ impl Exp {
     pub fn is_int(&self) -> bool {
         self.den() == 1
     }
+
+    pub fn to_f64(&self) -> f64 {
+        self.num() as f64 / self.den() as f64
+    }
 }
 
 impl From<i64> for Exp {
@@ -326,6 +330,13 @@ mod tests {
         assert!(Exp::int(4).is_int());
         assert!(Exp::new(6, 2).unwrap().is_int());
         assert!(!Exp::new(6, 4).unwrap().is_int());
+    }
+
+    #[test]
+    fn to_f64() {
+        assert_eq!(Exp::int(3).to_f64(), 3.0);
+        assert_eq!(Exp::new(1, 2).unwrap().to_f64(), 0.5);
+        assert_eq!(Exp::new(-3, 4).unwrap().to_f64(), -0.75);
     }
 
     mod checked_mul {
