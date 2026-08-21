@@ -1,13 +1,9 @@
-#[cfg(test)]
-use std::sync::Arc;
-
-#[cfg(test)]
 use crate::{
     AtomId, Dimension, DimensionError, Exp, RegistryId,
     atom::{Atom, AtomData, AtomKind},
 };
+use std::sync::Arc;
 
-#[cfg(test)]
 pub(crate) fn make_form_entry_in_registry(
     id: u64,
     num_den: (i64, i64),
@@ -25,12 +21,10 @@ pub(crate) fn make_form_entry_in_registry(
     (Arc::new(atom_data), exp)
 }
 
-#[cfg(test)]
 pub(crate) fn make_form_entry(id: u64, num_den: (i64, i64)) -> (Atom, Exp) {
     make_form_entry_in_registry(id, num_den, 0)
 }
 
-#[cfg(test)]
 /// Assert factors, signature, and canonical of two dimensions are equal.
 ///
 /// Caller must pass entries already sorted/reduced.
@@ -52,7 +46,6 @@ pub(crate) fn assert_exactly_eq(dimension: &Dimension, other_dimension: &Dimensi
     )
 }
 
-#[cfg(test)]
 pub(crate) fn errors_match(actual: &DimensionError, expected: &DimensionError) -> bool {
     if std::mem::discriminant(actual) == std::mem::discriminant(expected) {
         match (actual, expected) {
