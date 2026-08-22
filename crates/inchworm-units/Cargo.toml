@@ -13,6 +13,7 @@ toml = ["dep:serde", "dep:toml", "inchworm-dimensions/toml"]
 [dependencies]
 inchworm-dimensions = { workspace = true }
 serde = { workspace = true, optional = true }
+smallvec = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true, optional = true }
 

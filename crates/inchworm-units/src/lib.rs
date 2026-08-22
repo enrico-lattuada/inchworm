@@ -8,6 +8,10 @@
 
 mod atom;
 mod error;
+#[cfg(test)]
+mod test_utils;
+mod unit;
 
 pub use atom::{UnitId, UnitRegistryId};
 pub use error::UnitError;
+pub use unit::Unit;
