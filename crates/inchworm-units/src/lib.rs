@@ -8,6 +8,7 @@
 
 mod atom;
 mod error;
+mod prefix;
 mod registry;
 #[cfg(test)]
 mod test_utils;
