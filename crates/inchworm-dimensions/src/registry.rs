@@ -18,7 +18,7 @@ use crate::{
 #[cfg(feature = "toml")]
 use crate::loader::{extend_registry, load_registry};
 
-pub(crate) const DEFAULT_REGISTRY_VERSION: &str = "0.0.0";
+pub(crate) const DEFAULT_REGISTRY_VERSION: &str = "0";
 
 /// A mutable namespace and factory for named dimensions.
 ///
