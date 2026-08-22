@@ -110,6 +110,20 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                 },
             ) => name == expected_name && registry == expected_registry,
             (
+                UnitError::UnknownPrefix { name, registry },
+                UnitError::UnknownPrefix {
+                    name: expected_name,
+                    registry: expected_registry,
+                },
+            ) => name == expected_name && registry == expected_registry,
+            (
+                UnitError::NotPrefixable { name, registry },
+                UnitError::NotPrefixable {
+                    name: expected_name,
+                    registry: expected_registry,
+                },
+            ) => name == expected_name && registry == expected_registry,
+            (
                 UnitError::CrossRegistry { left, right },
                 UnitError::CrossRegistry {
                     left: expected_left,

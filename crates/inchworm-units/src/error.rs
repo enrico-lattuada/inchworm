@@ -15,9 +15,20 @@ use crate::atom::UnitRegistryId;
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum UnitError {
-    /// `name` is already registered in `registry`.
-    #[error("dimension name `{name}` is already defined in registry `{registry}`")]
+    /// `name` is already registered in `registry`, either as a unit name or as
+    /// a prefix name.
+    #[error("name `{name}` is already defined in registry `{registry}`")]
     DuplicateName { name: String, registry: String },
+
+    /// `name` isn't a registered prefix in `registry`.
+    #[error("unknown prefix `{name}` in registry `{registry}`")]
+    UnknownPrefix { name: String, registry: String },
+
+    /// `name` cannot be combined with a prefix: its underlying unit was
+    /// registered as non-prefixable (anchored/affine units, for instance, are
+    /// never prefixable).
+    #[error("unit `{name}` in registry `{registry}` is not prefixable")]
+    NotPrefixable { name: String, registry: String },
 
     /// The two operands' atoms were minted by different `UnitRegistry`
     /// instances.
