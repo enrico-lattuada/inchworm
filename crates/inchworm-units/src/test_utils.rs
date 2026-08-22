@@ -102,7 +102,13 @@ fn dimension_errors_match(actual: &DimensionError, expected: &DimensionError) ->
 pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
     if std::mem::discriminant(actual) == std::mem::discriminant(expected) {
         match (actual, expected) {
-            (UnitError::Dimension(a), UnitError::Dimension(b)) => dimension_errors_match(a, b),
+            (
+                UnitError::DuplicateName { name, registry },
+                UnitError::DuplicateName {
+                    name: expected_name,
+                    registry: expected_registry,
+                },
+            ) => name == expected_name && registry == expected_registry,
             (
                 UnitError::CrossRegistry { left, right },
                 UnitError::CrossRegistry {
@@ -110,6 +116,7 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                     right: expected_right,
                 },
             ) => left == expected_left && right == expected_right,
+            (UnitError::Dimension(a), UnitError::Dimension(b)) => dimension_errors_match(a, b),
             _ => false,
         }
     } else {

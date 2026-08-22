@@ -15,6 +15,10 @@ use crate::atom::UnitRegistryId;
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum UnitError {
+    /// `name` is already registered in `registry`.
+    #[error("dimension name `{name}` is already defined in registry `{registry}`")]
+    DuplicateName { name: String, registry: String },
+
     /// The two operands' atoms were minted by different `UnitRegistry`
     /// instances.
     #[error("cannot mix units from registry `{left:?}` and registry `{right:?}`")]

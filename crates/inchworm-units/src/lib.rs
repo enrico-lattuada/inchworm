@@ -8,10 +8,12 @@
 
 mod atom;
 mod error;
+mod registry;
 #[cfg(test)]
 mod test_utils;
 mod unit;
 
 pub use atom::{UnitId, UnitRegistryId};
 pub use error::UnitError;
+pub use registry::UnitRegistry;
 pub use unit::Unit;
