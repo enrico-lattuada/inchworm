@@ -76,6 +76,11 @@ impl Unit {
     pub(crate) fn registry_id(&self) -> Option<UnitRegistryId> {
         self.factors.first().map(|(atom, _)| atom.registry_id)
     }
+
+    /// The factors of this unit.
+    pub(crate) fn factors(&self) -> &[(Arc<UnitData>, Exp)] {
+        &self.factors
+    }
 }
 
 // ---- Algebra ----
