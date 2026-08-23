@@ -59,6 +59,12 @@ pub(crate) fn errors_match(actual: &DimensionError, expected: &DimensionError) -
                 },
             ) => name == expected_name && registry == expected_registry,
             (
+                DimensionError::InvalidName { name },
+                DimensionError::InvalidName {
+                    name: expected_name,
+                },
+            ) => name == expected_name,
+            (
                 DimensionError::CrossRegistry { left, right },
                 DimensionError::CrossRegistry {
                     left: expected_left,

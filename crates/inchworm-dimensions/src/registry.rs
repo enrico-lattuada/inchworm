@@ -12,7 +12,7 @@ use std::sync::Arc;
 use crate::{
     AtomId, Dimension, DimensionError, RegistryId,
     atom::{Atom, AtomData, AtomKind},
-    parser::parse_dim_expr,
+    parser::{is_valid_ident, parse_dim_expr},
 };
 
 #[cfg(feature = "toml")]
@@ -94,12 +94,16 @@ impl DimRegistry {
     ///
     /// # Errors
     ///
+    /// Returns [`DimensionError::InvalidName`] if `name` is not a valid dimension identifier.
     /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
     pub fn add_base(
         &mut self,
         name: &str,
         symbol: Option<&str>,
     ) -> Result<Dimension, DimensionError> {
+        if !is_valid_ident(name) {
+            return Err(DimensionError::InvalidName { name: name.into() });
+        }
         // Check name is not duplicated
         if self.atoms.contains_key(name) {
             return Err(DimensionError::DuplicateName {
@@ -126,6 +130,7 @@ impl DimRegistry {
     ///
     /// # Errors
     ///
+    /// Returns [`DimensionError::InvalidName`] if `name` is not a valid dimension identifier.
     /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
     /// Returns [`DimensionError::CrossRegistry`] if `definition` comes from a different registry.
     pub fn add_derived(
@@ -133,6 +138,9 @@ impl DimRegistry {
         name: &str,
         definition: &Dimension,
     ) -> Result<Dimension, DimensionError> {
+        if !is_valid_ident(name) {
+            return Err(DimensionError::InvalidName { name: name.into() });
+        }
         if self.atoms.contains_key(name) {
             return Err(DimensionError::DuplicateName {
                 name: name.into(),
@@ -168,6 +176,7 @@ impl DimRegistry {
     /// # Errors
     ///
     /// Returns [`DimensionError::UnknownDimension`] if `expr` contains a dimension unknown to the registry.
+    /// Returns [`DimensionError::InvalidName`] if `name` is not a valid dimension identifier.
     /// Returns [`DimensionError::Parse`] if `expr` cannot be correctly parsed.
     /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
     pub fn add_derived_expr(
@@ -186,6 +195,7 @@ impl DimRegistry {
     /// # Errors
     ///
     /// Returns [`DimensionError::NotDimensionless`] if `definition` does not have a dimensionless signature.
+    /// Returns [`DimensionError::InvalidName`] if `name` is not a valid dimension identifier.
     /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
     /// Returns [`DimensionError::CrossRegistry`] if `definition` comes from a different registry.
     pub fn add_dimensionless(
@@ -209,6 +219,7 @@ impl DimRegistry {
     ///
     /// Returns [`DimensionError::UnknownDimension`] if `expr` contains a dimension unknown to the registry.
     /// Returns [`DimensionError::Parse`] if `expr` cannot be correctly parsed.
+    /// Returns [`DimensionError::InvalidName`] if `name` is not a valid dimension identifier.
     /// Returns [`DimensionError::NotDimensionless`] if `definition` does not have a dimensionless signature.
     /// Returns [`DimensionError::DuplicateName`] if `name` is already present in the registry.
     pub fn add_dimensionless_expr(
@@ -227,11 +238,15 @@ impl DimRegistry {
     ///
     /// # Errors
     ///
+    /// Returns [`DimensionError::InvalidName`] if `name` is not a valid dimension identifier.
     /// Returns [`DimensionError::DuplicateName`] if `alias` is already taken, either as a canonical
     /// name or as an existing alias.
     /// Returns [`DimensionError::UnknownDimension`] if `target` is not a registered canonical name
     /// or alias.
     pub fn add_alias(&mut self, alias: &str, target: &str) -> Result<(), DimensionError> {
+        if !is_valid_ident(alias) {
+            return Err(DimensionError::InvalidName { name: alias.into() });
+        }
         if self.atoms.contains_key(alias) || self.aliases.contains_key(alias) {
             return Err(DimensionError::DuplicateName {
                 name: alias.into(),
@@ -455,6 +470,16 @@ mod tests {
                 Compatibility::Incompatible
             ));
         }
+
+        #[test]
+        fn rejects_invalid_name() {
+            let mut registry = DimRegistry::new("test_reg");
+            let err = registry.add_base("plane angle", None).unwrap_err();
+            let expected_err = DimensionError::InvalidName {
+                name: "plane angle".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
     }
 
     mod add_derived {
@@ -533,6 +558,20 @@ mod tests {
                     .is_ok()
             );
         }
+
+        #[test]
+        fn rejects_invalid_name() {
+            let mut registry = DimRegistry::new("test_reg");
+            let length = registry.add_base("length", None).unwrap();
+            let definition = &length.try_mul(&length).unwrap();
+            let err = registry
+                .add_derived("length squared", definition)
+                .unwrap_err();
+            let expected_err = DimensionError::InvalidName {
+                name: "length squared".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
     }
 
     mod add_derived_expr {
@@ -572,6 +611,19 @@ mod tests {
             };
             assert!(errors_match(&err, &expected_err));
         }
+
+        #[test]
+        fn propagates_invalid_name_error() {
+            let mut registry = DimRegistry::new("test-reg");
+            registry.add_base("length", Some("L")).unwrap();
+            let err = registry
+                .add_derived_expr("length squared", "length^2")
+                .unwrap_err();
+            let expected_err = DimensionError::InvalidName {
+                name: "length squared".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
     }
 
     mod add_dimensionless {
@@ -597,6 +649,18 @@ mod tests {
             let expected_err = DimensionError::NotDimensionless {
                 name: "distance".into(),
                 signature: "length".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_invalid_name() {
+            let mut registry = DimRegistry::new("test_reg");
+            let err = registry
+                .add_dimensionless("number of particles", &Dimension::dimensionless())
+                .unwrap_err();
+            let expected_err = DimensionError::InvalidName {
+                name: "number of particles".into(),
             };
             assert!(errors_match(&err, &expected_err));
         }
@@ -640,6 +704,18 @@ mod tests {
             let expected_err = DimensionError::UnknownDimension {
                 name: "nonexistent".into(),
                 registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn propagates_invalid_name_error() {
+            let mut registry = DimRegistry::new("test-reg");
+            let err = registry
+                .add_dimensionless_expr("number of particles", "1")
+                .unwrap_err();
+            let expected_err = DimensionError::InvalidName {
+                name: "number of particles".into(),
             };
             assert!(errors_match(&err, &expected_err));
         }
@@ -693,6 +769,16 @@ mod tests {
             let expected_err = DimensionError::UnknownDimension {
                 name: "a".into(),
                 registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_invalid_name() {
+            let mut registry = DimRegistry::new("test_reg");
+            let err = registry.add_alias("number of particles", "1").unwrap_err();
+            let expected_err = DimensionError::InvalidName {
+                name: "number of particles".into(),
             };
             assert!(errors_match(&err, &expected_err));
         }
@@ -1228,7 +1314,7 @@ mod tests {
                 &length * &time * &mass,
             ];
             for (i, definition) in definitions.iter().enumerate() {
-                let name = format!("{i}");
+                let name = format!("dimension_{i}");
                 registry.add_derived(&name, definition).unwrap();
                 let str_definition = definition.factors().to_string();
                 let parsed = registry.parse(&str_definition).unwrap();

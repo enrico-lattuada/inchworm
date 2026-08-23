@@ -21,6 +21,10 @@ pub enum DimensionError {
     #[error("dimension name `{name}` is already defined in registry `{registry}`")]
     DuplicateName { name: String, registry: String },
 
+    /// `name` is not a valid dimension identifier
+    #[error("dimension name `{name}` is not a valid identifier")]
+    InvalidName { name: String },
+
     /// `name` isn't a registered canonical name or alias in `registry`.
     #[error("unknown dimension `{name}` in registry `{registry}`")]
     UnknownDimension { name: String, registry: String },

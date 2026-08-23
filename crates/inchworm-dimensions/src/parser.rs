@@ -60,6 +60,19 @@ pub(crate) fn extract_idents(src: &str) -> Result<Vec<String>, DimensionError> {
     Ok(idents)
 }
 
+pub(crate) fn is_valid_ident(src: &str) -> bool {
+    let chars = src.char_indices().peekable();
+    let lexer = Lexer { src, chars };
+    let mut tokens = Vec::new();
+    for item in lexer {
+        match item {
+            Ok(spanned) => tokens.push(spanned.token),
+            Err(_) => return false,
+        }
+    }
+    matches!(tokens.as_slice(), [Token::Ident(_)])
+}
+
 #[derive(Debug, PartialEq)]
 enum Token {
     Ident(String), // IDENT
@@ -352,6 +365,55 @@ mod tests {
                 message: "".into(),
             };
             assert!(errors_match(&err, &expected_err));
+        }
+    }
+
+    mod is_valid_ident {
+        use super::*;
+
+        #[test]
+        fn accepts_simple_identifier() {
+            assert!(is_valid_ident("meter"));
+        }
+
+        #[test]
+        fn accepts_identifier_with_digits_and_underscore() {
+            assert!(is_valid_ident("plane_angle2"));
+        }
+
+        #[test]
+        fn accepts_leading_underscore() {
+            assert!(is_valid_ident("_private"));
+        }
+
+        #[test]
+        fn rejects_multi_word_name() {
+            assert!(!is_valid_ident("plane angle"));
+        }
+
+        #[test]
+        fn rejects_leading_digit() {
+            assert!(!is_valid_ident("2volts"));
+        }
+
+        #[test]
+        fn rejects_unsupported_character() {
+            assert!(!is_valid_ident("µmeter"));
+        }
+
+        #[test]
+        fn rejects_empty_string() {
+            assert!(!is_valid_ident(""));
+        }
+
+        #[test]
+        fn rejects_bare_number() {
+            assert!(!is_valid_ident("1"));
+        }
+
+        #[test]
+        fn rejects_lone_operator() {
+            assert!(!is_valid_ident("*"));
         }
     }
 }
