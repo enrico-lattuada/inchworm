@@ -1,7 +1,7 @@
 //! [`UnitRegistry`]: the mutable, instance-based namespace units are
 //! registered against.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 use inchworm_dimensions::{DimRegistry, Dimension, Exp};
 
@@ -27,9 +27,9 @@ pub struct UnitRegistry {
     /// Map name to atom.
     atoms: HashMap<Box<str>, Arc<UnitData>>,
     prefixes: HashMap<Box<str>, Prefix>,
-    prefixed: HashMap<UnitId, HashMap<Box<str>, Arc<UnitData>>>,
     by_symbol: HashMap<Box<str>, Box<str>>,
     prefix_by_symbol: HashMap<Box<str>, Box<str>>,
+    prefixed: RefCell<HashMap<UnitId, HashMap<Box<str>, Arc<UnitData>>>>,
 }
 
 impl UnitRegistry {
@@ -47,9 +47,9 @@ impl UnitRegistry {
             version: version.into(),
             atoms: HashMap::new(),
             prefixes: HashMap::new(),
-            prefixed: HashMap::new(),
             by_symbol: HashMap::new(),
             prefix_by_symbol: HashMap::new(),
+            prefixed: RefCell::new(HashMap::new()),
         }
     }
 
@@ -172,7 +172,7 @@ impl UnitRegistry {
     /// Returns [`UnitError::NotPrefixable`] if `base` is not prefixable.
     /// Propagates [`UnitError::Dimension`] from the underlying dimension algebra.
     pub(crate) fn prefixed_unit(
-        &mut self,
+        &self,
         prefix_name: &str,
         base: Arc<UnitData>,
     ) -> Result<Unit, UnitError> {
@@ -182,7 +182,7 @@ impl UnitRegistry {
                 registry: self.name().into(),
             });
         }
-        if let Some(prefixed) = self.prefixed.get(&base.id)
+        if let Some(prefixed) = self.prefixed.borrow().get(&base.id)
             && let Some(unit) = prefixed.get(prefix_name)
         {
             let atom = unit.clone();
@@ -221,6 +221,7 @@ impl UnitRegistry {
         };
         let atom = Arc::new(data);
         self.prefixed
+            .borrow_mut()
             .entry(base.id)
             .or_default()
             .insert(prefix_name.into(), atom.clone());
@@ -615,12 +616,8 @@ mod tests {
             registry.add_prefix("kilo", "k", 1e3).unwrap();
             let base = meter.factors().first().unwrap().clone().0;
             registry.prefixed_unit("kilo", base.clone()).unwrap();
-            let atom = registry
-                .prefixed
-                .get(&base.id)
-                .unwrap()
-                .get("kilo")
-                .unwrap();
+            let prefixed = registry.prefixed.borrow();
+            let atom = prefixed.get(&base.id).unwrap().get("kilo").unwrap();
             assert_eq!(atom.name, "kilometer".into());
             assert_eq!(atom.symbol, "km".into());
             assert_eq!(atom.conversion, ConversionKind::Linear { scale: 1000.0 });
