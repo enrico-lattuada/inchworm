@@ -3,6 +3,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use inchworm_dimensions::Dimension;
 
+use crate::prefix::Prefix;
+
 /// Process-unique identity, assigned from a global counter at registration.
 ///
 /// Never reused: removing and re-adding a name yields a *new* atom, so
@@ -116,6 +118,14 @@ pub(crate) struct UnitData {
     pub dimension: Dimension,
     /// How this atom's raw value relates to the coherent unit of `dimension`.
     pub conversion: ConversionKind,
+    /// `Some(..)` if this atom was lazily created by combining a [`Prefix`]
+    /// with a prefixable base atom (e.g. "km"); `None` for atoms registered
+    /// directly via [`UnitRegistry::add_unit`](crate::UnitRegistry::add_unit).
+    pub prefix: Option<Prefix>,
+    /// Whether this atom may be combined with a [`Prefix`] to lazily derive a
+    /// new atom. `false` for anchored conversions ([`ConversionKind::is_point`]),
+    /// and for atoms already produced by prefixing: prefixes don't stack.
+    pub prefixable: bool,
 }
 
 impl UnitData {

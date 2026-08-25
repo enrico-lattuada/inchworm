@@ -2,7 +2,7 @@ use inchworm_dimensions::{Dimension, DimensionError};
 use std::sync::Arc;
 
 use crate::{
-    UnitError, UnitId, UnitRegistryId,
+    Unit, UnitError, UnitId, UnitRegistryId,
     atom::{ConversionKind, UnitData},
 };
 
@@ -19,6 +19,8 @@ pub(crate) fn make_unit_atom(
         symbol: name.into(),
         dimension,
         conversion,
+        prefix: None,
+        prefixable: false,
     })
 }
 
@@ -116,6 +118,19 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                 },
             ) => name == expected_name && registry == expected_registry,
             (
+                UnitError::InvalidName { name },
+                UnitError::InvalidName {
+                    name: expected_name,
+                },
+            ) => name == expected_name,
+            (
+                UnitError::UnknownUnit { name, registry },
+                UnitError::UnknownUnit {
+                    name: expected_name,
+                    registry: expected_registry,
+                },
+            ) => name == expected_name && registry == expected_registry,
+            (
                 UnitError::UnknownPrefix { name, registry },
                 UnitError::UnknownPrefix {
                     name: expected_name,
@@ -136,10 +151,23 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                     right: expected_right,
                 },
             ) => left == expected_left && right == expected_right,
+            (
+                UnitError::Parse { offset, .. },
+                UnitError::Parse {
+                    offset: expected_offset,
+                    ..
+                },
+            ) => offset == expected_offset,
             (UnitError::Dimension(a), UnitError::Dimension(b)) => dimension_errors_match(a, b),
             _ => false,
         }
     } else {
         false
     }
+}
+
+pub(crate) fn units_match(actual: &Unit, expected: &Unit) -> bool {
+    actual.factors() == expected.factors()
+        && actual.dimension() == expected.dimension()
+        && actual.scale() == expected.scale()
 }

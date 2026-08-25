@@ -8,6 +8,8 @@ use inchworm_dimensions::{DimRegistry, Dimension, Exp};
 use crate::{
     Unit, UnitError, UnitId, UnitRegistryId,
     atom::{ConversionKind, UnitData},
+    parse::{is_valid_ident, parse_unit_expr},
+    prefix::Prefix,
 };
 
 pub(crate) const DEFAULT_REGISTRY_VERSION: &str = "0";
@@ -24,6 +26,8 @@ pub struct UnitRegistry {
     version: Box<str>,
     /// Map name to atom.
     atoms: HashMap<Box<str>, Arc<UnitData>>,
+    prefixes: HashMap<Box<str>, Prefix>,
+    prefixed: HashMap<UnitId, HashMap<Box<str>, Arc<UnitData>>>,
 }
 
 impl UnitRegistry {
@@ -40,6 +44,8 @@ impl UnitRegistry {
             name: name.into(),
             version: version.into(),
             atoms: HashMap::new(),
+            prefixes: HashMap::new(),
+            prefixed: HashMap::new(),
         }
     }
 
@@ -70,7 +76,11 @@ impl UnitRegistry {
     ///
     /// # Errors
     ///
+    /// Returns [`UnitError::InvalidName`] if `name` is not a valid identifier.
     /// Returns [`UnitError::DuplicateName`] if `name` is already present in the registry.
+    /// Returns [`UnitError::NotPrefixable`] if `prefixable` is `true` but the unit's
+    /// conversion is anchored (an affine or absolute-log conversion): those can never
+    /// be combined with a prefix.
     /// Propagates [`UnitError::Dimension`] from the underlying dimension algebra.
     pub fn add_unit(
         &mut self,
@@ -78,9 +88,20 @@ impl UnitRegistry {
         symbol: &str,
         dimension: Dimension,
         scale: f64,
+        prefixable: bool,
     ) -> Result<Unit, UnitError> {
+        if !is_valid_ident(name) {
+            return Err(UnitError::InvalidName { name: name.into() });
+        }
         if self.atoms.contains_key(name) {
             return Err(UnitError::DuplicateName {
+                name: name.into(),
+                registry: self.name().into(),
+            });
+        }
+        let conversion = ConversionKind::Linear { scale };
+        if conversion.is_point() && prefixable {
+            return Err(UnitError::NotPrefixable {
                 name: name.into(),
                 registry: self.name().into(),
             });
@@ -91,18 +112,135 @@ impl UnitRegistry {
             name: name.into(),
             symbol: symbol.into(),
             dimension,
-            conversion: ConversionKind::Linear { scale },
+            conversion,
+            prefix: None,
+            prefixable,
         };
         let atom = Arc::new(data);
         let unit = Unit::single(&atom, Exp::ONE)?;
         self.atoms.insert(name.into(), atom);
         Ok(unit)
     }
+
+    /// Add a prefix to the registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::InvalidName`] if `name` is not a valid identifier.
+    /// Returns [`UnitError::DuplicateName`] if `name` is already registered as
+    /// a prefix (or a unit) in this registry.
+    pub fn add_prefix(&mut self, name: &str, symbol: &str, factor: f64) -> Result<(), UnitError> {
+        if !is_valid_ident(name) {
+            return Err(UnitError::InvalidName { name: name.into() });
+        }
+        if self.prefixes.contains_key(name) || self.atoms.contains_key(name) {
+            return Err(UnitError::DuplicateName {
+                name: name.into(),
+                registry: self.name().into(),
+            });
+        }
+        let prefix = Prefix {
+            name: name.into(),
+            symbol: symbol.into(),
+            factor,
+        };
+        self.prefixes.insert(name.into(), prefix);
+        Ok(())
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`UnitError::UnknownPrefix`] if `prefix_name` is not registered.
+    /// Returns [`UnitError::NotPrefixable`] if `base` is not prefixable.
+    /// Propagates [`UnitError::Dimension`] from the underlying dimension algebra.
+    pub(crate) fn prefixed_unit(
+        &mut self,
+        prefix_name: &str,
+        base: Arc<UnitData>,
+    ) -> Result<Unit, UnitError> {
+        if !base.prefixable {
+            return Err(UnitError::NotPrefixable {
+                name: base.name.to_string(),
+                registry: self.name().into(),
+            });
+        }
+        if let Some(prefixed) = self.prefixed.get(&base.id)
+            && let Some(unit) = prefixed.get(prefix_name)
+        {
+            let atom = unit.clone();
+            return Unit::single(&atom, Exp::ONE);
+        }
+        let prefix =
+            self.prefixes
+                .get(prefix_name)
+                .cloned()
+                .ok_or_else(|| UnitError::UnknownPrefix {
+                    name: prefix_name.into(),
+                    registry: self.name().into(),
+                })?;
+        let conversion = match base.conversion {
+            ConversionKind::Linear { scale } => ConversionKind::Linear {
+                scale: scale * prefix.factor,
+            },
+            ConversionKind::LogRatio {
+                multiplier,
+                log_base,
+            } => ConversionKind::LogRatio {
+                multiplier: multiplier / prefix.factor,
+                log_base,
+            },
+            _ => unreachable!("point-like units should never reach this point."),
+        };
+        let data = UnitData {
+            id: UnitId::next(),
+            registry_id: self.id(),
+            name: format!("{}{}", prefix.name, base.name).into(),
+            symbol: format!("{}{}", prefix.symbol, base.symbol).into(),
+            dimension: base.dimension.clone(),
+            conversion,
+            prefix: Some(prefix),
+            prefixable: false,
+        };
+        let atom = Arc::new(data);
+        self.prefixed
+            .entry(base.id)
+            .or_default()
+            .insert(prefix_name.into(), atom.clone());
+        Unit::single(&atom, Exp::ONE)
+    }
+
+    /// Returns the [`Unit`] corresponding to `name`.
+    pub fn get(&self, name: &str) -> Option<Unit> {
+        self.atoms.get(name).map(|atom| {
+            Unit::single(atom, Exp::ONE).expect(
+                "pow(1) is an identity op and this atom already passed the same call in add_unit",
+            )
+        })
+    }
+}
+
+// ---- parsing and loading ----
+impl UnitRegistry {
+    /// Parses a unit expression (e.g., "meter / second^2") against this registry's names.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::UnknownUnit`] if `expr` contains a unit unknown to the registry.
+    /// Returns [`UnitError::Parse`] if `expr` cannot be correctly parsed.
+    pub fn parse(&self, expr: &str) -> Result<Unit, UnitError> {
+        parse_unit_expr(expr, &|name| {
+            self.get(name).ok_or_else(|| UnitError::UnknownUnit {
+                name: name.into(),
+                registry: self.name().into(),
+            })
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::{errors_match, units_match};
 
     mod new {
         use super::*;
@@ -146,8 +284,6 @@ mod tests {
     }
 
     mod add_unit {
-        use crate::test_utils::errors_match;
-
         use super::*;
 
         #[test]
@@ -156,7 +292,7 @@ mod tests {
             let length = dims.add_base("length", None).unwrap();
             let mut registry = UnitRegistry::new("test-ureg", dims);
             let meter = registry
-                .add_unit("meter", "m", length.clone(), 1.0)
+                .add_unit("meter", "m", length.clone(), 1.0, true)
                 .unwrap();
             assert_eq!(meter.dimension(), &length);
         }
@@ -168,7 +304,7 @@ mod tests {
             let length = dims.add_base("length", None).unwrap();
             let mut registry = UnitRegistry::new("test-ureg", dims);
             registry
-                .add_unit("meter", "m", length.clone(), 2.0)
+                .add_unit("meter", "m", length.clone(), 2.0, true)
                 .unwrap();
             let meter = registry.atoms.get("meter").unwrap();
             assert_eq!(meter.registry_id, registry.id());
@@ -176,6 +312,8 @@ mod tests {
             assert_eq!(meter.symbol, "m".into());
             assert_eq!(meter.dimension, length);
             assert_eq!(meter.conversion, ConversionKind::Linear { scale: 2.0 });
+            assert!(meter.prefix.is_none());
+            assert!(meter.prefixable);
         }
 
         #[test]
@@ -184,10 +322,10 @@ mod tests {
             let length = dims.add_base("length", None).unwrap();
             let mut registry = UnitRegistry::new("test-ureg", dims);
             registry
-                .add_unit("meter", "m", length.clone(), 1.0)
+                .add_unit("meter", "m", length.clone(), 1.0, true)
                 .unwrap();
             let err = registry
-                .add_unit("meter", "M", length.clone(), 1.0)
+                .add_unit("meter", "M", length.clone(), 1.0, true)
                 .unwrap_err();
             let expected_err = UnitError::DuplicateName {
                 name: "meter".into(),
@@ -204,10 +342,247 @@ mod tests {
             let length = dims.add_base("length", None).unwrap();
             let mut registry = UnitRegistry::new("test-ureg", dims);
             registry
-                .add_unit("meter", "m", length.clone(), 1.0)
+                .add_unit("meter", "m", length.clone(), 1.0, true)
                 .unwrap();
-            let duplicate_symbol = registry.add_unit("Meter", "m", length.clone(), 1.0);
+            let duplicate_symbol = registry.add_unit("Meter", "m", length.clone(), 1.0, true);
             assert!(duplicate_symbol.is_ok());
+        }
+
+        #[test]
+        fn rejects_invalid_name() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let err = registry
+                .add_unit("2meter", "m", length, 1.0, true)
+                .unwrap_err();
+            let expected_err = UnitError::InvalidName {
+                name: "2meter".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+    }
+
+    mod add_prefix {
+        use super::*;
+
+        #[test]
+        fn registers_prefix() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_prefix("kilo", "k", 1e3).unwrap();
+            let prefix = registry.prefixes.get("kilo").unwrap();
+            assert_eq!(prefix.name, "kilo".into());
+            assert_eq!(prefix.symbol, "k".into());
+            assert_eq!(prefix.factor, 1e3);
+        }
+
+        #[test]
+        fn rejects_duplicate_prefix_name() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_prefix("kilo", "k", 1e3).unwrap();
+            let err = registry.add_prefix("kilo", "K", 1e2).unwrap_err();
+            let expected_err = UnitError::DuplicateName {
+                name: "kilo".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_invalid_name() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let err = registry.add_prefix("2kilo", "k", 1e3).unwrap_err();
+            let expected_err = UnitError::InvalidName {
+                name: "2kilo".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+    }
+
+    mod prefixed_unit {
+        use super::*;
+
+        #[test]
+        fn builds_prefixed_linear_unit() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry
+                .add_unit("meter", "m", length.clone(), 1.0, true)
+                .unwrap();
+            registry.add_prefix("kilo", "k", 1e3).unwrap();
+            let base = meter.factors().first().unwrap().clone().0;
+            registry.prefixed_unit("kilo", base.clone()).unwrap();
+            let atom = registry
+                .prefixed
+                .get(&base.id)
+                .unwrap()
+                .get("kilo")
+                .unwrap();
+            assert_eq!(atom.name, "kilometer".into());
+            assert_eq!(atom.symbol, "km".into());
+            assert_eq!(atom.conversion, ConversionKind::Linear { scale: 1000.0 });
+            assert_eq!(
+                atom.prefix,
+                Some(registry.prefixes.get("kilo").unwrap().clone())
+            );
+            assert!(!atom.prefixable);
+        }
+
+        #[test]
+        fn reuses_cached_atom_on_repeated_calls() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry
+                .add_unit("meter", "m", length.clone(), 1.0, true)
+                .unwrap();
+            registry.add_prefix("kilo", "k", 1e3).unwrap();
+            let base = meter.factors().first().unwrap().clone().0;
+            let unit = registry.prefixed_unit("kilo", base.clone()).unwrap();
+            let maybe_cached_unit = registry.prefixed_unit("kilo", base.clone()).unwrap();
+            assert_eq!(
+                unit.factors().first().unwrap().0.id,
+                maybe_cached_unit.factors().first().unwrap().0.id
+            );
+        }
+
+        #[test]
+        fn rejects_unregistered_prefix() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry
+                .add_unit("meter", "m", length.clone(), 1.0, true)
+                .unwrap();
+            let base = meter.factors().first().unwrap().clone().0;
+            let err = registry.prefixed_unit("kilo", base.clone()).unwrap_err();
+            let expected_err = UnitError::UnknownPrefix {
+                name: "kilo".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_non_prefixable_base() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry
+                .add_unit("meter", "m", length.clone(), 1.0, false)
+                .unwrap();
+            registry.add_prefix("kilo", "k", 1e3).unwrap();
+            let base = meter.factors().first().unwrap().clone().0;
+            let err = registry.prefixed_unit("kilo", base.clone()).unwrap_err();
+            let expected_err = UnitError::NotPrefixable {
+                name: "meter".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+    }
+
+    mod get {
+        use super::*;
+
+        #[test]
+        fn returns_registered_unit() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            let got = registry.get("meter");
+            assert!(got.is_some());
+            assert!(units_match(&got.unwrap(), &meter));
+        }
+
+        #[test]
+        fn returns_none_for_unknown_name() {
+            let dims = DimRegistry::new("test-reg");
+            let registry = UnitRegistry::new("test-ureg", dims);
+            assert!(registry.get("bogus").is_none());
+        }
+    }
+
+    mod parse {
+        use super::*;
+
+        #[test]
+        fn parses_single_unit() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            assert!(units_match(&registry.parse("meter").unwrap(), &meter));
+        }
+
+        #[test]
+        fn parses_compound_expression() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let time = dims.add_base("time", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            let second = registry.add_unit("second", "s", time, 1.0, true).unwrap();
+            assert!(units_match(
+                &registry.parse("meter / second^2").unwrap(),
+                &meter.try_div(&second.pow(Exp::int(2)).unwrap()).unwrap()
+            ));
+        }
+
+        #[test]
+        fn parses_bare_number() {
+            let dims = DimRegistry::new("test-reg");
+            let registry = UnitRegistry::new("test-ureg", dims);
+            assert!(units_match(
+                &registry.parse("60").unwrap(),
+                &Unit::scaled(60.0)
+            ));
+        }
+
+        #[test]
+        fn parses_parenthesized_expression() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            assert!(units_match(
+                &registry.parse("(meter)^2").unwrap(),
+                &meter.pow(Exp::int(2)).unwrap()
+            ));
+        }
+
+        #[test]
+        fn rejects_unknown_unit() {
+            let dims = DimRegistry::new("test-reg");
+            let registry = UnitRegistry::new("test-ureg", dims);
+            assert!(errors_match(
+                &registry.parse("bogus").unwrap_err(),
+                &UnitError::UnknownUnit {
+                    name: "bogus".into(),
+                    registry: registry.name().into()
+                }
+            ));
+        }
+
+        #[test]
+        fn rejects_trailing_token() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            assert!(errors_match(
+                &registry.parse("meter meter").unwrap_err(),
+                &UnitError::Parse {
+                    src: "".into(),
+                    offset: 6,
+                    message: "".into()
+                }
+            ));
         }
     }
 }

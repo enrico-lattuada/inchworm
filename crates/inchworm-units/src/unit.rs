@@ -31,13 +31,18 @@ pub struct Unit {
 }
 
 impl Unit {
-    /// Returns an empty (dimensionless, scale `1.0`) unit.
-    pub fn empty() -> Self {
+    /// Returns a scaled, dimensionless unit.
+    pub fn scaled(scale: f64) -> Self {
         Self {
             factors: SmallVec::new(),
             dimension: Dimension::dimensionless(),
-            scale: 1.0,
+            scale,
         }
+    }
+
+    /// Returns an empty (dimensionless, scale `1.0`) unit.
+    pub fn empty() -> Self {
+        Self::scaled(1.0)
     }
 
     /// Returns a unit with a single factor at power `exp`, or an empty
@@ -80,6 +85,11 @@ impl Unit {
     /// The factors of this unit.
     pub(crate) fn factors(&self) -> &[(Arc<UnitData>, Exp)] {
         &self.factors
+    }
+
+    /// The scale of this unit.
+    pub(crate) fn scale(&self) -> f64 {
+        self.scale
     }
 }
 
@@ -138,6 +148,22 @@ impl Unit {
         })
     }
 
+    /// Divides `self` by `rhs`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::CrossRegistry`] if `self` and `rhs` were minted by
+    /// different unit registries.
+    /// Returns [`UnitError::Dimension`] wrapping
+    /// [`DimensionError::ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
+    /// if combining a shared atom's exponents overflows.
+    /// Returns [`UnitError::Dimension`] wrapping
+    /// [`DimensionError::CrossRegistry`](inchworm_dimensions::DimensionError::CrossRegistry)
+    /// if `self` and `rhs`'s dimensions come from different dimension registries.
+    pub fn try_div(&self, rhs: &Self) -> Result<Self, UnitError> {
+        self.try_mul(&rhs.recip()?)
+    }
+
     /// Raises `self` to the power of `e`, pruning any that cancels to zero.
     ///
     /// # Errors
@@ -157,6 +183,25 @@ impl Unit {
             factors,
             dimension,
             scale,
+        })
+    }
+
+    /// Computes the reciprocal of `self` by raising it to the power of `-1`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::Dimension`] wrapping
+    /// [`DimensionError::ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
+    /// if computing the reciprocal of an atom's exponents overflows.
+    pub fn recip(&self) -> Result<Self, UnitError> {
+        let mut factors = SmallVec::new();
+        for (atom_data, exp) in self.factors.iter() {
+            factors.push((atom_data.clone(), exp.checked_neg()?));
+        }
+        Ok(Self {
+            factors,
+            dimension: self.dimension.recip()?,
+            scale: 1.0 / self.scale,
         })
     }
 }

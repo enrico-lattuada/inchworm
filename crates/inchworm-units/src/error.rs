@@ -20,6 +20,14 @@ pub enum UnitError {
     #[error("name `{name}` is already defined in registry `{registry}`")]
     DuplicateName { name: String, registry: String },
 
+    /// `name` is not a valid unit or prefix identifier
+    #[error("name `{name}` is not a valid identifier")]
+    InvalidName { name: String },
+
+    /// `name` isn't a registered canonical name in `registry`.
+    #[error("unknown unit `{name}` in registry `{registry}`")]
+    UnknownUnit { name: String, registry: String },
+
     /// `name` isn't a registered prefix in `registry`.
     #[error("unknown prefix `{name}` in registry `{registry}`")]
     UnknownPrefix { name: String, registry: String },
@@ -36,6 +44,15 @@ pub enum UnitError {
     CrossRegistry {
         left: UnitRegistryId,
         right: UnitRegistryId,
+    },
+
+    /// A unit expression failed to parse. `offset` is the byte offset
+    /// into `src` where the error was detected.
+    #[error("parse error at byte {offset}: {message} in `{src}`")]
+    Parse {
+        src: String,
+        offset: usize,
+        message: String,
     },
 
     /// The underlying dimension algebra failed: incompatible dimensions,
