@@ -236,16 +236,46 @@ impl UnitRegistry {
         self.prefixes.contains_key(candidate) || self.prefix_by_symbol.contains_key(candidate)
     }
 
+    fn find_atom(&self, candidate: &str) -> Option<&Arc<UnitData>> {
+        self.atoms.get(candidate).or_else(|| {
+            self.by_symbol
+                .get(candidate)
+                .and_then(|canonical| self.atoms.get(canonical))
+        })
+    }
+
+    fn find_prefix_name<'s>(&'s self, candidate: &'s str) -> Option<&'s str> {
+        self.prefixes
+            .get(candidate)
+            .map(|_| candidate)
+            .or_else(|| self.prefix_by_symbol.get(candidate).map(|v| &**v))
+    }
+
     /// Returns the [`Unit`] corresponding to `name`.
     pub fn get(&self, name: &str) -> Option<Unit> {
-        let atom = self.atoms.get(name).or_else(|| {
-            self.by_symbol
-                .get(name)
-                .and_then(|canonical| self.atoms.get(canonical))
-        })?;
+        let atom = self.find_atom(name)?;
         Some(Unit::single(atom, Exp::ONE).expect(
             "pow(1) is an identity op and this atom already passed the same call in add_unit",
         ))
+    }
+
+    fn resolve_ident(&self, name: &str) -> Result<Unit, UnitError> {
+        if let Some(unit) = self.get(name) {
+            return Ok(unit);
+        }
+        for i in (1..name.len()).rev() {
+            let (prefix_candidate, unit_candidate) = name.split_at(i);
+            if let Some(prefix_name) = self.find_prefix_name(prefix_candidate)
+                && let Some(base) = self.find_atom(unit_candidate)
+                && base.prefixable
+            {
+                return self.prefixed_unit(prefix_name, base.clone());
+            }
+        }
+        Err(UnitError::UnknownUnit {
+            name: name.into(),
+            registry: self.name().into(),
+        })
     }
 }
 
@@ -258,12 +288,7 @@ impl UnitRegistry {
     /// Returns [`UnitError::UnknownUnit`] if `expr` contains a unit unknown to the registry.
     /// Returns [`UnitError::Parse`] if `expr` cannot be correctly parsed.
     pub fn parse(&self, expr: &str) -> Result<Unit, UnitError> {
-        parse_unit_expr(expr, &|name| {
-            self.get(name).ok_or_else(|| UnitError::UnknownUnit {
-                name: name.into(),
-                registry: self.name().into(),
-            })
-        })
+        parse_unit_expr(expr, &|name| self.resolve_ident(name))
     }
 }
 
@@ -780,5 +805,95 @@ mod tests {
                 }
             ));
         }
+    }
+
+    #[test]
+    fn parses_prefixed_unit_by_symbol() {
+        let mut dims = DimRegistry::new("test-reg");
+        let length = dims.add_base("length", None).unwrap();
+        let mut registry = UnitRegistry::new("test-ureg", dims);
+        registry.add_prefix("kilo", "k", 1e3).unwrap();
+        registry
+            .add_unit("meter", "m", length.clone(), 1.0, true)
+            .unwrap();
+        let km = registry.parse("km").unwrap();
+        assert_eq!(km.factors().len(), 1);
+        let (atom, exp) = &km.factors()[0];
+        assert!(exp.is_one());
+        assert_eq!(atom.name, "kilometer".into());
+        assert_eq!(atom.symbol, "km".into());
+        assert_eq!(atom.conversion, ConversionKind::Linear { scale: 1e3 });
+        assert_eq!(km.dimension(), &length);
+    }
+
+    #[test]
+    fn parses_prefixed_unit_by_name() {
+        let mut dims = DimRegistry::new("test-reg");
+        let length = dims.add_base("length", None).unwrap();
+        let mut registry = UnitRegistry::new("test-ureg", dims);
+        registry.add_prefix("kilo", "k", 1e3).unwrap();
+        registry
+            .add_unit("meter", "m", length.clone(), 1.0, true)
+            .unwrap();
+        let kilometer = registry.parse("kilometer").unwrap();
+        assert_eq!(kilometer.factors().len(), 1);
+        let (atom, exp) = &kilometer.factors()[0];
+        assert!(exp.is_one());
+        assert_eq!(atom.name, "kilometer".into());
+        assert_eq!(atom.symbol, "km".into());
+        assert_eq!(atom.conversion, ConversionKind::Linear { scale: 1e3 });
+        assert_eq!(kilometer.dimension(), &length);
+    }
+
+    #[test]
+    fn prefers_longest_prefix_match() {
+        let dims = DimRegistry::new("test-reg");
+        let mut registry = UnitRegistry::new("test-ureg", dims);
+        // Two prefixes with different factors, chosen so the resulting scale
+        // reveals which split actually won.
+        registry.add_prefix("a", "a", 2.0).unwrap();
+        registry.add_prefix("ab", "ab", 3.0).unwrap();
+        // Two units, one for each hypothetical split of "abc".
+        registry
+            .add_unit("bc", "bc", Dimension::dimensionless(), 5.0, true)
+            .unwrap();
+        registry
+            .add_unit("c", "c", Dimension::dimensionless(), 7.0, true)
+            .unwrap();
+        let parsed = registry.parse("abc").unwrap();
+        let atom = &parsed.factors().first().unwrap().0;
+        // "a" + "bc" would give scale 2.0 * 5.0 = 10.0.
+        // "ab" + "c" (the longer prefix) should win: 3.0 * 7.0 = 21.0.
+        assert_eq!(atom.conversion, ConversionKind::Linear { scale: 21.0 });
+    }
+
+    #[test]
+    fn rejects_prefix_on_non_prefixable_unit_via_parse() {
+        let mut dims = DimRegistry::new("test-reg");
+        let length = dims.add_base("length", None).unwrap();
+        let mut registry = UnitRegistry::new("test-ureg", dims);
+        registry.add_unit("meter", "m", length, 1.0, false).unwrap();
+        registry.add_prefix("kilo", "k", 1e3).unwrap();
+        let err = registry.parse("km").unwrap_err();
+        let expected_err = UnitError::UnknownUnit {
+            name: "km".into(),
+            registry: registry.name().into(),
+        };
+        assert!(errors_match(&err, &expected_err));
+    }
+
+    #[test]
+    fn caches_prefixed_unit_across_parse_calls() {
+        let mut dims = DimRegistry::new("test-reg");
+        let length = dims.add_base("length", None).unwrap();
+        let mut registry = UnitRegistry::new("test-ureg", dims);
+        registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+        registry.add_prefix("kilo", "k", 1e3).unwrap();
+        let first = registry.parse("km").unwrap();
+        let second = registry.parse("km").unwrap();
+        assert_eq!(
+            first.factors().first().unwrap().0.id,
+            second.factors().first().unwrap().0.id
+        );
     }
 }
