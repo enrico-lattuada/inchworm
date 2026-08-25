@@ -28,6 +28,8 @@ pub struct UnitRegistry {
     atoms: HashMap<Box<str>, Arc<UnitData>>,
     prefixes: HashMap<Box<str>, Prefix>,
     prefixed: HashMap<UnitId, HashMap<Box<str>, Arc<UnitData>>>,
+    by_symbol: HashMap<Box<str>, Box<str>>,
+    prefix_by_symbol: HashMap<Box<str>, Box<str>>,
 }
 
 impl UnitRegistry {
@@ -46,6 +48,8 @@ impl UnitRegistry {
             atoms: HashMap::new(),
             prefixes: HashMap::new(),
             prefixed: HashMap::new(),
+            by_symbol: HashMap::new(),
+            prefix_by_symbol: HashMap::new(),
         }
     }
 
@@ -93,9 +97,15 @@ impl UnitRegistry {
         if !is_valid_ident(name) {
             return Err(UnitError::InvalidName { name: name.into() });
         }
-        if self.atoms.contains_key(name) {
+        if self.is_unit_taken(name) || self.prefixes.contains_key(name) {
             return Err(UnitError::DuplicateName {
                 name: name.into(),
+                registry: self.name().into(),
+            });
+        }
+        if self.is_unit_taken(symbol) {
+            return Err(UnitError::DuplicateName {
+                name: symbol.into(),
                 registry: self.name().into(),
             });
         }
@@ -119,6 +129,7 @@ impl UnitRegistry {
         let atom = Arc::new(data);
         let unit = Unit::single(&atom, Exp::ONE)?;
         self.atoms.insert(name.into(), atom);
+        self.by_symbol.insert(symbol.into(), name.into());
         Ok(unit)
     }
 
@@ -133,9 +144,15 @@ impl UnitRegistry {
         if !is_valid_ident(name) {
             return Err(UnitError::InvalidName { name: name.into() });
         }
-        if self.prefixes.contains_key(name) || self.atoms.contains_key(name) {
+        if self.is_prefix_taken(name) || self.atoms.contains_key(name) {
             return Err(UnitError::DuplicateName {
                 name: name.into(),
+                registry: self.name().into(),
+            });
+        }
+        if self.is_prefix_taken(symbol) {
+            return Err(UnitError::DuplicateName {
+                name: symbol.into(),
                 registry: self.name().into(),
             });
         }
@@ -145,6 +162,7 @@ impl UnitRegistry {
             factor,
         };
         self.prefixes.insert(name.into(), prefix);
+        self.prefix_by_symbol.insert(symbol.into(), name.into());
         Ok(())
     }
 
@@ -209,13 +227,24 @@ impl UnitRegistry {
         Unit::single(&atom, Exp::ONE)
     }
 
+    fn is_unit_taken(&self, candidate: &str) -> bool {
+        self.atoms.contains_key(candidate) || self.by_symbol.contains_key(candidate)
+    }
+
+    fn is_prefix_taken(&self, candidate: &str) -> bool {
+        self.prefixes.contains_key(candidate) || self.prefix_by_symbol.contains_key(candidate)
+    }
+
     /// Returns the [`Unit`] corresponding to `name`.
     pub fn get(&self, name: &str) -> Option<Unit> {
-        self.atoms.get(name).map(|atom| {
-            Unit::single(atom, Exp::ONE).expect(
-                "pow(1) is an identity op and this atom already passed the same call in add_unit",
-            )
-        })
+        let atom = self.atoms.get(name).or_else(|| {
+            self.by_symbol
+                .get(name)
+                .and_then(|canonical| self.atoms.get(canonical))
+        })?;
+        Some(Unit::single(atom, Exp::ONE).expect(
+            "pow(1) is an identity op and this atom already passed the same call in add_unit",
+        ))
     }
 }
 
@@ -335,17 +364,101 @@ mod tests {
         }
 
         #[test]
-        fn allows_duplicate_symbols() {
-            // Should never happen, but this is the current behavior
-            // until I guard against duplicate symbols
+        fn rejects_name_colliding_with_existing_symbol() {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
             let mut registry = UnitRegistry::new("test-ureg", dims);
             registry
                 .add_unit("meter", "m", length.clone(), 1.0, true)
                 .unwrap();
-            let duplicate_symbol = registry.add_unit("Meter", "m", length.clone(), 1.0, true);
-            assert!(duplicate_symbol.is_ok());
+            let err = registry
+                .add_unit("m", "M", length.clone(), 1.0, true)
+                .unwrap_err();
+            let expected_err = UnitError::DuplicateName {
+                name: "m".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_duplicate_symbol() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry
+                .add_unit("meter", "m", length.clone(), 1.0, true)
+                .unwrap();
+            let err = registry
+                .add_unit("Meter", "m", length.clone(), 1.0, true)
+                .unwrap_err();
+            let expected_err = UnitError::DuplicateName {
+                name: "m".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_symbol_colliding_with_existing_name() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry
+                .add_unit("meter", "m", length.clone(), 1.0, true)
+                .unwrap();
+            let err = registry
+                .add_unit("Meter", "meter", length.clone(), 1.0, true)
+                .unwrap_err();
+            let expected_err = UnitError::DuplicateName {
+                name: "meter".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_name_colliding_with_prefix_name() {
+            let mut dims = DimRegistry::new("test-reg");
+            let mass = dims.add_base("mass", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_prefix("kilo", "k", 1e3).unwrap();
+            let err = registry
+                .add_unit("kilo", "kg", mass.clone(), 1e3, false)
+                .unwrap_err();
+            let expected_err = UnitError::DuplicateName {
+                name: "kilo".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn allows_symbol_colliding_with_prefix_symbol() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_prefix("milli", "m", 1e-3).unwrap();
+            let meter = registry.add_unit("meter", "m", length.clone(), 1.0, true);
+            assert!(meter.is_ok());
+        }
+
+        #[test]
+        fn allows_name_colliding_with_prefix_symbol() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_prefix("a", "b", 1.0).unwrap();
+            let unit = registry.add_unit("b", "c", Dimension::dimensionless(), 1.0, true);
+            assert!(unit.is_ok());
+        }
+
+        #[test]
+        fn allows_symbol_colliding_with_prefix_name() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_prefix("a", "b", 1.0).unwrap();
+            let a_unit = registry.add_unit("c", "a", Dimension::dimensionless(), 1.0, true);
+            assert!(a_unit.is_ok());
         }
 
         #[test]
@@ -378,7 +491,7 @@ mod tests {
         }
 
         #[test]
-        fn rejects_duplicate_prefix_name() {
+        fn rejects_duplicate_name() {
             let dims = DimRegistry::new("test-reg");
             let mut registry = UnitRegistry::new("test-ureg", dims);
             registry.add_prefix("kilo", "k", 1e3).unwrap();
@@ -388,6 +501,92 @@ mod tests {
                 registry: registry.name().into(),
             };
             assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_name_colliding_with_existing_symbol() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_prefix("a", "b", 1.0).unwrap();
+            let err = registry.add_prefix("b", "c", 1.0).unwrap_err();
+            let expected_err = UnitError::DuplicateName {
+                name: "b".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_duplicate_symbol() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_prefix("a", "b", 1.0).unwrap();
+            let err = registry.add_prefix("c", "b", 1.0).unwrap_err();
+            let expected_err = UnitError::DuplicateName {
+                name: "b".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_symbol_colliding_with_existing_name() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_prefix("a", "b", 1.0).unwrap();
+            let err = registry.add_prefix("c", "a", 1.0).unwrap_err();
+            let expected_err = UnitError::DuplicateName {
+                name: "a".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_name_colliding_with_unit_name() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry
+                .add_unit("a", "b", Dimension::dimensionless(), 1.0, true)
+                .unwrap();
+            let err = registry.add_prefix("a", "c", 1.0).unwrap_err();
+            let expected_err = UnitError::DuplicateName {
+                name: "a".into(),
+                registry: registry.name().into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn allows_symbol_colliding_with_unit_symbol() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            let milli = registry.add_prefix("milli", "m", 1.0);
+            assert!(milli.is_ok());
+        }
+
+        #[test]
+        fn allows_name_colliding_with_unit_symbol() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry
+                .add_unit("a", "b", Dimension::dimensionless(), 1.0, true)
+                .unwrap();
+            let prefix = registry.add_prefix("b", "c", 1.0);
+            assert!(prefix.is_ok());
+        }
+
+        #[test]
+        fn allows_symbol_colliding_with_unit_name() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry
+                .add_unit("a", "b", Dimension::dimensionless(), 1.0, true)
+                .unwrap();
+            let prefix = registry.add_prefix("c", "a", 1.0);
+            assert!(prefix.is_ok());
         }
 
         #[test]
