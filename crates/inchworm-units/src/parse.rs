@@ -1,8 +1,8 @@
 //! Unit-expression grammar: tokenizer + recursive-descent parser.
 //!
 //! ```text
-//! expr     := term { ("*" | "·" | "×" | "/" | "WS") term }
-//! term     := factor [ "^" ["-"] ( "(" exponent ")" | INT ) ]
+//! expr     := term { ("*" | "·" | "×" | "/") term }
+//! term     := factor [ ("^" ["-"] ("(" exponent ")" | INT)) | SUPERSCRIPT ]
 //! factor   := IDENT | NUMBER | "(" expr ")"
 //! exponent := ["-"] INT [ "/" INT ]
 //! IDENT    := [A-Za-z_][A-Za-z0-9_]*
@@ -57,13 +57,14 @@ pub(crate) fn is_valid_ident(src: &str) -> bool {
 
 #[derive(Debug, PartialEq)]
 enum Token {
-    Ident(String), // IDENT
-    Int(i64),      // INT
-    Float(f64),    // FLOAT
-    Star,          // "*", "·", or "×", collapse both into one token
-    Slash,         // "/", used for both expr division and exponent fraction
-    Caret,         // "^"
-    Minus,         // "-", only meaningful before an exponent's INT
+    Ident(String),    // IDENT
+    Int(i64),         // INT
+    Float(f64),       // FLOAT
+    Superscript(i64), // ², ⁻¹
+    Star,             // "*", "·", or "×", collapse both into one token
+    Slash,            // "/", used for both expr division and exponent fraction
+    Caret,            // "^"
+    Minus,            // "-", only meaningful before an exponent's INT
     LParen,
     RParen,
 }
@@ -74,6 +75,7 @@ impl fmt::Display for Token {
             Token::Ident(ident) => write!(f, "{ident}"),
             Token::Int(n) => write!(f, "{n}"),
             Token::Float(n) => write!(f, "{n}"),
+            Token::Superscript(n) => write!(f, "^({n})"),
             Token::Star => write!(f, "*"),
             Token::Slash => write!(f, "/"),
             Token::Caret => write!(f, "^"),
@@ -106,6 +108,23 @@ impl<'a> Lexer<'a> {
             self.chars.next();
         }
         &self.src[start..end]
+    }
+}
+
+fn superscript_to_digit(c: char) -> Option<char> {
+    match c {
+        '⁰' => Some('0'),
+        '¹' => Some('1'),
+        '²' => Some('2'),
+        '³' => Some('3'),
+        '⁴' => Some('4'),
+        '⁵' => Some('5'),
+        '⁶' => Some('6'),
+        '⁷' => Some('7'),
+        '⁸' => Some('8'),
+        '⁹' => Some('9'),
+        '⁻' => Some('-'),
+        _ => None,
     }
 }
 
@@ -142,6 +161,23 @@ impl<'a> Iterator for Lexer<'a> {
             let consumed = self.consume_while(start, |c| c.is_ascii_alphanumeric() || c == '_');
             let (token, offset) = (Token::Ident(consumed.into()), start);
             Some(Ok(Spanned { token, offset }))
+        } else if superscript_to_digit(c).is_some() {
+            let consumed: String = self
+                .consume_while(start, |c| superscript_to_digit(c).is_some())
+                .chars()
+                .map(|c| superscript_to_digit(c).expect("should be a superscript here"))
+                .collect();
+            match consumed.parse::<i64>() {
+                Ok(number) => {
+                    let (token, offset) = (Token::Superscript(number), start);
+                    Some(Ok(Spanned { token, offset }))
+                }
+                Err(e) => Some(Err(UnitError::Parse {
+                    src: self.src.into(),
+                    offset: start,
+                    message: e.to_string(),
+                })),
+            }
         } else if let Some(token) = match c {
             '*' | '·' | '×' => Some(Token::Star),
             '-' => Some(Token::Minus),
@@ -259,25 +295,63 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn consume_superscript(&mut self) -> Result<Option<i64>, UnitError> {
+        if !matches!(
+            self.tokens.peek(),
+            Some(Ok(Spanned {
+                token: Token::Superscript(_),
+                ..
+            }))
+        ) {
+            return Ok(None);
+        }
+        if let Spanned {
+            token: Token::Superscript(number),
+            ..
+        } = self
+            .advance()?
+            .expect("confirmed above to be a Token::Superscript()")
+        {
+            Ok(Some(number))
+        } else {
+            unreachable!(
+                "confirmed above to be a Token::Superscript(), should never reach this point."
+            )
+        }
+    }
+
     fn parse_term(&mut self) -> Result<Unit, UnitError> {
         let base = self.parse_factor()?;
         // peek: if the next token is Token::Caret, advance() past it, call parse_exponent(),
         // then return base.pow(exp) - otherwise just return base unchanged (implicit exponent 1)
-        if !self.consume_if(&Token::Caret)? {
-            return Ok(base);
-        }
-        let outer_negative = self.consume_if(&Token::Minus)?;
-        let parenthesized = self.consume_if(&Token::LParen)?;
-        let exp = self.parse_exponent(parenthesized)?;
-        if parenthesized {
-            self.expect_rparen()?;
-        }
-        let exp = if outer_negative {
-            exp.checked_neg()?
+        if self.consume_if(&Token::Caret)? {
+            let outer_negative = self.consume_if(&Token::Minus)?;
+            let parenthesized = self.consume_if(&Token::LParen)?;
+            let exp = self.parse_exponent(parenthesized)?;
+            if parenthesized {
+                self.expect_rparen()?;
+            }
+            let exp = if outer_negative {
+                exp.checked_neg()?
+            } else {
+                exp
+            };
+            base.pow(exp)
+        } else if let Some(exp) = self.consume_superscript()? {
+            base.pow(Exp::int(exp))
         } else {
-            exp
-        };
-        base.pow(exp)
+            Ok(base)
+        }
+    }
+
+    fn peek_starts_factor(&mut self) -> bool {
+        matches!(
+            self.tokens.peek(),
+            Some(Ok(Spanned {
+                token: Token::LParen | Token::Int(_) | Token::Float(_) | Token::Ident(_),
+                ..
+            }))
+        )
     }
 
     fn parse_expr(&mut self) -> Result<Unit, UnitError> {
@@ -294,18 +368,11 @@ impl<'a> Parser<'a> {
             } else if self.consume_if(&Token::Slash)? {
                 let rhs = self.parse_term()?;
                 result = result.try_div(&rhs)?;
+            } else if self.peek_starts_factor() {
+                let rhs = self.parse_term()?;
+                result = result.try_mul(&rhs)?;
             } else {
-                if let Some(Ok(Spanned { token, .. })) = self.tokens.peek() {
-                    match token {
-                        Token::LParen | Token::Int(_) | Token::Float(_) | Token::Ident(_) => {
-                            let rhs = self.parse_term()?;
-                            result = result.try_mul(&rhs)?;
-                        }
-                        _ => break,
-                    }
-                } else {
-                    break;
-                }
+                break;
             }
         }
         Ok(result)

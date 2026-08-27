@@ -791,6 +791,32 @@ mod tests {
         }
 
         #[test]
+        fn rejects_trailing_token() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            assert!(errors_match(
+                &registry.parse("meter )").unwrap_err(),
+                &UnitError::Parse {
+                    src: "".into(),
+                    offset: 6,
+                    message: "".into()
+                }
+            ));
+        }
+
+        #[test]
+        fn parses_times_sign() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            let meter_square = registry.parse("meter × meter").unwrap();
+            assert!(units_match(&meter_square, &meter.try_mul(&meter).unwrap()));
+        }
+
+        #[test]
         fn parses_implicit_multiplication() {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
@@ -798,6 +824,45 @@ mod tests {
             let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
             let meter_square = registry.parse("meter meter").unwrap();
             assert!(units_match(&meter_square, &meter.try_mul(&meter).unwrap()));
+        }
+
+        #[test]
+        fn parses_superscript_exponent() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            let meter_square = registry.parse("meter²").unwrap();
+            assert!(units_match(&meter_square, &meter.pow(Exp::int(2)).unwrap()));
+        }
+
+        #[test]
+        fn parses_negative_superscript_exponent() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            let spatial_frequency = registry.parse("meter⁻¹").unwrap();
+            assert!(units_match(
+                &spatial_frequency,
+                &meter.pow(Exp::int(-1)).unwrap()
+            ));
+        }
+
+        #[test]
+        fn rejects_lone_superscript_minus() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            assert!(errors_match(
+                &registry.parse("meter⁻").unwrap_err(),
+                &UnitError::Parse {
+                    src: "".into(),
+                    offset: 5,
+                    message: "".into()
+                }
+            ));
         }
 
         #[test]
