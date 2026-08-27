@@ -791,19 +791,13 @@ mod tests {
         }
 
         #[test]
-        fn rejects_trailing_token() {
+        fn parses_implicit_multiplication() {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
             let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            assert!(errors_match(
-                &registry.parse("meter meter").unwrap_err(),
-                &UnitError::Parse {
-                    src: "".into(),
-                    offset: 6,
-                    message: "".into()
-                }
-            ));
+            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            let meter_square = registry.parse("meter meter").unwrap();
+            assert!(units_match(&meter_square, &meter.try_mul(&meter).unwrap()));
         }
 
         #[test]

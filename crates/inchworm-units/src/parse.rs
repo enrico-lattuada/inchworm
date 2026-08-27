@@ -1,7 +1,7 @@
 //! Unit-expression grammar: tokenizer + recursive-descent parser.
 //!
 //! ```text
-//! expr     := term { ("*" | "·" | "/") term }
+//! expr     := term { ("*" | "·" | "×" | "/" | "WS") term }
 //! term     := factor [ "^" ["-"] ( "(" exponent ")" | INT ) ]
 //! factor   := IDENT | NUMBER | "(" expr ")"
 //! exponent := ["-"] INT [ "/" INT ]
@@ -60,7 +60,7 @@ enum Token {
     Ident(String), // IDENT
     Int(i64),      // INT
     Float(f64),    // FLOAT
-    Star,          // "*" or "·", collapse both into one token
+    Star,          // "*", "·", or "×", collapse both into one token
     Slash,         // "/", used for both expr division and exponent fraction
     Caret,         // "^"
     Minus,         // "-", only meaningful before an exponent's INT
@@ -143,7 +143,7 @@ impl<'a> Iterator for Lexer<'a> {
             let (token, offset) = (Token::Ident(consumed.into()), start);
             Some(Ok(Spanned { token, offset }))
         } else if let Some(token) = match c {
-            '*' | '·' => Some(Token::Star),
+            '*' | '·' | '×' => Some(Token::Star),
             '-' => Some(Token::Minus),
             '/' => Some(Token::Slash),
             '^' => Some(Token::Caret),
@@ -286,6 +286,7 @@ impl<'a> Parser<'a> {
             // peek the next token:
             //   Star  -> advance(), rhs = parse_term()?, result = result.try_mul(&rhs)?
             //   Slash -> advance(), rhs = parse_term()?, result = result.try_div(&rhs)?
+            //   (Ident/Float/Int/LParen) -> rhs = parse_term()?, result = result.try_mul(&rhs)?
             //   anything else, or end of input -> break
             if self.consume_if(&Token::Star)? {
                 let rhs = self.parse_term()?;
@@ -294,7 +295,17 @@ impl<'a> Parser<'a> {
                 let rhs = self.parse_term()?;
                 result = result.try_div(&rhs)?;
             } else {
-                break;
+                if let Some(Ok(Spanned { token, .. })) = self.tokens.peek() {
+                    match token {
+                        Token::LParen | Token::Int(_) | Token::Float(_) | Token::Ident(_) => {
+                            let rhs = self.parse_term()?;
+                            result = result.try_mul(&rhs)?;
+                        }
+                        _ => break,
+                    }
+                } else {
+                    break;
+                }
             }
         }
         Ok(result)
