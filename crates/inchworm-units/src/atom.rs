@@ -102,6 +102,14 @@ impl ConversionKind {
     pub(crate) fn is_delta(&self) -> bool {
         !self.is_point()
     }
+
+    /// The `scale` of this conversion.
+    pub(crate) fn scale(&self) -> Option<f64> {
+        match self {
+            Self::Linear { scale } | Self::Affine { scale, .. } => Some(*scale),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug)]
