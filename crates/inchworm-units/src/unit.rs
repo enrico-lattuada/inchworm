@@ -6,6 +6,7 @@ use smallvec::{SmallVec, smallvec};
 use crate::{
     UnitError, UnitRegistryId,
     atom::{ConversionKind, UnitData},
+    parse::digit_to_superscript,
 };
 
 const MAX_INLINE_FACTORS: usize = 4;
@@ -203,6 +204,81 @@ impl Unit {
             dimension: self.dimension.recip()?,
             scale: 1.0 / self.scale,
         })
+    }
+}
+
+// ---- Display helpers ----
+impl Unit {
+    fn grouped_factors(&self) -> (Vec<&(Arc<UnitData>, Exp)>, Vec<&(Arc<UnitData>, Exp)>) {
+        let (mut positive, mut negative) = (Vec::new(), Vec::new());
+        for factor in self.factors().iter() {
+            if factor.1.num() > 0 {
+                positive.push(factor);
+            } else {
+                negative.push(factor);
+            }
+        }
+        // Sort by symbol
+        positive.sort_by(|&a, &b| a.0.symbol.cmp(&b.0.symbol));
+        negative.sort_by(|&a, &b| a.0.symbol.cmp(&b.0.symbol));
+        (positive, negative)
+    }
+}
+
+fn write_factor(
+    f: &mut std::fmt::Formatter<'_>,
+    symbol: &str,
+    exp: Exp,
+    pretty: bool,
+) -> std::fmt::Result {
+    write!(f, "{symbol}")?;
+    let num = exp.num().unsigned_abs();
+    if exp.is_int() {
+        if num == 1 {
+            return Ok(());
+        } else if pretty {
+            let as_superscript: String = num
+                .to_string()
+                .chars()
+                .map(|c| digit_to_superscript(c).expect("should be a superscript here"))
+                .collect();
+            write!(f, "{as_superscript}")?;
+        } else {
+            write!(f, "^{num}")?;
+        }
+    } else {
+        write!(f, "^({}/{})", num, exp.den())?;
+    }
+    Ok(())
+}
+
+impl std::fmt::Display for Unit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (positive, negative) = self.grouped_factors();
+        let pretty = f.alternate();
+        let mul_separator = if pretty { '·' } else { '*' };
+        let mut wrote_anything = false;
+        if self.scale() != 1.0 {
+            write!(f, "{}", self.scale())?;
+            wrote_anything = true;
+        }
+        for (atom, exp) in positive {
+            if wrote_anything {
+                write!(f, "{mul_separator}")?;
+            }
+            // write factor
+            write_factor(f, &atom.symbol, *exp, pretty)?;
+            // flip flag
+            wrote_anything = true;
+        }
+        if !wrote_anything {
+            write!(f, "1")?;
+        }
+        for (atom, exp) in negative {
+            write!(f, "/")?;
+            write_factor(f, &atom.symbol, *exp, pretty)?;
+        }
+        Ok(())
     }
 }
 
@@ -486,6 +562,129 @@ mod tests {
             let err = a_unit.pow(Exp::int(2)).unwrap_err();
             let expected_err = UnitError::Dimension(DimensionError::ExponentOverflow);
             assert!(errors_match(&err, &expected_err));
+        }
+    }
+
+    mod display {
+        use super::*;
+        use crate::UnitRegistry;
+
+        #[test]
+        fn displays_single_unit_without_exponent() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry
+                .add_unit("meter", "m", length.clone(), 1.0, true)
+                .unwrap();
+            assert_eq!(meter.to_string(), "m");
+        }
+
+        #[test]
+        fn displays_compound_unit_with_slash_chaining() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let time = dims.add_base("time", None).unwrap();
+            let mass = dims.add_base("mass", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry
+                .add_unit("meter", "m", length.clone(), 1.0, true)
+                .unwrap();
+            registry
+                .add_unit("second", "s", time.clone(), 1.0, true)
+                .unwrap();
+            registry
+                .add_unit("kilogram", "kg", mass.clone(), 1.0, false)
+                .unwrap();
+            assert_eq!(
+                registry
+                    .parse("kilogram / meter / second^2")
+                    .unwrap()
+                    .to_string(),
+                "kg/m/s^2"
+            );
+        }
+
+        #[test]
+        fn displays_reciprocal_only_unit_with_leading_one() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry
+                .add_unit("meter", "m", length.clone(), 1.0, true)
+                .unwrap();
+            assert_eq!(meter.pow(Exp::int(-1)).unwrap().to_string(), "1/m");
+        }
+
+        #[test]
+        fn displays_dimensionless_empty_unit_as_one() {
+            assert_eq!(Unit::empty().to_string(), "1");
+        }
+
+        #[test]
+        fn displays_scaled_unit() {
+            assert_eq!(Unit::scaled(42.0).to_string(), "42");
+            assert_eq!(Unit::scaled(1.23).to_string(), "1.23");
+        }
+
+        #[test]
+        fn displays_fractional_exponent() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry
+                .add_unit("meter", "m", length.clone(), 1.0, true)
+                .unwrap();
+            assert_eq!(
+                meter.pow(Exp::new(-1, 2).unwrap()).unwrap().to_string(),
+                "1/m^(1/2)"
+            );
+        }
+
+        #[test]
+        fn displays_pretty_form() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mass = dims.add_base("mass", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let meter = registry
+                .add_unit("meter", "m", length.clone(), 1.0, true)
+                .unwrap();
+            let kilogram = registry
+                .add_unit("kilogram", "kg", mass.clone(), 1.0, false)
+                .unwrap();
+            let kilogram_meter_squared =
+                kilogram.try_mul(&meter.pow(Exp::int(2)).unwrap()).unwrap();
+            assert_eq!(kilogram_meter_squared.to_string(), "kg*m^2");
+            assert_eq!(format!("{kilogram_meter_squared:#}"), "kg·m²");
+        }
+    }
+
+    mod roundtrips {
+        use super::*;
+        use crate::{UnitRegistry, test_utils::units_match};
+
+        #[test]
+        fn formats_and_reparses_to_equivalent_unit() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let time = dims.add_base("time", None).unwrap();
+            let mass = dims.add_base("mass", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry
+                .add_unit("meter", "m", length.clone(), 1.0, true)
+                .unwrap();
+            registry
+                .add_unit("second", "s", time.clone(), 1.0, true)
+                .unwrap();
+            registry
+                .add_unit("kilogram", "kg", mass.clone(), 1.0, false)
+                .unwrap();
+            let pascal = registry.parse("kilogram / meter / second^2").unwrap();
+            assert!(units_match(
+                &registry.parse(&pascal.to_string()).unwrap(),
+                &pascal
+            ));
         }
     }
 }

@@ -128,6 +128,22 @@ fn superscript_to_digit(c: char) -> Option<char> {
     }
 }
 
+pub(crate) fn digit_to_superscript(c: char) -> Option<char> {
+    match c {
+        '0' => Some('⁰'),
+        '1' => Some('¹'),
+        '2' => Some('²'),
+        '3' => Some('³'),
+        '4' => Some('⁴'),
+        '5' => Some('⁵'),
+        '6' => Some('⁶'),
+        '7' => Some('⁷'),
+        '8' => Some('⁸'),
+        '9' => Some('⁹'),
+        _ => None,
+    }
+}
+
 impl<'a> Iterator for Lexer<'a> {
     type Item = Result<Spanned, UnitError>;
 
