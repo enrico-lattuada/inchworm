@@ -3,7 +3,7 @@
 
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
-use inchworm_dimensions::{DimRegistry, Dimension, Exp};
+use inchworm_dimensions::{DimRegistry, Dimension, DimensionError, Exp};
 
 use crate::{
     Unit, UnitError, UnitId, UnitRegistryId,
@@ -86,7 +86,8 @@ impl UnitRegistry {
     /// Returns [`UnitError::NotPrefixable`] if `prefixable` is `true` but the unit's
     /// conversion is anchored (an affine or absolute-log conversion): those can never
     /// be combined with a prefix.
-    /// Propagates [`UnitError::Dimension`] from the underlying dimension algebra.
+    /// Propagates [`UnitError::Dimension`] from the underlying dimension algebra or if
+    /// `dimension` comes from a registry different from `dims`.
     fn add_unit_with_conversion(
         &mut self,
         name: &str,
@@ -125,6 +126,14 @@ impl UnitRegistry {
                 registry: self.name().into(),
                 scale,
             });
+        }
+        if let Some(dim_registry_id) = dimension.registry_id()
+            && dim_registry_id != self.dims().id()
+        {
+            return Err(UnitError::Dimension(DimensionError::CrossRegistry {
+                left: self.dims().id(),
+                right: dim_registry_id,
+            }));
         }
         let data = UnitData {
             id: UnitId::next(),
@@ -591,6 +600,24 @@ mod tests {
                 registry: "test-ureg".into(),
                 scale: -1.0,
             };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_dimension_from_foreign_registry() {
+            let mut dims1 = DimRegistry::new("test-reg-1");
+            let dims1_id = dims1.id();
+            dims1.add_base("length", None).unwrap();
+            let mut dims2 = DimRegistry::new("test-reg-2");
+            let length2 = dims2.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims1);
+            let err = registry
+                .add_unit("meter", "m", length2.clone(), 1.0, true)
+                .unwrap_err();
+            let expected_err = UnitError::Dimension(DimensionError::CrossRegistry {
+                left: dims1_id,
+                right: length2.registry_id().unwrap(),
+            });
             assert!(errors_match(&err, &expected_err));
         }
     }

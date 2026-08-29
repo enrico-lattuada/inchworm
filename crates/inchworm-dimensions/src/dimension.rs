@@ -137,7 +137,7 @@ impl Dimension {
     }
 
     /// Returns the [`RegistryId`] of the registry where `self` is defined.
-    pub(crate) fn registry_id(&self) -> Option<RegistryId> {
+    pub fn registry_id(&self) -> Option<RegistryId> {
         self.factors
             .entries()
             .first()
