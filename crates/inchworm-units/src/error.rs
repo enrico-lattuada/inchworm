@@ -63,6 +63,20 @@ pub enum UnitError {
         exp: Exp,
     },
 
+    /// `name`'s conversion is anchored ([`ConversionKind::is_point`]) and can
+    /// only appear standalone — never combined with another unit via
+    /// multiplication or division. `°C/min` is the canonical example: composing
+    /// an anchored unit with anything else is never coherent; use an explicit
+    /// delta/ratio unit instead.
+    #[error(
+        "unit `{name}` in registry `{registry_id:?}` is anchored and cannot be \
+        composed with another unit (only standalone use is valid)"
+    )]
+    NotComposable {
+        name: String,
+        registry_id: UnitRegistryId,
+    },
+
     /// The two operands' atoms were minted by different `UnitRegistry`
     /// instances.
     #[error("cannot mix units from registry `{left:?}` and registry `{right:?}`")]

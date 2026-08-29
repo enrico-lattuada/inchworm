@@ -1,8 +1,9 @@
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use inchworm_dimensions::Dimension;
+use inchworm_dimensions::{Dimension, Exp};
 
+use crate::UnitError;
 use crate::prefix::Prefix;
 
 /// Process-unique identity, assigned from a global counter at registration.
@@ -140,6 +141,24 @@ impl UnitData {
     /// See [`ConversionKind::is_point`].
     pub(crate) fn is_point(&self) -> bool {
         self.conversion.is_point()
+    }
+
+    /// Returns `Ok(())` if this atom may legally appear at `exp`. Anchored
+    /// conversions ([`Self::is_point`]) are restricted to standalone,
+    /// power-1 use; anything else is always fine.
+    ///
+    /// # Errors
+    /// Returns [`UnitError::NotExponentiable`] if this atom is anchored and
+    /// `exp` is not `1`.
+    pub(crate) fn check_exponentiable(&self, exp: Exp) -> Result<(), UnitError> {
+        if self.is_point() && !exp.is_one() {
+            return Err(UnitError::NotExponentiable {
+                name: self.name.to_string(),
+                registry_id: self.registry_id,
+                exp,
+            });
+        }
+        Ok(())
     }
 }
 

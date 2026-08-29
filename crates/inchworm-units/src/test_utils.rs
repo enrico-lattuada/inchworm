@@ -171,6 +171,13 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                 name == expected_name && registry_id == expected_registry_id && exp == expected_exp
             }
             (
+                UnitError::NotComposable { name, registry_id },
+                UnitError::NotComposable {
+                    name: expected_name,
+                    registry_id: expected_registry_id,
+                },
+            ) => name == expected_name && registry_id == expected_registry_id,
+            (
                 UnitError::CrossRegistry { left, right },
                 UnitError::CrossRegistry {
                     left: expected_left,

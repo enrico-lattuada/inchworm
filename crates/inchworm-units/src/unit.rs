@@ -60,14 +60,7 @@ impl Unit {
         if exp.is_zero() {
             return Ok(Self::empty());
         }
-        if atom.is_point() && !exp.is_one() {
-            let name = atom.name.as_ref();
-            return Err(UnitError::NotExponentiable {
-                name: name.into(),
-                registry_id: atom.registry_id,
-                exp,
-            });
-        }
+        atom.check_exponentiable(exp)?;
         let factors = smallvec![(atom.clone(), exp)];
         let dimension = atom.dimension.pow(exp)?;
         let scale = match atom.conversion {
@@ -114,6 +107,7 @@ impl Unit {
     /// # Errors
     /// Returns [`UnitError::CrossRegistry`] if `self` and `rhs` were minted by
     /// different unit registries.
+    /// Returns [`UnitError::NotComposable`] if `self` or `rhs` are anchored.
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`DimensionError::ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if combining a shared atom's exponents overflows, or
@@ -126,6 +120,17 @@ impl Unit {
             return Err(UnitError::CrossRegistry {
                 left: lhs_id,
                 right: rhs_id,
+            });
+        }
+        if let Some((atom, _)) = self
+            .factors()
+            .iter()
+            .chain(rhs.factors())
+            .find(|(atom, _)| atom.is_point())
+        {
+            return Err(UnitError::NotComposable {
+                name: atom.name.to_string(),
+                registry_id: atom.registry_id,
             });
         }
         let mut factors = SmallVec::new();
@@ -168,6 +173,8 @@ impl Unit {
     ///
     /// Returns [`UnitError::CrossRegistry`] if `self` and `rhs` were minted by
     /// different unit registries.
+    /// Returns [`UnitError::NotExponentiable`] if `rhs` is anchored.
+    /// Returns [`UnitError::NotComposable`] if `self` is anchored.
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`DimensionError::ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if combining a shared atom's exponents overflows.
@@ -181,15 +188,20 @@ impl Unit {
     /// Raises `self` to the power of `e`, pruning any that cancels to zero.
     ///
     /// # Errors
+    ///
+    /// Returns [`UnitError::NotExponentiable`] if the unit contains any
+    /// anchored atom and `exp != 1`.
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`DimensionError::ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if multiplying an atom's exponent by `e` overflows.
     pub fn pow(&self, e: Exp) -> Result<Self, UnitError> {
+        if e.is_zero() {
+            return Ok(Self::empty());
+        }
         let mut factors = SmallVec::new();
-        if !e.is_zero() {
-            for (atom_data, exp) in self.factors.iter() {
-                factors.push((atom_data.clone(), exp.checked_mul(e)?))
-            }
+        for (atom_data, exp) in self.factors.iter() {
+            atom_data.check_exponentiable(e)?;
+            factors.push((atom_data.clone(), exp.checked_mul(e)?))
         }
         let dimension = self.dimension.pow(e)?;
         let scale = self.scale.powf(e.to_f64());
@@ -204,12 +216,15 @@ impl Unit {
     ///
     /// # Errors
     ///
+    /// Returns [`UnitError::NotExponentiable`] if the unit contains any
+    /// anchored atoms.
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`DimensionError::ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if computing the reciprocal of an atom's exponents overflows.
     pub fn recip(&self) -> Result<Self, UnitError> {
         let mut factors = SmallVec::new();
         for (atom_data, exp) in self.factors.iter() {
+            atom_data.check_exponentiable(Exp::int(-1))?;
             factors.push((atom_data.clone(), exp.checked_neg()?));
         }
         Ok(Self {
@@ -575,6 +590,83 @@ mod tests {
             };
             assert!(errors_match(&err, &expected_err));
         }
+
+        #[test]
+        fn rejects_composing_point_like_left_operand() {
+            let registry_id = UnitRegistryId::next();
+            let affine_atom = make_unit_atom(
+                registry_id,
+                "affine_unit",
+                Dimension::dimensionless(),
+                ConversionKind::Affine {
+                    scale: 1.0,
+                    offset: 1.0,
+                },
+            );
+            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let linear_atom = make_unit_atom(
+                registry_id,
+                "linear_unit",
+                Dimension::dimensionless(),
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let linear_unit = Unit::single(&linear_atom, Exp::ONE).unwrap();
+            let err = affine_unit.try_mul(&linear_unit).unwrap_err();
+            let expected_err = UnitError::NotComposable {
+                name: affine_atom.name.to_string(),
+                registry_id: affine_atom.registry_id,
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_composing_point_like_right_operand() {
+            let registry_id = UnitRegistryId::next();
+            let affine_atom = make_unit_atom(
+                registry_id,
+                "affine_unit",
+                Dimension::dimensionless(),
+                ConversionKind::Affine {
+                    scale: 1.0,
+                    offset: 1.0,
+                },
+            );
+            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let linear_atom = make_unit_atom(
+                registry_id,
+                "linear_unit",
+                Dimension::dimensionless(),
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let linear_unit = Unit::single(&linear_atom, Exp::ONE).unwrap();
+            let err = linear_unit.try_mul(&affine_unit).unwrap_err();
+            let expected_err = UnitError::NotComposable {
+                name: affine_atom.name.to_string(),
+                registry_id: affine_atom.registry_id,
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_composing_point_like_with_itself() {
+            let registry_id = UnitRegistryId::next();
+            let affine_atom = make_unit_atom(
+                registry_id,
+                "affine_unit",
+                Dimension::dimensionless(),
+                ConversionKind::Affine {
+                    scale: 1.0,
+                    offset: 1.0,
+                },
+            );
+            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let err = affine_unit.try_mul(&affine_unit).unwrap_err();
+            let expected_err = UnitError::NotComposable {
+                name: affine_atom.name.to_string(),
+                registry_id: affine_atom.registry_id,
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
     }
 
     mod pow {
@@ -648,6 +740,115 @@ mod tests {
             let a_unit = Unit::single(&a_atom, Exp::int(i64::MAX)).unwrap();
             let err = a_unit.pow(Exp::int(2)).unwrap_err();
             let expected_err = UnitError::Dimension(DimensionError::ExponentOverflow);
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_non_unit_exponent_on_point_like_atom() {
+            let registry_id = UnitRegistryId::next();
+            let affine_atom = make_unit_atom(
+                registry_id,
+                "affine_unit",
+                Dimension::dimensionless(),
+                ConversionKind::Affine {
+                    scale: 1.0,
+                    offset: 1.0,
+                },
+            );
+            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let err = affine_unit.pow(Exp::int(2)).unwrap_err();
+            let expected_err = UnitError::NotExponentiable {
+                name: affine_atom.name.to_string(),
+                registry_id: affine_atom.registry_id,
+                exp: Exp::int(2),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+    }
+
+    mod recip {
+        use super::*;
+
+        #[test]
+        fn rejects_reciprocal_of_point_like_atom() {
+            let registry_id = UnitRegistryId::next();
+            let affine_atom = make_unit_atom(
+                registry_id,
+                "affine_unit",
+                Dimension::dimensionless(),
+                ConversionKind::Affine {
+                    scale: 1.0,
+                    offset: 1.0,
+                },
+            );
+            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let err = affine_unit.recip().unwrap_err();
+            let expected_err = UnitError::NotExponentiable {
+                name: affine_atom.name.to_string(),
+                registry_id: affine_atom.registry_id,
+                exp: Exp::int(-1),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+    }
+
+    mod try_div {
+        use super::*;
+
+        #[test]
+        fn rejects_dividing_by_point_like_unit() {
+            let registry_id = UnitRegistryId::next();
+            let affine_atom = make_unit_atom(
+                registry_id,
+                "affine_unit",
+                Dimension::dimensionless(),
+                ConversionKind::Affine {
+                    scale: 1.0,
+                    offset: 1.0,
+                },
+            );
+            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let linear_atom = make_unit_atom(
+                registry_id,
+                "linear_unit",
+                Dimension::dimensionless(),
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let linear_unit = Unit::single(&linear_atom, Exp::ONE).unwrap();
+            let err = linear_unit.try_div(&affine_unit).unwrap_err();
+            let expected_err = UnitError::NotExponentiable {
+                name: affine_atom.name.to_string(),
+                registry_id: affine_atom.registry_id,
+                exp: Exp::int(-1),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_point_like_dividend() {
+            let registry_id = UnitRegistryId::next();
+            let affine_atom = make_unit_atom(
+                registry_id,
+                "affine_unit",
+                Dimension::dimensionless(),
+                ConversionKind::Affine {
+                    scale: 1.0,
+                    offset: 1.0,
+                },
+            );
+            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let linear_atom = make_unit_atom(
+                registry_id,
+                "linear_unit",
+                Dimension::dimensionless(),
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let linear_unit = Unit::single(&linear_atom, Exp::ONE).unwrap();
+            let err = affine_unit.try_div(&linear_unit).unwrap_err();
+            let expected_err = UnitError::NotComposable {
+                name: affine_atom.name.to_string(),
+                registry_id: affine_atom.registry_id,
+            };
             assert!(errors_match(&err, &expected_err));
         }
     }
