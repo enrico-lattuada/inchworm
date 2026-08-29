@@ -51,25 +51,38 @@ impl Unit {
     ///
     /// # Errors
     ///
+    /// Returns [`UnitError::NotExponentiable`] if `atom`'s conversion is anchored and
+    /// `exp` is not `1`.
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`DimensionError::ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if raising `atom`'s dimension to `exp` overflows.
     pub(crate) fn single(atom: &Arc<UnitData>, exp: Exp) -> Result<Self, UnitError> {
-        if !exp.is_zero() {
-            let factors = smallvec![(atom.clone(), exp)];
-            let dimension = atom.dimension.pow(exp)?;
-            let scale = match atom.conversion {
-                ConversionKind::Linear { scale } => scale.powf(exp.to_f64()),
-                _ => todo!(),
-            };
-            Ok(Self {
-                factors,
-                dimension,
-                scale,
-            })
-        } else {
-            Ok(Self::empty())
+        if exp.is_zero() {
+            return Ok(Self::empty());
         }
+        if atom.is_point() && !exp.is_one() {
+            let name = atom.name.as_ref();
+            return Err(UnitError::NotExponentiable {
+                name: name.into(),
+                registry_id: atom.registry_id,
+                exp,
+            });
+        }
+        let factors = smallvec![(atom.clone(), exp)];
+        let dimension = atom.dimension.pow(exp)?;
+        let scale = match atom.conversion {
+            ConversionKind::Linear { scale } => scale.powf(exp.to_f64()),
+            ConversionKind::Affine { scale, .. } => {
+                debug_assert!(exp.is_one(), "should never get exp != 1 for affine unit");
+                scale
+            }
+            _ => todo!(),
+        };
+        Ok(Self {
+            factors,
+            dimension,
+            scale,
+        })
     }
 
     /// This unit's dimension: the cached product of its factors' dimensions.
@@ -285,7 +298,7 @@ impl std::fmt::Display for Unit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{errors_match, make_unit_atom};
+    use crate::test_utils::{errors_match, make_unit_atom, units_match};
     use inchworm_dimensions::{DimRegistry, DimensionError};
 
     #[test]
@@ -344,6 +357,80 @@ mod tests {
             let err = Unit::single(&atom, Exp::int(i64::MAX)).unwrap_err();
             let expected_err = UnitError::Dimension(DimensionError::ExponentOverflow);
             assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_exponent_other_than_one_for_affine() {
+            let registry_id = UnitRegistryId::next();
+            let mut dim_registry = DimRegistry::new("test-dim-reg");
+            let temperature = dim_registry.add_base("temperature", None).unwrap();
+            let conversion = ConversionKind::Affine {
+                scale: 1.0,
+                offset: 273.15,
+            };
+            let atom = make_unit_atom(registry_id, "celsius", temperature, conversion);
+            let err = Unit::single(&atom, Exp::int(2)).unwrap_err();
+            let expected_err = UnitError::NotExponentiable {
+                name: "celsius".into(),
+                registry_id,
+                exp: Exp::int(2),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_exponent_other_than_one_for_log_level() {
+            let registry_id = UnitRegistryId::next();
+            let conversion = ConversionKind::LogLevel {
+                multiplier: 10.0,
+                log_base: 10.0,
+                reference: 0.001,
+            };
+            let atom = make_unit_atom(
+                registry_id,
+                "decibel_milliwatt",
+                Dimension::dimensionless(),
+                conversion,
+            );
+            let err = Unit::single(&atom, Exp::int(2)).unwrap_err();
+            let expected_err = UnitError::NotExponentiable {
+                name: "decibel_milliwatt".into(),
+                registry_id,
+                exp: Exp::int(2),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn allows_exponent_one_for_affine() {
+            let registry_id = UnitRegistryId::next();
+            let mut dim_registry = DimRegistry::new("test-dim-reg");
+            let dim = dim_registry.add_base("dim", None).unwrap();
+            let conversion = ConversionKind::Affine {
+                scale: 5.0,
+                offset: 2.0,
+            };
+            let atom = make_unit_atom(registry_id, "unit", dim.clone(), conversion);
+            let unit = Unit::single(&atom, Exp::ONE).unwrap();
+            assert_eq!(unit.factors.len(), 1);
+            assert_eq!(unit.factors.first().unwrap(), &(atom, Exp::ONE));
+            assert_eq!(unit.dimension, dim);
+            assert_eq!(unit.scale, 5.0);
+        }
+
+        #[test]
+        fn zero_exponent_yields_empty_for_affine() {
+            let registry_id = UnitRegistryId::next();
+            let name = "celsius";
+            let mut dim_registry = DimRegistry::new("test-dim-reg");
+            let temperature = dim_registry.add_base("temperature", None).unwrap();
+            let conversion = ConversionKind::Affine {
+                scale: 1.0,
+                offset: 273.15,
+            };
+            let atom = make_unit_atom(registry_id, name, temperature, conversion);
+            let dimensionless = Unit::single(&atom, Exp::ZERO).unwrap();
+            assert!(units_match(&dimensionless, &Unit::empty()));
         }
     }
 

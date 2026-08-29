@@ -118,6 +118,18 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                 },
             ) => name == expected_name && registry == expected_registry,
             (
+                UnitError::NonPositiveScale {
+                    name,
+                    registry,
+                    scale,
+                },
+                UnitError::NonPositiveScale {
+                    name: expected_name,
+                    registry: expected_registry,
+                    scale: expected_scale,
+                },
+            ) => name == expected_name && registry == expected_registry && scale == expected_scale,
+            (
                 UnitError::InvalidName { name },
                 UnitError::InvalidName {
                     name: expected_name,
@@ -144,6 +156,20 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                     registry: expected_registry,
                 },
             ) => name == expected_name && registry == expected_registry,
+            (
+                UnitError::NotExponentiable {
+                    name,
+                    registry_id,
+                    exp,
+                },
+                UnitError::NotExponentiable {
+                    name: expected_name,
+                    registry_id: expected_registry_id,
+                    exp: expected_exp,
+                },
+            ) => {
+                name == expected_name && registry_id == expected_registry_id && exp == expected_exp
+            }
             (
                 UnitError::CrossRegistry { left, right },
                 UnitError::CrossRegistry {

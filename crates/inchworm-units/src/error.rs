@@ -3,6 +3,7 @@
 //! [`UnitError`] covers every fallible operation in the crate: registry
 //! mutation, expression parsing, exponent arithmetic, TOML loading.
 
+use inchworm_dimensions::Exp;
 use thiserror::Error;
 
 use crate::atom::UnitRegistryId;
@@ -19,6 +20,16 @@ pub enum UnitError {
     /// a prefix name.
     #[error("name `{name}` is already defined in registry `{registry}`")]
     DuplicateName { name: String, registry: String },
+
+    /// `name`'s scale is `<= 0.0` (either a unit's conversion scale or a
+    /// prefix's factor). `0.0` can never be inverted back to the coherent unit;
+    /// a negative value corresponds to no real physical unit or prefix.
+    #[error("name `{name}` in registry `{registry}` has non-positive scale `{scale}`")]
+    NonPositiveScale {
+        name: String,
+        registry: String,
+        scale: f64,
+    },
 
     /// `name` is not a valid unit or prefix identifier
     #[error("name `{name}` is not a valid identifier")]
@@ -37,6 +48,20 @@ pub enum UnitError {
     /// never prefixable).
     #[error("unit `{name}` in registry `{registry}` is not prefixable")]
     NotPrefixable { name: String, registry: String },
+
+    /// `name`'s conversion is anchored ([`ConversionKind::is_point`]) and can
+    /// only appear at exponent `1`; `exp` is the exponent actually attempted.
+    /// Anchored conversions (affine or absolute-log) have no coherent meaning
+    /// raised to any other power: use an explicit delta/ratio unit instead.
+    #[error(
+        "unit `{name}` in registry `{registry_id:?}` is anchored and cannot be \
+        raised to exponent `{exp:?}` (only `1` is valid)"
+    )]
+    NotExponentiable {
+        name: String,
+        registry_id: UnitRegistryId,
+        exp: Exp,
+    },
 
     /// The two operands' atoms were minted by different `UnitRegistry`
     /// instances.

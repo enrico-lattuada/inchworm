@@ -76,22 +76,23 @@ impl UnitRegistry {
 
 // ---- definition (mutation) ----
 impl UnitRegistry {
-    /// Add a unit to the registry and return the corresponding [`Unit`].
+    /// Add a unit with an attached [`ConversionKind`] to the registry and return the corresponding [`Unit`].
     ///
     /// # Errors
     ///
     /// Returns [`UnitError::InvalidName`] if `name` is not a valid identifier.
     /// Returns [`UnitError::DuplicateName`] if `name` is already present in the registry.
+    /// Returns [`UnitError::NonPositiveScale`] if `conversion` is not valid.
     /// Returns [`UnitError::NotPrefixable`] if `prefixable` is `true` but the unit's
     /// conversion is anchored (an affine or absolute-log conversion): those can never
     /// be combined with a prefix.
     /// Propagates [`UnitError::Dimension`] from the underlying dimension algebra.
-    pub fn add_unit(
+    fn add_unit_with_conversion(
         &mut self,
         name: &str,
         symbol: &str,
         dimension: Dimension,
-        scale: f64,
+        conversion: ConversionKind,
         prefixable: bool,
     ) -> Result<Unit, UnitError> {
         if !is_valid_ident(name) {
@@ -109,11 +110,20 @@ impl UnitRegistry {
                 registry: self.name().into(),
             });
         }
-        let conversion = ConversionKind::Linear { scale };
         if conversion.is_point() && prefixable {
             return Err(UnitError::NotPrefixable {
                 name: name.into(),
                 registry: self.name().into(),
+            });
+        }
+        // TODO: There should be a .validate() from ConversionKind itself
+        if let Some(scale) = conversion.scale()
+            && scale <= 0.0
+        {
+            return Err(UnitError::NonPositiveScale {
+                name: name.into(),
+                registry: self.name().into(),
+                scale,
             });
         }
         let data = UnitData {
@@ -133,6 +143,49 @@ impl UnitRegistry {
         Ok(unit)
     }
 
+    /// Add a unit to the registry and return the corresponding [`Unit`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::InvalidName`] if `name` is not a valid identifier.
+    /// Returns [`UnitError::DuplicateName`] if `name` is already present in the registry.
+    /// Returns [`UnitError::NonPositiveScale`] if `scale` is `<= 0.0`.
+    /// Propagates [`UnitError::Dimension`] from the underlying dimension algebra.
+    pub fn add_unit(
+        &mut self,
+        name: &str,
+        symbol: &str,
+        dimension: Dimension,
+        scale: f64,
+        prefixable: bool,
+    ) -> Result<Unit, UnitError> {
+        let conversion = ConversionKind::Linear { scale };
+        self.add_unit_with_conversion(name, symbol, dimension, conversion, prefixable)
+    }
+
+    /// Add an affine unit to the registry and return the corresponding [`Unit`].
+    ///
+    /// An affine unit is never prefixable.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::InvalidName`] if `name` is not a valid identifier.
+    /// Returns [`UnitError::DuplicateName`] if `name` is already present in the registry.
+    /// Returns [`UnitError::NonPositiveScale`] if `scale` is `<= 0.0`.
+    /// Propagates [`UnitError::Dimension`] from the underlying dimension algebra.
+    pub fn add_affine_unit(
+        &mut self,
+        name: &str,
+        symbol: &str,
+        dimension: Dimension,
+        scale: f64,
+        offset: f64,
+    ) -> Result<Unit, UnitError> {
+        let conversion = ConversionKind::Affine { scale, offset };
+        let prefixable = false;
+        self.add_unit_with_conversion(name, symbol, dimension, conversion, prefixable)
+    }
+
     /// Add a prefix to the registry.
     ///
     /// # Errors
@@ -140,6 +193,7 @@ impl UnitRegistry {
     /// Returns [`UnitError::InvalidName`] if `name` is not a valid identifier.
     /// Returns [`UnitError::DuplicateName`] if `name` is already registered as
     /// a prefix (or a unit) in this registry.
+    /// Returns [`UnitError::NonPositiveScale`] if `factor` is `<= 0.0`.
     pub fn add_prefix(&mut self, name: &str, symbol: &str, factor: f64) -> Result<(), UnitError> {
         if !is_valid_ident(name) {
             return Err(UnitError::InvalidName { name: name.into() });
@@ -154,6 +208,13 @@ impl UnitRegistry {
             return Err(UnitError::DuplicateName {
                 name: symbol.into(),
                 registry: self.name().into(),
+            });
+        }
+        if factor <= 0.0 {
+            return Err(UnitError::NonPositiveScale {
+                name: name.into(),
+                registry: self.name().into(),
+                scale: factor,
             });
         }
         let prefix = Prefix {
@@ -500,6 +561,127 @@ mod tests {
             };
             assert!(errors_match(&err, &expected_err));
         }
+
+        #[test]
+        fn rejects_zero_scale() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let err = registry
+                .add_unit("meter", "m", length, 0.0, true)
+                .unwrap_err();
+            let expected_err = UnitError::NonPositiveScale {
+                name: "meter".into(),
+                registry: "test-ureg".into(),
+                scale: 0.0,
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_negative_scale() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let err = registry
+                .add_unit("meter", "m", length, -1.0, true)
+                .unwrap_err();
+            let expected_err = UnitError::NonPositiveScale {
+                name: "meter".into(),
+                registry: "test-ureg".into(),
+                scale: -1.0,
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+    }
+
+    mod add_affine_unit {
+        use super::*;
+
+        #[test]
+        fn registers_atom_and_returns_matching_unit() {
+            let mut dims = DimRegistry::new("test-reg");
+            let temperature = dims.add_base("temperature", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let celsius = registry
+                .add_affine_unit("celsius", "°C", temperature.clone(), 1.0, 273.15)
+                .unwrap();
+            assert_eq!(celsius.dimension(), &temperature);
+        }
+
+        #[test]
+        fn stores_atom_with_correct_metadata() {
+            let mut dims = DimRegistry::new("test-reg");
+            let temperature = dims.add_base("temperature", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry
+                .add_affine_unit("celsius", "°C", temperature.clone(), 1.0, 273.15)
+                .unwrap();
+            let celsius = registry.atoms.get("celsius").unwrap();
+            assert_eq!(celsius.registry_id, registry.id());
+            assert_eq!(celsius.name, "celsius".into());
+            assert_eq!(celsius.symbol, "°C".into());
+            assert_eq!(celsius.dimension, temperature);
+            assert_eq!(
+                celsius.conversion,
+                ConversionKind::Affine {
+                    scale: 1.0,
+                    offset: 273.15
+                }
+            );
+            assert!(celsius.prefix.is_none());
+            assert!(!celsius.prefixable);
+        }
+
+        #[test]
+        fn rejects_zero_scale() {
+            let mut dims = DimRegistry::new("test-reg");
+            let temperature = dims.add_base("temperature", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let err = registry
+                .add_affine_unit("celsius", "°C", temperature.clone(), 0.0, 273.15)
+                .unwrap_err();
+            let expected_err = UnitError::NonPositiveScale {
+                name: "celsius".into(),
+                registry: "test-ureg".into(),
+                scale: 0.0,
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_negative_scale() {
+            let mut dims = DimRegistry::new("test-reg");
+            let temperature = dims.add_base("temperature", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let err = registry
+                .add_affine_unit("celsius", "°C", temperature.clone(), -1.0, 273.15)
+                .unwrap_err();
+            let expected_err = UnitError::NonPositiveScale {
+                name: "celsius".into(),
+                registry: "test-ureg".into(),
+                scale: -1.0,
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_duplicate_name() {
+            let mut dims = DimRegistry::new("test-reg");
+            let temperature = dims.add_base("temperature", None).unwrap();
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            registry
+                .add_unit("celsius", "degC", temperature.clone(), 1.0, false)
+                .unwrap();
+            let err = registry
+                .add_affine_unit("celsius", "°C", temperature.clone(), -1.0, 273.15)
+                .unwrap_err();
+            let expected_err = UnitError::DuplicateName {
+                name: "celsius".into(),
+                registry: "test-ureg".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
     }
 
     mod add_prefix {
@@ -622,6 +804,32 @@ mod tests {
             let err = registry.add_prefix("2kilo", "k", 1e3).unwrap_err();
             let expected_err = UnitError::InvalidName {
                 name: "2kilo".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_zero_factor() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let err = registry.add_prefix("kilo", "k", 0.0).unwrap_err();
+            let expected_err = UnitError::NonPositiveScale {
+                name: "kilo".into(),
+                registry: "test-ureg".into(),
+                scale: 0.0,
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_negative_factor() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let err = registry.add_prefix("kilo", "k", -1.0).unwrap_err();
+            let expected_err = UnitError::NonPositiveScale {
+                name: "kilo".into(),
+                registry: "test-ureg".into(),
+                scale: -1.0,
             };
             assert!(errors_match(&err, &expected_err));
         }
