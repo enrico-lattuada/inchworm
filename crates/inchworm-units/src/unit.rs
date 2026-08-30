@@ -57,10 +57,10 @@ impl Unit {
     /// [`DimensionError::ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if raising `atom`'s dimension to `exp` overflows.
     pub(crate) fn single(atom: &Arc<UnitData>, exp: Exp) -> Result<Self, UnitError> {
+        atom.check_exponentiable(exp)?;
         if exp.is_zero() {
             return Ok(Self::empty());
         }
-        atom.check_exponentiable(exp)?;
         let factors = smallvec![(atom.clone(), exp)];
         let dimension = atom.dimension.pow(exp)?;
         let scale = match atom.conversion {
@@ -195,13 +195,13 @@ impl Unit {
     /// [`DimensionError::ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if multiplying an atom's exponent by `e` overflows.
     pub fn pow(&self, e: Exp) -> Result<Self, UnitError> {
-        if e.is_zero() {
-            return Ok(Self::empty());
-        }
         let mut factors = SmallVec::new();
         for (atom_data, exp) in self.factors.iter() {
             atom_data.check_exponentiable(e)?;
             factors.push((atom_data.clone(), exp.checked_mul(e)?))
+        }
+        if e.is_zero() {
+            return Ok(Self::empty());
         }
         let dimension = self.dimension.pow(e)?;
         let scale = self.scale.powf(e.to_f64());
@@ -394,6 +394,25 @@ mod tests {
         }
 
         #[test]
+        fn rejects_zero_exponent_for_affine() {
+            let registry_id = UnitRegistryId::next();
+            let mut dim_registry = DimRegistry::new("test-dim-reg");
+            let temperature = dim_registry.add_base("temperature", None).unwrap();
+            let conversion = ConversionKind::Affine {
+                scale: 1.0,
+                offset: 273.15,
+            };
+            let atom = make_unit_atom(registry_id, "celsius", temperature, conversion);
+            let err = Unit::single(&atom, Exp::ZERO).unwrap_err();
+            let expected_err = UnitError::NotExponentiable {
+                name: "celsius".into(),
+                registry_id,
+                exp: Exp::ZERO,
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
         fn rejects_exponent_other_than_one_for_log_level() {
             let registry_id = UnitRegistryId::next();
             let conversion = ConversionKind::LogLevel {
@@ -417,6 +436,29 @@ mod tests {
         }
 
         #[test]
+        fn rejects_zero_exponent_for_log_level() {
+            let registry_id = UnitRegistryId::next();
+            let conversion = ConversionKind::LogLevel {
+                multiplier: 10.0,
+                log_base: 10.0,
+                reference: 0.001,
+            };
+            let atom = make_unit_atom(
+                registry_id,
+                "decibel_milliwatt",
+                Dimension::dimensionless(),
+                conversion,
+            );
+            let err = Unit::single(&atom, Exp::ZERO).unwrap_err();
+            let expected_err = UnitError::NotExponentiable {
+                name: "decibel_milliwatt".into(),
+                registry_id,
+                exp: Exp::ZERO,
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
         fn allows_exponent_one_for_affine() {
             let registry_id = UnitRegistryId::next();
             let mut dim_registry = DimRegistry::new("test-dim-reg");
@@ -431,21 +473,6 @@ mod tests {
             assert_eq!(unit.factors.first().unwrap(), &(atom, Exp::ONE));
             assert_eq!(unit.dimension, dim);
             assert_eq!(unit.scale, 5.0);
-        }
-
-        #[test]
-        fn zero_exponent_yields_empty_for_affine() {
-            let registry_id = UnitRegistryId::next();
-            let name = "celsius";
-            let mut dim_registry = DimRegistry::new("test-dim-reg");
-            let temperature = dim_registry.add_base("temperature", None).unwrap();
-            let conversion = ConversionKind::Affine {
-                scale: 1.0,
-                offset: 273.15,
-            };
-            let atom = make_unit_atom(registry_id, name, temperature, conversion);
-            let dimensionless = Unit::single(&atom, Exp::ZERO).unwrap();
-            assert!(units_match(&dimensionless, &Unit::empty()));
         }
     }
 
@@ -761,6 +788,28 @@ mod tests {
                 name: affine_atom.name.to_string(),
                 registry_id: affine_atom.registry_id,
                 exp: Exp::int(2),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_zero_exponent_on_point_like_atom() {
+            let registry_id = UnitRegistryId::next();
+            let affine_atom = make_unit_atom(
+                registry_id,
+                "affine_unit",
+                Dimension::dimensionless(),
+                ConversionKind::Affine {
+                    scale: 1.0,
+                    offset: 1.0,
+                },
+            );
+            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let err = affine_unit.pow(Exp::ZERO).unwrap_err();
+            let expected_err = UnitError::NotExponentiable {
+                name: affine_atom.name.to_string(),
+                registry_id: affine_atom.registry_id,
+                exp: Exp::ZERO,
             };
             assert!(errors_match(&err, &expected_err));
         }
