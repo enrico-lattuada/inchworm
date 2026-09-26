@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use inchworm_dimensions::{Dimension, Exp};
 
 use crate::UnitError;
-use crate::prefix::Prefix;
 
 /// Process-unique identity, assigned from a global counter at registration.
 ///
@@ -75,11 +74,6 @@ impl ConversionKind {
         matches!(self, Self::Affine { .. })
     }
 
-    /// The complement of [`is_point`](Self::is_point).
-    pub(crate) fn is_delta(&self) -> bool {
-        !self.is_point()
-    }
-
     /// The `scale` of this conversion.
     pub(crate) fn scale(&self) -> Option<f64> {
         match self {
@@ -102,10 +96,6 @@ pub(crate) struct UnitData {
     pub dimension: Dimension,
     /// How this atom's raw value relates to the coherent unit of `dimension`.
     pub conversion: ConversionKind,
-    /// `Some(..)` if this atom was lazily created by combining a [`Prefix`]
-    /// with a prefixable base atom (e.g. "km"); `None` for atoms registered
-    /// directly via [`UnitRegistry::add_unit`](crate::UnitRegistry::add_unit).
-    pub prefix: Option<Prefix>,
     /// Whether this atom may be combined with a [`Prefix`] to lazily derive a
     /// new atom. `false` for anchored conversions ([`ConversionKind::is_point`]),
     /// and for atoms already produced by prefixing: prefixes don't stack.
@@ -204,7 +194,6 @@ mod tests {
             ];
             for (conversion_kind, expected_point) in cases {
                 assert_eq!(conversion_kind.is_point(), expected_point);
-                assert_eq!(conversion_kind.is_delta(), !expected_point);
             }
         }
     }

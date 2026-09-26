@@ -1,7 +1,10 @@
 //! [`UnitRegistry`]: the mutable, instance-based namespace units are
 //! registered against.
 
-use std::{cell::RefCell, collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
+};
 
 use inchworm_dimensions::{DimRegistry, Dimension, DimensionError, Exp};
 
@@ -13,6 +16,8 @@ use crate::{
 };
 
 pub(crate) const DEFAULT_REGISTRY_VERSION: &str = "0";
+
+type PrefixedCache = HashMap<UnitId, HashMap<Box<str>, UnitAtom>>;
 
 /// A mutable namespace and factory for named units.
 ///
@@ -29,7 +34,7 @@ pub struct UnitRegistry {
     prefixes: HashMap<Box<str>, Prefix>,
     by_symbol: HashMap<Box<str>, Box<str>>,
     prefix_by_symbol: HashMap<Box<str>, Box<str>>,
-    prefixed: RefCell<HashMap<UnitId, HashMap<Box<str>, UnitAtom>>>,
+    prefixed: RwLock<PrefixedCache>,
 }
 
 impl UnitRegistry {
@@ -49,7 +54,7 @@ impl UnitRegistry {
             prefixes: HashMap::new(),
             by_symbol: HashMap::new(),
             prefix_by_symbol: HashMap::new(),
-            prefixed: RefCell::new(HashMap::new()),
+            prefixed: RwLock::new(HashMap::new()),
         }
     }
 
@@ -142,7 +147,6 @@ impl UnitRegistry {
             symbol: symbol.into(),
             dimension,
             conversion,
-            prefix: None,
             prefixable,
         };
         let atom = Arc::new(data);
@@ -236,6 +240,16 @@ impl UnitRegistry {
         Ok(())
     }
 
+    // Poison recovery: `prefixed` is a grow-only memo cache with no multi-step invariants...
+    fn prefixed_read(&self) -> RwLockReadGuard<'_, PrefixedCache> {
+        self.prefixed.read().unwrap_or_else(PoisonError::into_inner)
+    }
+    fn prefixed_write(&self) -> RwLockWriteGuard<'_, PrefixedCache> {
+        self.prefixed
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// # Errors
     ///
     /// Returns [`UnitError::UnknownPrefix`] if `prefix_name` is not registered.
@@ -252,10 +266,11 @@ impl UnitRegistry {
                 registry: self.name().into(),
             });
         }
-        if let Some(prefixed) = self.prefixed.borrow().get(&base.id)
-            && let Some(unit) = prefixed.get(prefix_name)
-        {
-            let atom = unit.clone();
+        let cached = self
+            .prefixed_read()
+            .get(&base.id)
+            .and_then(|m| m.get(prefix_name).cloned());
+        if let Some(atom) = cached {
             return Unit::single(&atom, Exp::ONE);
         }
         let prefix =
@@ -274,22 +289,23 @@ impl UnitRegistry {
                 unreachable!("point-like units should never reach this point.")
             }
         };
-        let data = UnitData {
-            id: UnitId::next(),
-            registry_id: self.id(),
-            name: format!("{}{}", prefix.name, base.name).into(),
-            symbol: format!("{}{}", prefix.symbol, base.symbol).into(),
-            dimension: base.dimension.clone(),
-            conversion,
-            prefix: Some(prefix),
-            prefixable: false,
-        };
-        let atom = Arc::new(data);
-        self.prefixed
-            .borrow_mut()
+        let atom = self
+            .prefixed_write()
             .entry(base.id)
             .or_default()
-            .insert(prefix_name.into(), atom.clone());
+            .entry(prefix_name.into())
+            .or_insert_with(|| {
+                Arc::new(UnitData {
+                    id: UnitId::next(),
+                    registry_id: self.id(),
+                    name: format!("{}{}", prefix.name, base.name).into(),
+                    symbol: format!("{}{}", prefix.symbol, base.symbol).into(),
+                    dimension: base.dimension.clone(),
+                    conversion,
+                    prefixable: false,
+                })
+            })
+            .clone();
         Unit::single(&atom, Exp::ONE)
     }
 
@@ -432,7 +448,6 @@ mod tests {
             assert_eq!(meter.symbol, "m".into());
             assert_eq!(meter.dimension, length);
             assert_eq!(meter.conversion, ConversionKind::Linear { scale: 2.0 });
-            assert!(meter.prefix.is_none());
             assert!(meter.prefixable);
         }
 
@@ -651,7 +666,6 @@ mod tests {
                     offset: 273.15
                 }
             );
-            assert!(celsius.prefix.is_none());
             assert!(!celsius.prefixable);
         }
 
@@ -871,15 +885,11 @@ mod tests {
             registry.add_prefix("kilo", "k", 1e3).unwrap();
             let base = meter.factors().first().unwrap().clone().0;
             registry.prefixed_unit("kilo", base.clone()).unwrap();
-            let prefixed = registry.prefixed.borrow();
+            let prefixed = registry.prefixed_read();
             let atom = prefixed.get(&base.id).unwrap().get("kilo").unwrap();
             assert_eq!(atom.name, "kilometer".into());
             assert_eq!(atom.symbol, "km".into());
             assert_eq!(atom.conversion, ConversionKind::Linear { scale: 1000.0 });
-            assert_eq!(
-                atom.prefix,
-                Some(registry.prefixes.get("kilo").unwrap().clone())
-            );
             assert!(!atom.prefixable);
         }
 

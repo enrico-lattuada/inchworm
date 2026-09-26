@@ -19,7 +19,6 @@ pub(crate) fn make_unit_atom(
         symbol: name.into(),
         dimension,
         conversion,
-        prefix: None,
         prefixable: false,
     })
 }

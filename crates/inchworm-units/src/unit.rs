@@ -292,7 +292,7 @@ impl fmt::Display for Unit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{errors_match, make_unit_atom, units_match};
+    use crate::test_utils::{errors_match, make_unit_atom};
     use inchworm_dimensions::{DimRegistry, DimensionError};
 
     #[test]
