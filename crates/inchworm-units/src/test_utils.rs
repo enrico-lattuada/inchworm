@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::{
     Unit, UnitError, UnitId, UnitRegistryId,
-    atom::{ConversionKind, UnitData},
+    atom::{ConversionKind, UnitAtom, UnitData},
 };
 
 pub(crate) fn make_unit_atom(
@@ -11,7 +11,7 @@ pub(crate) fn make_unit_atom(
     name: &str,
     dimension: Dimension,
     conversion: ConversionKind,
-) -> Arc<UnitData> {
+) -> UnitAtom {
     Arc::new(UnitData {
         id: UnitId::next(),
         registry_id,

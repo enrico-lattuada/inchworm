@@ -1,11 +1,11 @@
-use std::{cmp::Ordering, sync::Arc};
+use std::cmp::Ordering;
 
 use inchworm_dimensions::{Dimension, Exp};
 use smallvec::{SmallVec, smallvec};
 
 use crate::{
     UnitError, UnitRegistryId,
-    atom::{ConversionKind, UnitData},
+    atom::{ConversionKind, UnitAtom},
     parse::digit_to_superscript,
 };
 
@@ -24,7 +24,7 @@ const MAX_INLINE_FACTORS: usize = 4;
 /// - no duplicates.
 #[derive(Debug, Clone)]
 pub struct Unit {
-    factors: SmallVec<[(Arc<UnitData>, Exp); MAX_INLINE_FACTORS]>,
+    factors: SmallVec<[(UnitAtom, Exp); MAX_INLINE_FACTORS]>,
     /// Cached product of factor dimensions.
     dimension: Dimension,
     /// Cached product of factor scale^exponent
@@ -56,7 +56,7 @@ impl Unit {
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`DimensionError::ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if raising `atom`'s dimension to `exp` overflows.
-    pub(crate) fn single(atom: &Arc<UnitData>, exp: Exp) -> Result<Self, UnitError> {
+    pub(crate) fn single(atom: &UnitAtom, exp: Exp) -> Result<Self, UnitError> {
         atom.check_exponentiable(exp)?;
         if exp.is_zero() {
             return Ok(Self::empty());
@@ -90,7 +90,7 @@ impl Unit {
     }
 
     /// The factors of this unit.
-    pub(crate) fn factors(&self) -> &[(Arc<UnitData>, Exp)] {
+    pub(crate) fn factors(&self) -> &[(UnitAtom, Exp)] {
         &self.factors
     }
 
@@ -237,7 +237,7 @@ impl Unit {
 
 // ---- Display helpers ----
 impl Unit {
-    fn grouped_factors(&self) -> (Vec<&(Arc<UnitData>, Exp)>, Vec<&(Arc<UnitData>, Exp)>) {
+    fn grouped_factors(&self) -> (Vec<&(UnitAtom, Exp)>, Vec<&(UnitAtom, Exp)>) {
         let (mut positive, mut negative) = (Vec::new(), Vec::new());
         for factor in self.factors().iter() {
             if factor.1.num() > 0 {
@@ -500,7 +500,7 @@ mod tests {
             let a_unit = Unit::single(&a_atom, Exp::ONE).unwrap();
             let b_unit = Unit::single(&b_atom, Exp::ONE).unwrap();
             let ab_unit = a_unit.try_mul(&b_unit).unwrap();
-            let expected_factors: SmallVec<[(Arc<UnitData>, Exp); MAX_INLINE_FACTORS]> =
+            let expected_factors: SmallVec<[(UnitAtom, Exp); MAX_INLINE_FACTORS]> =
                 smallvec![(a_atom, Exp::ONE), (b_atom, Exp::ONE)];
             assert_eq!(ab_unit.factors, expected_factors);
             assert_eq!(ab_unit.dimension, a_dim.try_mul(&b_dim).unwrap());
@@ -521,7 +521,7 @@ mod tests {
             let a_unit_1 = Unit::single(&a_atom, Exp::ONE).unwrap();
             let a_unit_2 = Unit::single(&a_atom, Exp::ONE).unwrap();
             let ab_unit = a_unit_1.try_mul(&a_unit_2).unwrap();
-            let expected_factors: SmallVec<[(Arc<UnitData>, Exp); MAX_INLINE_FACTORS]> =
+            let expected_factors: SmallVec<[(UnitAtom, Exp); MAX_INLINE_FACTORS]> =
                 smallvec![(a_atom, Exp::int(2))];
             assert_eq!(ab_unit.factors, expected_factors);
             assert_eq!(ab_unit.dimension, a_dim.pow(Exp::int(2)).unwrap());
@@ -728,7 +728,7 @@ mod tests {
             };
             let e = Exp::int(2);
             let unit_raised = unit.pow(e).unwrap();
-            let expected_factors: SmallVec<[(Arc<UnitData>, Exp); MAX_INLINE_FACTORS]> =
+            let expected_factors: SmallVec<[(UnitAtom, Exp); MAX_INLINE_FACTORS]> =
                 smallvec![(a_atom, Exp::int(2)), (b_atom, Exp::int(6))];
             assert_eq!(unit_raised.factors, expected_factors);
             assert_eq!(unit_raised.dimension, dimension.pow(e).unwrap());

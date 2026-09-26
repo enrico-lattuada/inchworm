@@ -7,7 +7,7 @@ use inchworm_dimensions::{DimRegistry, Dimension, DimensionError, Exp};
 
 use crate::{
     Unit, UnitError, UnitId, UnitRegistryId,
-    atom::{ConversionKind, UnitData},
+    atom::{ConversionKind, UnitAtom, UnitData},
     parse::{is_valid_ident, parse_unit_expr},
     prefix::Prefix,
 };
@@ -25,11 +25,11 @@ pub struct UnitRegistry {
     name: Box<str>,
     version: Box<str>,
     /// Map name to atom.
-    atoms: HashMap<Box<str>, Arc<UnitData>>,
+    atoms: HashMap<Box<str>, UnitAtom>,
     prefixes: HashMap<Box<str>, Prefix>,
     by_symbol: HashMap<Box<str>, Box<str>>,
     prefix_by_symbol: HashMap<Box<str>, Box<str>>,
-    prefixed: RefCell<HashMap<UnitId, HashMap<Box<str>, Arc<UnitData>>>>,
+    prefixed: RefCell<HashMap<UnitId, HashMap<Box<str>, UnitAtom>>>,
 }
 
 impl UnitRegistry {
@@ -244,7 +244,7 @@ impl UnitRegistry {
     pub(crate) fn prefixed_unit(
         &self,
         prefix_name: &str,
-        base: Arc<UnitData>,
+        base: UnitAtom,
     ) -> Result<Unit, UnitError> {
         if !base.prefixable {
             return Err(UnitError::NotPrefixable {
@@ -306,7 +306,7 @@ impl UnitRegistry {
         self.prefixes.contains_key(candidate) || self.prefix_by_symbol.contains_key(candidate)
     }
 
-    fn find_atom(&self, candidate: &str) -> Option<&Arc<UnitData>> {
+    fn find_atom(&self, candidate: &str) -> Option<&UnitAtom> {
         self.atoms.get(candidate).or_else(|| {
             self.by_symbol
                 .get(candidate)

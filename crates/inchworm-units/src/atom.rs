@@ -1,4 +1,5 @@
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use inchworm_dimensions::{Dimension, Exp};
@@ -187,6 +188,8 @@ impl Hash for UnitData {
         self.id.hash(state);
     }
 }
+
+pub(crate) type UnitAtom = Arc<UnitData>;
 
 #[cfg(test)]
 mod tests {
