@@ -270,7 +270,9 @@ impl UnitRegistry {
             ConversionKind::Linear { scale } => ConversionKind::Linear {
                 scale: scale * prefix.factor,
             },
-            _ => unreachable!("point-like units should never reach this point."),
+            ConversionKind::Affine { .. } => {
+                unreachable!("point-like units should never reach this point.")
+            }
         };
         let data = UnitData {
             id: UnitId::next(),
