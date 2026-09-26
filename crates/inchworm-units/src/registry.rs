@@ -270,13 +270,6 @@ impl UnitRegistry {
             ConversionKind::Linear { scale } => ConversionKind::Linear {
                 scale: scale * prefix.factor,
             },
-            ConversionKind::LogRatio {
-                multiplier,
-                log_base,
-            } => ConversionKind::LogRatio {
-                multiplier: multiplier / prefix.factor,
-                log_base,
-            },
             _ => unreachable!("point-like units should never reach this point."),
         };
         let data = UnitData {

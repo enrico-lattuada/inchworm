@@ -69,7 +69,6 @@ impl Unit {
                 debug_assert!(exp.is_one(), "should never get exp != 1 for affine unit");
                 scale
             }
-            _ => todo!(),
         };
         Ok(Self {
             factors,
@@ -406,52 +405,6 @@ mod tests {
             let err = Unit::single(&atom, Exp::ZERO).unwrap_err();
             let expected_err = UnitError::NotExponentiable {
                 name: "celsius".into(),
-                registry_id,
-                exp: Exp::ZERO,
-            };
-            assert!(errors_match(&err, &expected_err));
-        }
-
-        #[test]
-        fn rejects_exponent_other_than_one_for_log_level() {
-            let registry_id = UnitRegistryId::next();
-            let conversion = ConversionKind::LogLevel {
-                multiplier: 10.0,
-                log_base: 10.0,
-                reference: 0.001,
-            };
-            let atom = make_unit_atom(
-                registry_id,
-                "decibel_milliwatt",
-                Dimension::dimensionless(),
-                conversion,
-            );
-            let err = Unit::single(&atom, Exp::int(2)).unwrap_err();
-            let expected_err = UnitError::NotExponentiable {
-                name: "decibel_milliwatt".into(),
-                registry_id,
-                exp: Exp::int(2),
-            };
-            assert!(errors_match(&err, &expected_err));
-        }
-
-        #[test]
-        fn rejects_zero_exponent_for_log_level() {
-            let registry_id = UnitRegistryId::next();
-            let conversion = ConversionKind::LogLevel {
-                multiplier: 10.0,
-                log_base: 10.0,
-                reference: 0.001,
-            };
-            let atom = make_unit_atom(
-                registry_id,
-                "decibel_milliwatt",
-                Dimension::dimensionless(),
-                conversion,
-            );
-            let err = Unit::single(&atom, Exp::ZERO).unwrap_err();
-            let expected_err = UnitError::NotExponentiable {
-                name: "decibel_milliwatt".into(),
                 registry_id,
                 exp: Exp::ZERO,
             };
