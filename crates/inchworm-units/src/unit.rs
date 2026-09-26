@@ -1,4 +1,7 @@
-use std::cmp::Ordering;
+use std::{
+    cmp::Ordering,
+    fmt::{self, Write},
+};
 
 use inchworm_dimensions::{Dimension, Exp};
 use smallvec::{SmallVec, smallvec};
@@ -236,73 +239,50 @@ impl Unit {
 
 // ---- Display helpers ----
 impl Unit {
-    fn grouped_factors(&self) -> (Vec<&(UnitAtom, Exp)>, Vec<&(UnitAtom, Exp)>) {
-        let (mut positive, mut negative) = (Vec::new(), Vec::new());
-        for factor in self.factors().iter() {
-            if factor.1.num() > 0 {
-                positive.push(factor);
-            } else {
-                negative.push(factor);
-            }
-        }
-        // Sort by symbol
-        positive.sort_by(|&a, &b| a.0.symbol.cmp(&b.0.symbol));
-        negative.sort_by(|&a, &b| a.0.symbol.cmp(&b.0.symbol));
-        (positive, negative)
+    fn sorted_factors(&self) -> Vec<&(UnitAtom, Exp)> {
+        let mut factors: Vec<_> = self.factors.iter().collect();
+        factors.sort_by(|a, b| a.0.symbol.cmp(&b.0.symbol));
+        factors
     }
 }
 
-fn write_factor(
-    f: &mut std::fmt::Formatter<'_>,
-    symbol: &str,
-    exp: Exp,
-    pretty: bool,
-) -> std::fmt::Result {
-    write!(f, "{symbol}")?;
+fn write_factor(f: &mut fmt::Formatter<'_>, symbol: &str, exp: Exp, pretty: bool) -> fmt::Result {
+    f.write_str(symbol)?;
     let num = exp.num().unsigned_abs();
-    if exp.is_int() {
-        if num == 1 {
-            return Ok(());
-        } else if pretty {
-            let as_superscript: String = num
-                .to_string()
-                .chars()
-                .map(|c| digit_to_superscript(c).expect("should be a superscript here"))
-                .collect();
-            write!(f, "{as_superscript}")?;
-        } else {
-            write!(f, "^{num}")?;
-        }
-    } else {
-        write!(f, "^({}/{})", num, exp.den())?;
+    match (exp.is_int(), num, pretty) {
+        (true, 1, _) => Ok(()),
+        (true, _, true) => num
+            .to_string()
+            .chars()
+            .filter_map(digit_to_superscript)
+            .try_for_each(|c| f.write_char(c)),
+        (true, _, false) => write!(f, "^{num}"),
+        (false, ..) => write!(f, "^({num}/{})", exp.den()),
     }
-    Ok(())
 }
 
-impl std::fmt::Display for Unit {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (positive, negative) = self.grouped_factors();
+impl fmt::Display for Unit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let pretty = f.alternate();
-        let mul_separator = if pretty { '·' } else { '*' };
-        let mut wrote_anything = false;
+        let sep = if pretty { "·" } else { "*" };
+        let factors = self.sorted_factors();
+        let mut first = true;
         if self.scale() != 1.0 {
-            write!(f, "{}", self.scale())?;
-            wrote_anything = true;
+            write!(f, "{}", self.scale)?;
+            first = false;
         }
-        for (atom, exp) in positive {
-            if wrote_anything {
-                write!(f, "{mul_separator}")?;
+        for (atom, exp) in factors.iter().filter(|(_, e)| e.num() > 0) {
+            if !first {
+                f.write_str(sep)?;
             }
-            // write factor
             write_factor(f, &atom.symbol, *exp, pretty)?;
-            // flip flag
-            wrote_anything = true;
+            first = false;
         }
-        if !wrote_anything {
-            write!(f, "1")?;
+        if first {
+            f.write_str("1")?;
         }
-        for (atom, exp) in negative {
-            write!(f, "/")?;
+        for (atom, exp) in factors.iter().filter(|(_, e)| e.num() < 0) {
+            f.write_str("/")?;
             write_factor(f, &atom.symbol, *exp, pretty)?;
         }
         Ok(())
