@@ -31,7 +31,7 @@ pub enum UnitError {
         scale: f64,
     },
 
-    /// `name` is not a valid unit or prefix identifier
+    /// `name` (a unit or prefix name, or a symbol) is not a valid identifier
     #[error("name `{name}` is not a valid identifier")]
     InvalidName { name: String },
 

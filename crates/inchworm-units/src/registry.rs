@@ -37,6 +37,15 @@ pub struct UnitRegistry {
     prefixed: RwLock<PrefixedCache>,
 }
 
+fn check_ident(candidate: &str) -> Result<(), UnitError> {
+    if !is_valid_ident(candidate) {
+        return Err(UnitError::InvalidName {
+            name: candidate.into(),
+        });
+    }
+    Ok(())
+}
+
 impl UnitRegistry {
     /// Creates an empty registry associated with `dims` with a name and a default version.
     pub fn new(name: &str, dims: DimRegistry) -> Self {
@@ -85,7 +94,7 @@ impl UnitRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`UnitError::InvalidName`] if `name` is not a valid identifier.
+    /// Returns [`UnitError::InvalidName`] if `name` or `symbol` is not a valid identifier.
     /// Returns [`UnitError::DuplicateName`] if `name` is already present in the registry.
     /// Returns [`UnitError::NonPositiveScale`] if `conversion` is not valid.
     /// Returns [`UnitError::NotPrefixable`] if `prefixable` is `true` but the unit's
@@ -100,9 +109,8 @@ impl UnitRegistry {
         conversion: ConversionKind,
         prefixable: bool,
     ) -> Result<DeltaUnit, UnitError> {
-        if !is_valid_ident(name) {
-            return Err(UnitError::InvalidName { name: name.into() });
-        }
+        check_ident(name)?;
+        check_ident(symbol)?;
         if self.is_unit_taken(name) || self.prefixes.contains_key(name) {
             return Err(UnitError::DuplicateName {
                 name: name.into(),
@@ -159,7 +167,7 @@ impl UnitRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`UnitError::InvalidName`] if `name` is not a valid identifier.
+    /// Returns [`UnitError::InvalidName`] if `name` or `symbol` is not a valid identifier.
     /// Returns [`UnitError::DuplicateName`] if `name` is already present in the registry.
     /// Returns [`UnitError::NonPositiveScale`] if `scale` is `<= 0.0`.
     /// Propagates [`UnitError::Dimension`] from the underlying dimension algebra.
@@ -181,7 +189,7 @@ impl UnitRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`UnitError::InvalidName`] if `name` is not a valid identifier.
+    /// Returns [`UnitError::InvalidName`] if `name` or `symbol` is not a valid identifier.
     /// Returns [`UnitError::DuplicateName`] if `name` is already present in the registry.
     /// Returns [`UnitError::NonPositiveScale`] if `scale` is `<= 0.0`.
     /// Propagates [`UnitError::Dimension`] from the underlying dimension algebra.
@@ -202,14 +210,13 @@ impl UnitRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`UnitError::InvalidName`] if `name` is not a valid identifier.
+    /// Returns [`UnitError::InvalidName`] if `name` or `symbol` is not a valid identifier.
     /// Returns [`UnitError::DuplicateName`] if `name` is already registered as
     /// a prefix (or a unit) in this registry.
     /// Returns [`UnitError::NonPositiveScale`] if `factor` is `<= 0.0`.
     pub fn add_prefix(&mut self, name: &str, symbol: &str, factor: f64) -> Result<(), UnitError> {
-        if !is_valid_ident(name) {
-            return Err(UnitError::InvalidName { name: name.into() });
-        }
+        check_ident(name)?;
+        check_ident(symbol)?;
         if self.is_prefix_taken(name) || self.atoms.contains_key(name) {
             return Err(UnitError::DuplicateName {
                 name: name.into(),
@@ -629,6 +636,57 @@ mod tests {
             });
             assert!(errors_match(&err, &expected_err));
         }
+
+        #[test]
+        fn rejects_invalid_symbol() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let cases = ["", "2m", "°C", "m m", "m/s"];
+            for symbol in cases {
+                let Err(err) =
+                    registry.add_unit("valid", symbol, Dimension::dimensionless(), 1.0, true)
+                else {
+                    panic!("symbol {symbol:?} was accepted");
+                };
+                let expected_err = UnitError::InvalidName {
+                    name: symbol.into(),
+                };
+                assert!(
+                    errors_match(&err, &expected_err),
+                    "symbol {symbol:?}: got {err:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn allows_underscore_in_symbol() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let unit = registry.add_unit(
+                "delta_meter",
+                "delta_m",
+                Dimension::dimensionless(),
+                1.0,
+                true,
+            );
+            assert!(unit.is_ok());
+        }
+
+        #[test]
+        fn accepted_symbol_parses_back() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let unit = registry
+                .add_unit(
+                    "delta_meter",
+                    "delta_m",
+                    Dimension::dimensionless(),
+                    1.0,
+                    true,
+                )
+                .unwrap();
+            assert_eq!(registry.parse("delta_m").unwrap(), unit);
+        }
     }
 
     mod add_affine_unit {
@@ -640,7 +698,7 @@ mod tests {
             let temperature = dims.add_base("temperature", None).unwrap();
             let mut registry = UnitRegistry::new("test-ureg", dims);
             let celsius = registry
-                .add_affine_unit("celsius", "°C", temperature.clone(), 1.0, 273.15)
+                .add_affine_unit("celsius", "degC", temperature.clone(), 1.0, 273.15)
                 .unwrap();
             assert_eq!(celsius.dimension(), &temperature);
         }
@@ -651,12 +709,12 @@ mod tests {
             let temperature = dims.add_base("temperature", None).unwrap();
             let mut registry = UnitRegistry::new("test-ureg", dims);
             registry
-                .add_affine_unit("celsius", "°C", temperature.clone(), 1.0, 273.15)
+                .add_affine_unit("celsius", "degC", temperature.clone(), 1.0, 273.15)
                 .unwrap();
             let celsius = registry.atoms.get("celsius").unwrap();
             assert_eq!(celsius.registry_id, registry.id());
             assert_eq!(celsius.name, "celsius".into());
-            assert_eq!(celsius.symbol, "°C".into());
+            assert_eq!(celsius.symbol, "degC".into());
             assert_eq!(celsius.dimension, temperature);
             assert_eq!(
                 celsius.conversion,
@@ -674,7 +732,7 @@ mod tests {
             let temperature = dims.add_base("temperature", None).unwrap();
             let mut registry = UnitRegistry::new("test-ureg", dims);
             let err = registry
-                .add_affine_unit("celsius", "°C", temperature.clone(), 0.0, 273.15)
+                .add_affine_unit("celsius", "degC", temperature.clone(), 0.0, 273.15)
                 .unwrap_err();
             let expected_err = UnitError::NonPositiveScale {
                 name: "celsius".into(),
@@ -690,7 +748,7 @@ mod tests {
             let temperature = dims.add_base("temperature", None).unwrap();
             let mut registry = UnitRegistry::new("test-ureg", dims);
             let err = registry
-                .add_affine_unit("celsius", "°C", temperature.clone(), -1.0, 273.15)
+                .add_affine_unit("celsius", "degC", temperature.clone(), -1.0, 273.15)
                 .unwrap_err();
             let expected_err = UnitError::NonPositiveScale {
                 name: "celsius".into(),
@@ -709,7 +767,7 @@ mod tests {
                 .add_unit("celsius", "degC", temperature.clone(), 1.0, false)
                 .unwrap();
             let err = registry
-                .add_affine_unit("celsius", "°C", temperature.clone(), -1.0, 273.15)
+                .add_affine_unit("celsius", "degC", temperature.clone(), -1.0, 273.15)
                 .unwrap_err();
             let expected_err = UnitError::DuplicateName {
                 name: "celsius".into(),
@@ -867,6 +925,33 @@ mod tests {
                 scale: -1.0,
             };
             assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_invalid_symbol() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let cases = ["", "2k", "µ", "k k"];
+            for symbol in cases {
+                let Err(err) = registry.add_prefix("valid", symbol, 1.0) else {
+                    panic!("symbol {symbol:?} was accepted");
+                };
+                let expected_err = UnitError::InvalidName {
+                    name: symbol.into(),
+                };
+                assert!(
+                    errors_match(&err, &expected_err),
+                    "symbol {symbol:?}: got {err:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn allows_underscore_in_symbol() {
+            let dims = DimRegistry::new("test-reg");
+            let mut registry = UnitRegistry::new("test-ureg", dims);
+            let unit = registry.add_prefix("foo_bar", "foo_b", 1.0);
+            assert!(unit.is_ok())
         }
     }
 
