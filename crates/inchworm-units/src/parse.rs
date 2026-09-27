@@ -3,7 +3,7 @@
 //! ```text
 //! expr     := term { ("*" | "·" | "×" | "/") term }
 //! term     := factor [ ("^" ["-"] ("(" exponent ")" | INT)) | SUPERSCRIPT ]
-//! factor   := IDENT | NUMBER | "(" expr ")"
+//! factor   := IDENT | "1" | "(" expr ")"
 //! exponent := ["-"] INT [ "/" INT ]
 //! IDENT    := [A-Za-z_][A-Za-z0-9_]*
 //! ```
@@ -232,11 +232,10 @@ impl<'a> Parser<'a> {
         let spanned = self.advance()?.ok_or_else(|| UnitError::Parse {
             src: self.src.into(),
             offset: self.src.len(),
-            message: "expected a unit, a number, or `(`, found end of input".into(),
+            message: "expected a unit, `1`, or `(`, found end of input".into(),
         })?;
         match spanned.token {
-            Token::Int(n) => Ok(Unit::scaled(n as f64)),
-            Token::Float(n) => Ok(Unit::scaled(n)),
+            Token::Int(1) => Ok(Unit::empty()),
             Token::Ident(name) => (self.resolve)(&name),
             Token::LParen => {
                 // Parse expression inside `(...)´
@@ -247,7 +246,7 @@ impl<'a> Parser<'a> {
             token => Err(UnitError::Parse {
                 src: self.src.into(),
                 offset: spanned.offset,
-                message: format!("expected a unit, a number, or `(`, found {token}"),
+                message: format!("expected a unit, `1`, or `(`, found {token}"),
             }),
         }
     }
@@ -364,7 +363,7 @@ impl<'a> Parser<'a> {
         matches!(
             self.tokens.peek(),
             Some(Ok(Spanned {
-                token: Token::LParen | Token::Int(_) | Token::Float(_) | Token::Ident(_),
+                token: Token::LParen | Token::Int(1) | Token::Ident(_),
                 ..
             }))
         )
@@ -376,7 +375,7 @@ impl<'a> Parser<'a> {
             // peek the next token:
             //   Star  -> advance(), rhs = parse_term()?, result = result.try_mul(&rhs)?
             //   Slash -> advance(), rhs = parse_term()?, result = result.try_div(&rhs)?
-            //   (Ident/Float/Int/LParen) -> rhs = parse_term()?, result = result.try_mul(&rhs)?
+            //   (Ident/1/LParen) -> rhs = parse_term()?, result = result.try_mul(&rhs)?
             //   anything else, or end of input -> break
             if self.consume_if(&Token::Star)? {
                 let rhs = self.parse_term()?;

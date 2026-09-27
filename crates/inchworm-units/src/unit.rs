@@ -6,51 +6,38 @@ use std::{
 use inchworm_dimensions::{Dimension, Exp};
 use smallvec::{SmallVec, smallvec};
 
-use crate::{
-    UnitError, UnitRegistryId,
-    atom::{ConversionKind, UnitAtom},
-    parse::digit_to_superscript,
-};
+use crate::{UnitError, UnitRegistryId, atom::UnitAtom, parse::digit_to_superscript};
 
 const MAX_INLINE_FACTORS: usize = 4;
 
 /// A unit expression: a reduced product of powers over named unit atoms.
 ///
 /// A free value: once built, a `Unit` never needs its originating unit
-/// registry again. Caches the product of its factors' dimensions and the
-/// product of their scales, so dimension compatibility and coherent-unit
-/// conversion are O(1) lookups rather than re-derived on every use.
+/// registry again. Caches the product of its factors' dimensions,
+/// so dimension compatibility is O(1) lookup.
 ///
 /// Invariants:
 /// - sorted by [`UnitId`](crate::UnitId) ascending
 /// - no zero exponents
 /// - no duplicates.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Unit {
     factors: SmallVec<[(UnitAtom, Exp); MAX_INLINE_FACTORS]>,
     /// Cached product of factor dimensions.
     dimension: Dimension,
-    /// Cached product of factor scale^exponent
-    scale: f64,
 }
 
 impl Unit {
-    /// Returns a scaled, dimensionless unit.
-    pub fn scaled(scale: f64) -> Self {
+    /// Returns an empty (dimensionless) unit.
+    pub fn empty() -> Self {
         Self {
             factors: SmallVec::new(),
             dimension: Dimension::dimensionless(),
-            scale,
         }
     }
 
-    /// Returns an empty (dimensionless, scale `1.0`) unit.
-    pub fn empty() -> Self {
-        Self::scaled(1.0)
-    }
-
     /// Returns a unit with a single factor at power `exp`, or an empty
-    /// (dimensionless, scale `1.0`) unit if `exp` is zero.
+    /// (dimensionless) unit if `exp` is zero.
     ///
     /// # Errors
     ///
@@ -66,18 +53,7 @@ impl Unit {
         }
         let factors = smallvec![(atom.clone(), exp)];
         let dimension = atom.dimension.pow(exp)?;
-        let scale = match atom.conversion {
-            ConversionKind::Linear { scale } => scale.powf(exp.to_f64()),
-            ConversionKind::Affine { scale, .. } => {
-                debug_assert!(exp.is_one(), "should never get exp != 1 for affine unit");
-                scale
-            }
-        };
-        Ok(Self {
-            factors,
-            dimension,
-            scale,
-        })
+        Ok(Self { factors, dimension })
     }
 
     /// This unit's dimension: the cached product of its factors' dimensions.
@@ -94,11 +70,6 @@ impl Unit {
     /// The factors of this unit.
     pub(crate) fn factors(&self) -> &[(UnitAtom, Exp)] {
         &self.factors
-    }
-
-    /// The scale of this unit.
-    pub(crate) fn scale(&self) -> f64 {
-        self.scale
     }
 }
 
@@ -161,12 +132,7 @@ impl Unit {
         factors.extend(self.factors[i..].iter().cloned());
         factors.extend(rhs.factors[j..].iter().cloned());
         let dimension = self.dimension().try_mul(rhs.dimension())?;
-        let scale = self.scale * rhs.scale;
-        Ok(Self {
-            factors,
-            dimension,
-            scale,
-        })
+        Ok(Self { factors, dimension })
     }
 
     /// Divides `self` by `rhs`.
@@ -206,12 +172,7 @@ impl Unit {
             return Ok(Self::empty());
         }
         let dimension = self.dimension.pow(e)?;
-        let scale = self.scale.powf(e.to_f64());
-        Ok(Self {
-            factors,
-            dimension,
-            scale,
-        })
+        Ok(Self { factors, dimension })
     }
 
     /// Computes the reciprocal of `self` by raising it to the power of `-1`.
@@ -232,7 +193,6 @@ impl Unit {
         Ok(Self {
             factors,
             dimension: self.dimension.recip()?,
-            scale: 1.0 / self.scale,
         })
     }
 }
@@ -267,10 +227,6 @@ impl fmt::Display for Unit {
         let sep = if pretty { "·" } else { "*" };
         let factors = self.sorted_factors();
         let mut first = true;
-        if self.scale() != 1.0 {
-            write!(f, "{}", self.scale)?;
-            first = false;
-        }
         for (atom, exp) in factors.iter().filter(|(_, e)| e.num() > 0) {
             if !first {
                 f.write_str(sep)?;
@@ -292,6 +248,7 @@ impl fmt::Display for Unit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::atom::ConversionKind;
     use crate::test_utils::{errors_match, make_unit_atom};
     use inchworm_dimensions::{DimRegistry, DimensionError};
 
@@ -300,7 +257,6 @@ mod tests {
         let empty = Unit::empty();
         assert!(empty.factors.is_empty());
         assert!(empty.dimension.is_dimensionless());
-        assert_eq!(empty.scale, 1.0);
     }
 
     mod single {
@@ -318,7 +274,6 @@ mod tests {
             assert_eq!(unit.factors.len(), 1);
             assert_eq!(unit.factors.first().unwrap(), &(atom, Exp::ONE));
             assert_eq!(unit.dimension, length);
-            assert_eq!(unit.scale, 2.0);
         }
 
         #[test]
@@ -332,7 +287,6 @@ mod tests {
             let unit = Unit::single(&atom, Exp::ZERO).unwrap();
             assert!(unit.factors.is_empty());
             assert!(unit.dimension().is_dimensionless());
-            assert_eq!(unit.scale, 1.0);
         }
 
         #[test]
@@ -405,7 +359,6 @@ mod tests {
             assert_eq!(unit.factors.len(), 1);
             assert_eq!(unit.factors.first().unwrap(), &(atom, Exp::ONE));
             assert_eq!(unit.dimension, dim);
-            assert_eq!(unit.scale, 5.0);
         }
     }
 
@@ -437,7 +390,6 @@ mod tests {
                 smallvec![(a_atom, Exp::ONE), (b_atom, Exp::ONE)];
             assert_eq!(ab_unit.factors, expected_factors);
             assert_eq!(ab_unit.dimension, a_dim.try_mul(&b_dim).unwrap());
-            assert_eq!(ab_unit.scale, 5.0);
         }
 
         #[test]
@@ -458,7 +410,6 @@ mod tests {
                 smallvec![(a_atom, Exp::int(2))];
             assert_eq!(ab_unit.factors, expected_factors);
             assert_eq!(ab_unit.dimension, a_dim.pow(Exp::int(2)).unwrap());
-            assert_eq!(ab_unit.scale, 4.0);
         }
 
         #[test]
@@ -477,7 +428,6 @@ mod tests {
             let ab_unit = a_unit_1.try_mul(&a_unit_2).unwrap();
             assert!(ab_unit.factors.is_empty());
             assert!(ab_unit.dimension.is_dimensionless());
-            assert_eq!(ab_unit.scale, 1.0);
         }
 
         #[test]
@@ -657,7 +607,6 @@ mod tests {
             let unit = Unit {
                 factors: smallvec![(a_atom.clone(), Exp::ONE), (b_atom.clone(), Exp::int(3))],
                 dimension: dimension.clone(),
-                scale: 8.0,
             };
             let e = Exp::int(2);
             let unit_raised = unit.pow(e).unwrap();
@@ -665,7 +614,6 @@ mod tests {
                 smallvec![(a_atom, Exp::int(2)), (b_atom, Exp::int(6))];
             assert_eq!(unit_raised.factors, expected_factors);
             assert_eq!(unit_raised.dimension, dimension.pow(e).unwrap());
-            assert_eq!(unit_raised.scale, 64.0);
         }
 
         #[test]
@@ -683,7 +631,6 @@ mod tests {
             let raised_to_zero = a_unit.pow(Exp::ZERO).unwrap();
             assert!(raised_to_zero.factors.is_empty());
             assert!(raised_to_zero.dimension.is_dimensionless());
-            assert_eq!(raised_to_zero.scale, 1.0);
         }
 
         #[test]
@@ -892,12 +839,6 @@ mod tests {
         }
 
         #[test]
-        fn displays_scaled_unit() {
-            assert_eq!(Unit::scaled(42.0).to_string(), "42");
-            assert_eq!(Unit::scaled(1.23).to_string(), "1.23");
-        }
-
-        #[test]
         fn displays_fractional_exponent() {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
@@ -932,7 +873,7 @@ mod tests {
 
     mod roundtrips {
         use super::*;
-        use crate::{UnitRegistry, test_utils::units_match};
+        use crate::UnitRegistry;
 
         #[test]
         fn formats_and_reparses_to_equivalent_unit() {
@@ -951,10 +892,7 @@ mod tests {
                 .add_unit("kilogram", "kg", mass.clone(), 1.0, false)
                 .unwrap();
             let pascal = registry.parse("kilogram / meter / second^2").unwrap();
-            assert!(units_match(
-                &registry.parse(&pascal.to_string()).unwrap(),
-                &pascal
-            ));
+            assert_eq!(&registry.parse(&pascal.to_string()).unwrap(), &pascal);
         }
     }
 }

@@ -49,10 +49,10 @@ pub enum UnitError {
     #[error("unit `{name}` in registry `{registry}` is not prefixable")]
     NotPrefixable { name: String, registry: String },
 
-    /// `name`'s conversion is anchored ([`ConversionKind::is_point`]) and can
-    /// only appear at exponent `1`; `exp` is the exponent actually attempted.
-    /// Anchored conversions (affine or absolute-log) have no coherent meaning
-    /// raised to any other power: use an explicit delta/ratio unit instead.
+    /// `name`'s conversion is anchored and can only appear at exponent `1`;
+    /// `exp` is the exponent actually attempted.
+    /// Anchored conversions have no coherent meaning raised to any other
+    /// power: use an explicit delta/ratio unit instead.
     #[error(
         "unit `{name}` in registry `{registry_id:?}` is anchored and cannot be \
         raised to exponent `{exp:?}` (only `1` is valid)"
@@ -63,11 +63,10 @@ pub enum UnitError {
         exp: Exp,
     },
 
-    /// `name`'s conversion is anchored ([`ConversionKind::is_point`]) and can
-    /// only appear standalone — never combined with another unit via
-    /// multiplication or division. `°C/min` is the canonical example: composing
-    /// an anchored unit with anything else is never coherent; use an explicit
-    /// delta/ratio unit instead.
+    /// `name`'s conversion is anchored and can only appear standalone, never
+    /// combined with another unit via multiplication or division.
+    /// `°C/min` is the canonical example: composing an anchored unit with
+    /// anything else is never coherent; use an explicit delta/ratio unit instead.
     #[error(
         "unit `{name}` in registry `{registry_id:?}` is anchored and cannot be \
         composed with another unit (only standalone use is valid)"

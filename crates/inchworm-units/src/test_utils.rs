@@ -2,7 +2,7 @@ use inchworm_dimensions::{Dimension, DimensionError};
 use std::sync::Arc;
 
 use crate::{
-    Unit, UnitError, UnitId, UnitRegistryId,
+    UnitError, UnitId, UnitRegistryId,
     atom::{ConversionKind, UnitAtom, UnitData},
 };
 
@@ -196,10 +196,4 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
     } else {
         false
     }
-}
-
-pub(crate) fn units_match(actual: &Unit, expected: &Unit) -> bool {
-    actual.factors() == expected.factors()
-        && actual.dimension() == expected.dimension()
-        && actual.scale() == expected.scale()
 }
