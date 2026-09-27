@@ -6,7 +6,14 @@ use std::{
 use inchworm_dimensions::{Dimension, Exp};
 use smallvec::{SmallVec, smallvec};
 
-use crate::{UnitError, UnitRegistryId, atom::UnitAtom, parse::digit_to_superscript};
+use crate::{
+    UnitError, UnitRegistryId,
+    atom::UnitAtom,
+    parse::{
+        CARET_CHAR, LPAREN_CHAR, MUL_CHAR, PRETTY_MUL_CHAR, RPAREN_CHAR, SLASH_CHAR,
+        UNITARY_IDENT_CHAR, digit_to_superscript,
+    },
+};
 
 const MAX_INLINE_FACTORS: usize = 4;
 
@@ -216,29 +223,33 @@ fn write_factor(f: &mut fmt::Formatter<'_>, symbol: &str, exp: Exp, pretty: bool
             .chars()
             .filter_map(digit_to_superscript)
             .try_for_each(|c| f.write_char(c)),
-        (true, _, false) => write!(f, "^{num}"),
-        (false, ..) => write!(f, "^({num}/{})", exp.den()),
+        (true, _, false) => write!(f, "{CARET_CHAR}{num}"),
+        (false, ..) => write!(
+            f,
+            "{CARET_CHAR}{LPAREN_CHAR}{num}{SLASH_CHAR}{}{RPAREN_CHAR}",
+            exp.den()
+        ),
     }
 }
 
 impl fmt::Display for Unit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let pretty = f.alternate();
-        let sep = if pretty { "·" } else { "*" };
+        let sep = if pretty { PRETTY_MUL_CHAR } else { MUL_CHAR };
         let factors = self.sorted_factors();
         let mut first = true;
         for (atom, exp) in factors.iter().filter(|(_, e)| e.num() > 0) {
             if !first {
-                f.write_str(sep)?;
+                f.write_char(sep)?;
             }
             write_factor(f, &atom.symbol, *exp, pretty)?;
             first = false;
         }
         if first {
-            f.write_str("1")?;
+            f.write_char(UNITARY_IDENT_CHAR)?;
         }
         for (atom, exp) in factors.iter().filter(|(_, e)| e.num() < 0) {
-            f.write_str("/")?;
+            f.write_char(SLASH_CHAR)?;
             write_factor(f, &atom.symbol, *exp, pretty)?;
         }
         Ok(())
@@ -251,6 +262,13 @@ mod tests {
     use crate::atom::ConversionKind;
     use crate::test_utils::{errors_match, make_unit_atom};
     use inchworm_dimensions::{DimRegistry, DimensionError};
+
+    /// `Unit` can be moved to and shared between threads (checked at compile time).
+    #[test]
+    fn unit_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Unit>();
+    }
 
     #[test]
     fn empty() {
@@ -782,37 +800,159 @@ mod tests {
         }
     }
 
+    mod eq {
+        use super::*;
+        use std::collections::HashSet;
+
+        /// Equality is structural: `(m*s)/s` equals `m` regardless of how it was built.
+        #[test]
+        fn equal_when_built_by_different_paths() {
+            let registry_id = UnitRegistryId::next();
+            let mut dims = DimRegistry::new("test-reg");
+            let a_dim = dims.add_base("a_dim", None).unwrap();
+            let b_dim = dims.add_base("b_dim", None).unwrap();
+            let a_atom = make_unit_atom(
+                registry_id,
+                "a",
+                a_dim,
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let a = Unit::single(&a_atom, Exp::ONE).unwrap();
+            let b_atom = make_unit_atom(
+                registry_id,
+                "b",
+                b_dim,
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let b = Unit::single(&b_atom, Exp::ONE).unwrap();
+            assert_eq!(&a.try_mul(&b).unwrap().try_div(&b).unwrap(), &a)
+        }
+
+        /// The order of the operands does not matter: `a*b == b*a`.
+        #[test]
+        fn multiplication_is_commutative() {
+            let registry_id = UnitRegistryId::next();
+            let mut dims = DimRegistry::new("test-reg");
+            let a_dim = dims.add_base("a_dim", None).unwrap();
+            let b_dim = dims.add_base("b_dim", None).unwrap();
+            let a_atom = make_unit_atom(
+                registry_id,
+                "a",
+                a_dim,
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let a = Unit::single(&a_atom, Exp::ONE).unwrap();
+            let b_atom = make_unit_atom(
+                registry_id,
+                "b",
+                b_dim,
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let b = Unit::single(&b_atom, Exp::ONE).unwrap();
+            assert_eq!(&a.try_mul(&b).unwrap(), &b.try_mul(&a).unwrap())
+        }
+
+        /// A unit whose factors all cancel equals `Unit::empty()`.
+        #[test]
+        fn cancelled_unit_equals_empty() {
+            let registry_id = UnitRegistryId::next();
+            let mut dims = DimRegistry::new("test-reg");
+            let a_dim = dims.add_base("a_dim", None).unwrap();
+            let a_atom = make_unit_atom(
+                registry_id,
+                "a",
+                a_dim,
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let a = Unit::single(&a_atom, Exp::ONE).unwrap();
+            assert_eq!(&a.try_div(&a).unwrap(), &Unit::empty())
+        }
+
+        /// The same atom at different exponents is not equal: `m != m^2`.
+        #[test]
+        fn differing_exponents_are_not_equal() {
+            let registry_id = UnitRegistryId::next();
+            let mut dims = DimRegistry::new("test-reg");
+            let a_dim = dims.add_base("a_dim", None).unwrap();
+            let a_atom = make_unit_atom(
+                registry_id,
+                "a",
+                a_dim,
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let a = Unit::single(&a_atom, Exp::ONE).unwrap();
+            let a2 = Unit::single(&a_atom, Exp::int(2)).unwrap();
+            assert_ne!(&a, &a2)
+        }
+
+        /// Atoms compare by identity, not name: `meter` from two registries differ.
+        #[test]
+        fn same_name_from_different_registries_is_not_equal() {
+            let mut dims = DimRegistry::new("test-reg");
+            const NAME: &str = "a";
+            let dim = dims.add_base("a_dim", None).unwrap();
+            let reg_id_1 = UnitRegistryId::next();
+            let atom_1 = make_unit_atom(
+                reg_id_1,
+                NAME,
+                dim.clone(),
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let unit_1 = Unit::single(&atom_1, Exp::ONE).unwrap();
+            let reg_id_2 = UnitRegistryId::next();
+            let atom_2 = make_unit_atom(
+                reg_id_2,
+                NAME,
+                dim.clone(),
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let unit_2 = Unit::single(&atom_2, Exp::ONE).unwrap();
+            assert_ne!(&unit_1, &unit_2)
+        }
+
+        /// Equal units hash equally, so an equal unit built differently finds the stored one in a `HashSet`.
+        #[test]
+        fn hash_agrees_with_eq() {
+            let registry_id = UnitRegistryId::next();
+            let mut dim_registry = DimRegistry::new("test-dim-reg");
+            let a_dim = dim_registry.add_base("a", None).unwrap();
+            let b_dim = dim_registry.add_base("b", None).unwrap();
+            let a_atom = make_unit_atom(
+                registry_id,
+                "a_unit",
+                a_dim,
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let b_atom = make_unit_atom(
+                registry_id,
+                "b_unit",
+                b_dim,
+                ConversionKind::Linear { scale: 1.0 },
+            );
+            let a_unit = Unit::single(&a_atom, Exp::ONE).unwrap();
+            let b_unit = Unit::single(&b_atom, Exp::ONE).unwrap();
+            let mut set = HashSet::new();
+            set.insert(a_unit.try_mul(&b_unit).unwrap());
+            assert!(set.contains(&b_unit.try_mul(&a_unit).unwrap()));
+            set.insert(a_unit.clone());
+            assert!(set.contains(&a_unit.try_mul(&b_unit).unwrap().try_div(&b_unit).unwrap()));
+        }
+    }
+
     mod display {
         use super::*;
-        use crate::UnitRegistry;
+        use crate::test_utils::mks_registry;
 
         #[test]
         fn displays_single_unit_without_exponent() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry
-                .add_unit("meter", "m", length.clone(), 1.0, true)
-                .unwrap();
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
             assert_eq!(meter.to_string(), "m");
         }
 
         #[test]
         fn displays_compound_unit_with_slash_chaining() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let time = dims.add_base("time", None).unwrap();
-            let mass = dims.add_base("mass", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry
-                .add_unit("meter", "m", length.clone(), 1.0, true)
-                .unwrap();
-            registry
-                .add_unit("second", "s", time.clone(), 1.0, true)
-                .unwrap();
-            registry
-                .add_unit("kilogram", "kg", mass.clone(), 1.0, false)
-                .unwrap();
+            let registry = mks_registry();
             assert_eq!(
                 registry
                     .parse("kilogram / meter / second^2")
@@ -824,12 +964,8 @@ mod tests {
 
         #[test]
         fn displays_reciprocal_only_unit_with_leading_one() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry
-                .add_unit("meter", "m", length.clone(), 1.0, true)
-                .unwrap();
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
             assert_eq!(meter.pow(Exp::int(-1)).unwrap().to_string(), "1/m");
         }
 
@@ -840,12 +976,8 @@ mod tests {
 
         #[test]
         fn displays_fractional_exponent() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry
-                .add_unit("meter", "m", length.clone(), 1.0, true)
-                .unwrap();
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
             assert_eq!(
                 meter.pow(Exp::new(-1, 2).unwrap()).unwrap().to_string(),
                 "1/m^(1/2)"
@@ -854,16 +986,9 @@ mod tests {
 
         #[test]
         fn displays_pretty_form() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mass = dims.add_base("mass", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry
-                .add_unit("meter", "m", length.clone(), 1.0, true)
-                .unwrap();
-            let kilogram = registry
-                .add_unit("kilogram", "kg", mass.clone(), 1.0, false)
-                .unwrap();
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
+            let kilogram = registry.get("kilogram").unwrap();
             let kilogram_meter_squared =
                 kilogram.try_mul(&meter.pow(Exp::int(2)).unwrap()).unwrap();
             assert_eq!(kilogram_meter_squared.to_string(), "kg*m^2");
@@ -873,26 +998,59 @@ mod tests {
 
     mod roundtrips {
         use super::*;
-        use crate::UnitRegistry;
+        use crate::test_utils::mks_registry;
 
+        /// A compound unit survives Display -> parse unchanged.
         #[test]
-        fn formats_and_reparses_to_equivalent_unit() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let time = dims.add_base("time", None).unwrap();
-            let mass = dims.add_base("mass", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry
-                .add_unit("meter", "m", length.clone(), 1.0, true)
-                .unwrap();
-            registry
-                .add_unit("second", "s", time.clone(), 1.0, true)
-                .unwrap();
-            registry
-                .add_unit("kilogram", "kg", mass.clone(), 1.0, false)
-                .unwrap();
+        fn roundtrips_compound_unit() {
+            let registry = mks_registry();
             let pascal = registry.parse("kilogram / meter / second^2").unwrap();
             assert_eq!(&registry.parse(&pascal.to_string()).unwrap(), &pascal);
+        }
+
+        /// The empty unit displays as `1` and parses back to `Unit::empty()`.
+        #[test]
+        fn roundtrips_empty_unit() {
+            let registry = mks_registry();
+            let empty = Unit::empty();
+            assert_eq!(empty.to_string(), "1");
+            assert_eq!(registry.parse(&empty.to_string()).unwrap(), empty);
+        }
+
+        /// A reciprocal-only unit displays with a leading `1/` and parses back unchanged.
+        #[test]
+        fn roundtrips_reciprocal_unit() {
+            let registry = mks_registry();
+            let second = registry.get("second").unwrap();
+            let unit = second.recip().unwrap();
+            let repr = unit.to_string();
+            assert_eq!(repr, "1/s");
+            assert_eq!(registry.parse(&repr).unwrap(), unit)
+        }
+
+        /// A fractional exponent displays as `^(n/d)` and parses back unchanged.
+        #[test]
+        fn roundtrips_fractional_exponent() {
+            let registry = mks_registry();
+            let second = registry.get("second").unwrap();
+            let unit = second.pow(Exp::new(2, 3).unwrap()).unwrap();
+            let repr = unit.to_string();
+            assert_eq!(repr, "s^(2/3)");
+            assert_eq!(registry.parse(&repr).unwrap(), unit)
+        }
+
+        /// The alternate (`{:#}`) form with `·` and superscripts parses back unchanged.
+        #[test]
+        fn roundtrips_pretty_form() {
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
+            let kilogram = registry.get("kilogram").unwrap();
+            let unit = kilogram.try_mul(&meter.pow(Exp::int(2)).unwrap()).unwrap();
+            let pretty = format!("{unit:#}");
+            // Guard the premise: without this, a Display that ignored `#` would
+            // still round-trip and the test would pass without exercising `·` or `²`.
+            assert_eq!(pretty, "kg·m²");
+            assert_eq!(registry.parse(&pretty).unwrap(), unit);
         }
     }
 }

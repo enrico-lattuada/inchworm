@@ -1,10 +1,38 @@
-use inchworm_dimensions::{Dimension, DimensionError};
+use inchworm_dimensions::{DimRegistry, Dimension, DimensionError};
 use std::sync::Arc;
 
 use crate::{
-    UnitError, UnitId, UnitRegistryId,
+    UnitError, UnitId, UnitRegistry, UnitRegistryId,
     atom::{ConversionKind, UnitAtom, UnitData},
 };
+
+/// A registry with base dimensions `length`, `mass` and `time`; units `meter`/`m`
+/// and `second`/`s` (prefixable) and `kilogram`/`kg` (not prefixable); and the
+/// prefix `kilo`/`k` (1e3). Nothing is parsed, so the prefix cache starts cold.
+pub(crate) fn mks_registry() -> UnitRegistry {
+    let mut dims = DimRegistry::new("test-reg");
+    let length = dims.add_base("length", None).unwrap();
+    let mass = dims.add_base("mass", None).unwrap();
+    let time = dims.add_base("time", None).unwrap();
+    let mut registry = UnitRegistry::new("test-ureg", dims);
+    registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+    registry.add_unit("second", "s", time, 1.0, true).unwrap();
+    registry
+        .add_unit("kilogram", "kg", mass, 1.0, false)
+        .unwrap();
+    registry.add_prefix("kilo", "k", 1e3).unwrap();
+    registry
+}
+
+/// A [`UnitError::Parse`] at `offset`, to compare against with [`errors_match`]
+/// (which ignores `src` and `message` for `Parse`).
+pub(crate) fn parse_error_at(offset: usize) -> UnitError {
+    UnitError::Parse {
+        src: String::new(),
+        offset,
+        message: String::new(),
+    }
+}
 
 pub(crate) fn make_unit_atom(
     registry_id: UnitRegistryId,

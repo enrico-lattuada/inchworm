@@ -375,7 +375,7 @@ impl UnitRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::errors_match;
+    use crate::test_utils::{errors_match, mks_registry};
 
     mod new {
         use super::*;
@@ -875,13 +875,8 @@ mod tests {
 
         #[test]
         fn builds_prefixed_linear_unit() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry
-                .add_unit("meter", "m", length.clone(), 1.0, true)
-                .unwrap();
-            registry.add_prefix("kilo", "k", 1e3).unwrap();
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
             let base = meter.factors().first().unwrap().clone().0;
             registry.prefixed_unit("kilo", base.clone()).unwrap();
             let prefixed = registry.prefixed_read();
@@ -894,13 +889,8 @@ mod tests {
 
         #[test]
         fn reuses_cached_atom_on_repeated_calls() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry
-                .add_unit("meter", "m", length.clone(), 1.0, true)
-                .unwrap();
-            registry.add_prefix("kilo", "k", 1e3).unwrap();
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
             let base = meter.factors().first().unwrap().clone().0;
             let unit = registry.prefixed_unit("kilo", base.clone()).unwrap();
             let maybe_cached_unit = registry.prefixed_unit("kilo", base.clone()).unwrap();
@@ -973,43 +963,14 @@ mod tests {
 
         #[test]
         fn parses_single_unit() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
             assert_eq!(&registry.parse("meter").unwrap(), &meter);
         }
 
         #[test]
-        fn parses_compound_expression() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let time = dims.add_base("time", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            let second = registry.add_unit("second", "s", time, 1.0, true).unwrap();
-            assert_eq!(
-                &registry.parse("meter / second^2").unwrap(),
-                &meter.try_div(&second.pow(Exp::int(2)).unwrap()).unwrap()
-            );
-        }
-
-        #[test]
-        fn parses_parenthesized_expression() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            assert_eq!(
-                &registry.parse("(meter)^2").unwrap(),
-                &meter.pow(Exp::int(2)).unwrap()
-            );
-        }
-
-        #[test]
         fn rejects_unknown_unit() {
-            let dims = DimRegistry::new("test-reg");
-            let registry = UnitRegistry::new("test-ureg", dims);
+            let registry = mks_registry();
             assert!(errors_match(
                 &registry.parse("bogus").unwrap_err(),
                 &UnitError::UnknownUnit {
@@ -1020,86 +981,8 @@ mod tests {
         }
 
         #[test]
-        fn rejects_trailing_token() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            assert!(errors_match(
-                &registry.parse("meter )").unwrap_err(),
-                &UnitError::Parse {
-                    src: "".into(),
-                    offset: 6,
-                    message: "".into()
-                }
-            ));
-        }
-
-        #[test]
-        fn parses_times_sign() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            let meter_square = registry.parse("meter × meter").unwrap();
-            assert_eq!(&meter_square, &meter.try_mul(&meter).unwrap());
-        }
-
-        #[test]
-        fn parses_implicit_multiplication() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            let meter_square = registry.parse("meter meter").unwrap();
-            assert_eq!(&meter_square, &meter.try_mul(&meter).unwrap());
-        }
-
-        #[test]
-        fn parses_superscript_exponent() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            let meter_square = registry.parse("meter²").unwrap();
-            assert_eq!(&meter_square, &meter.pow(Exp::int(2)).unwrap());
-        }
-
-        #[test]
-        fn parses_negative_superscript_exponent() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            let spatial_frequency = registry.parse("meter⁻¹").unwrap();
-            assert_eq!(&spatial_frequency, &meter.pow(Exp::int(-1)).unwrap());
-        }
-
-        #[test]
-        fn rejects_lone_superscript_minus() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            assert!(errors_match(
-                &registry.parse("meter⁻").unwrap_err(),
-                &UnitError::Parse {
-                    src: "".into(),
-                    offset: 5,
-                    message: "".into()
-                }
-            ));
-        }
-
-        #[test]
         fn parses_prefixed_unit_by_symbol() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry.add_prefix("kilo", "k", 1e3).unwrap();
-            registry
-                .add_unit("meter", "m", length.clone(), 1.0, true)
-                .unwrap();
+            let registry = mks_registry();
             let km = registry.parse("km").unwrap();
             assert_eq!(km.factors().len(), 1);
             let (atom, exp) = &km.factors()[0];
@@ -1107,18 +990,12 @@ mod tests {
             assert_eq!(atom.name, "kilometer".into());
             assert_eq!(atom.symbol, "km".into());
             assert_eq!(atom.conversion, ConversionKind::Linear { scale: 1e3 });
-            assert_eq!(km.dimension(), &length);
+            assert_eq!(km.dimension(), registry.get("meter").unwrap().dimension());
         }
 
         #[test]
         fn parses_prefixed_unit_by_name() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry.add_prefix("kilo", "k", 1e3).unwrap();
-            registry
-                .add_unit("meter", "m", length.clone(), 1.0, true)
-                .unwrap();
+            let registry = mks_registry();
             let kilometer = registry.parse("kilometer").unwrap();
             assert_eq!(kilometer.factors().len(), 1);
             let (atom, exp) = &kilometer.factors()[0];
@@ -1126,7 +1003,10 @@ mod tests {
             assert_eq!(atom.name, "kilometer".into());
             assert_eq!(atom.symbol, "km".into());
             assert_eq!(atom.conversion, ConversionKind::Linear { scale: 1e3 });
-            assert_eq!(kilometer.dimension(), &length);
+            assert_eq!(
+                kilometer.dimension(),
+                registry.get("meter").unwrap().dimension()
+            );
         }
 
         #[test]
@@ -1166,138 +1046,61 @@ mod tests {
             assert!(errors_match(&err, &expected_err));
         }
 
+        /// Resolving the same prefixed name twice yields equal units (the cached atom is reused).
         #[test]
         fn caches_prefixed_unit_across_parse_calls() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            registry.add_prefix("kilo", "k", 1e3).unwrap();
+            let registry = mks_registry();
             let first = registry.parse("km").unwrap();
             let second = registry.parse("km").unwrap();
             assert_eq!(first, second);
         }
 
-        #[test]
-        fn parses_literal_one_as_empty_unit() {
-            let dims = DimRegistry::new("test-reg");
-            let registry = UnitRegistry::new("test-ureg", dims);
-            assert_eq!(registry.parse("1").unwrap(), Unit::empty());
-        }
-
-        #[test]
-        fn parses_reciprocal_with_literal_one() {
-            let mut dims = DimRegistry::new("test-reg");
-            let time = dims.add_base("time", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let second = registry.add_unit("second", "s", time, 1.0, true).unwrap();
-            assert_eq!(registry.parse("1/s").unwrap(), second.recip().unwrap());
-        }
-
-        #[test]
-        fn rejects_bare_integer() {
-            let dims = DimRegistry::new("test-reg");
-            let registry = UnitRegistry::new("test-ureg", dims);
-            let err = registry.parse("60").unwrap_err();
-            assert!(errors_match(
-                &err,
-                &UnitError::Parse {
-                    src: "".into(),
-                    offset: 0,
-                    message: "".into()
-                }
-            ));
-        }
-
-        #[test]
-        fn rejects_integer_factor_on_left() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            let err = registry.parse("2*m").unwrap_err();
-            assert!(errors_match(
-                &err,
-                &UnitError::Parse {
-                    src: "".into(),
-                    offset: 0,
-                    message: "".into()
-                }
-            ));
-        }
-
-        #[test]
-        fn rejects_integer_factor_on_right() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            let err = registry.parse("m*2").unwrap_err();
-            assert!(errors_match(
-                &err,
-                &UnitError::Parse {
-                    src: "".into(),
-                    offset: 2,
-                    message: "".into()
-                }
-            ));
-        }
-
-        #[test]
-        fn rejects_float_factor() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            let err = registry.parse("9.81 m").unwrap_err();
-            assert!(errors_match(
-                &err,
-                &UnitError::Parse {
-                    src: "".into(),
-                    offset: 0,
-                    message: "".into()
-                }
-            ));
-        }
-
-        #[test]
-        fn rejects_float_literal_one() {
-            let mut dims = DimRegistry::new("test-reg");
-            let time = dims.add_base("time", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry.add_unit("second", "s", time, 1.0, true).unwrap();
-            let err = registry.parse("1.0/s").unwrap_err();
-            assert!(errors_match(
-                &err,
-                &UnitError::Parse {
-                    src: "".into(),
-                    offset: 0,
-                    message: "".into()
-                }
-            ));
-        }
-
-        #[test]
-        fn parses_literal_one_in_implicit_multiplication() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            let meter = registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            assert_eq!(registry.parse("1 m").unwrap(), meter);
-            assert_eq!(registry.parse("m 1").unwrap(), meter);
-        }
-
+        /// A prefixed unit resolves to the same atom whether spelled by symbol or by name.
         #[test]
         fn prefixed_symbol_and_name_yield_equal_units() {
-            let mut dims = DimRegistry::new("test-reg");
-            let length = dims.add_base("length", None).unwrap();
-            let mut registry = UnitRegistry::new("test-ureg", dims);
-            registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-            registry.add_prefix("kilo", "k", 1e3).unwrap();
+            let registry = mks_registry();
             assert_eq!(
                 registry.parse("km").unwrap(),
                 registry.parse("kilometer").unwrap()
             );
+        }
+    }
+
+    mod thread_safety {
+        use super::*;
+        use std::sync::Barrier;
+        use std::thread;
+
+        /// `UnitRegistry` can be moved to and shared between threads (checked at compile time).
+        #[test]
+        fn registry_is_send_and_sync() {
+            fn assert_send_sync<T: Send + Sync>() {}
+            assert_send_sync::<UnitRegistry>();
+        }
+
+        /// Threads racing to resolve the same prefixed name on a cold cache all get the same atom.
+        // Regression guard, not a proof: the race window is small and thread scheduling is
+        // nondeterministic, so a pass does not prove the double-checked locking correct. A
+        // failure, however, is a real bug.
+        #[test]
+        fn concurrent_prefix_resolution_yields_one_atom() {
+            const THREADS: usize = 8;
+            let registry = mks_registry();
+            let barrier = Barrier::new(THREADS);
+            let units: Vec<Unit> = thread::scope(|s| {
+                let handles: Vec<_> = (0..THREADS)
+                    .map(|_| {
+                        s.spawn(|| {
+                            barrier.wait();
+                            registry.parse("km").unwrap()
+                        })
+                    })
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap()).collect()
+            });
+            for unit in &units {
+                assert_eq!(unit, &units[0]);
+            }
         }
     }
 }

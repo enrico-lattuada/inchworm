@@ -481,4 +481,157 @@ mod tests {
             assert!(!is_valid_ident("9.81"));
         }
     }
+
+    mod parse_unit_expr {
+        use super::*;
+        use crate::test_utils::{errors_match, mks_registry, parse_error_at};
+
+        #[test]
+        fn parses_compound_expression() {
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
+            let second = registry.get("second").unwrap();
+            assert_eq!(
+                &registry.parse("meter / second^2").unwrap(),
+                &meter.try_div(&second.pow(Exp::int(2)).unwrap()).unwrap()
+            );
+        }
+
+        #[test]
+        fn parses_parenthesized_expression() {
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
+            assert_eq!(
+                &registry.parse("(meter)^2").unwrap(),
+                &meter.pow(Exp::int(2)).unwrap()
+            );
+        }
+
+        #[test]
+        fn rejects_trailing_token() {
+            let registry = mks_registry();
+            let err = registry.parse("meter )").unwrap_err();
+            assert!(errors_match(&err, &parse_error_at(6)));
+        }
+
+        #[test]
+        fn parses_times_sign() {
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
+            let meter_square = registry.parse("meter × meter").unwrap();
+            assert_eq!(&meter_square, &meter.try_mul(&meter).unwrap());
+        }
+
+        #[test]
+        fn parses_implicit_multiplication() {
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
+            let meter_square = registry.parse("meter meter").unwrap();
+            assert_eq!(&meter_square, &meter.try_mul(&meter).unwrap());
+        }
+
+        #[test]
+        fn parses_superscript_exponent() {
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
+            let meter_square = registry.parse("meter²").unwrap();
+            assert_eq!(&meter_square, &meter.pow(Exp::int(2)).unwrap());
+        }
+
+        #[test]
+        fn parses_negative_superscript_exponent() {
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
+            let spatial_frequency = registry.parse("meter⁻¹").unwrap();
+            assert_eq!(&spatial_frequency, &meter.pow(Exp::int(-1)).unwrap());
+        }
+
+        #[test]
+        fn rejects_lone_superscript_minus() {
+            let registry = mks_registry();
+            let err = registry.parse("meter⁻").unwrap_err();
+            assert!(errors_match(&err, &parse_error_at(5)));
+        }
+
+        /// The literal `1` alone is the empty (dimensionless) unit.
+        #[test]
+        fn parses_literal_one_as_empty_unit() {
+            let registry = mks_registry();
+            assert_eq!(registry.parse("1").unwrap(), Unit::empty());
+        }
+
+        /// `1` works as a numerator: `1/s` is the reciprocal of `s`.
+        #[test]
+        fn parses_reciprocal_with_literal_one() {
+            let registry = mks_registry();
+            let second = registry.get("second").unwrap();
+            assert_eq!(registry.parse("1/s").unwrap(), second.recip().unwrap());
+        }
+
+        /// `1` is a multiplicative identity on either side of implicit multiplication.
+        #[test]
+        fn parses_literal_one_in_implicit_multiplication() {
+            let registry = mks_registry();
+            let meter = registry.get("meter").unwrap();
+            assert_eq!(registry.parse("1 m").unwrap(), meter);
+            assert_eq!(registry.parse("m 1").unwrap(), meter);
+        }
+
+        /// An integer other than `1` is not a unit, even on its own.
+        #[test]
+        fn rejects_bare_integer() {
+            let registry = mks_registry();
+            let err = registry.parse("60").unwrap_err();
+            assert!(errors_match(&err, &parse_error_at(0)));
+        }
+
+        /// An integer factor before `*` is rejected at the integer.
+        #[test]
+        fn rejects_integer_factor_on_left() {
+            let registry = mks_registry();
+            let err = registry.parse("2*m").unwrap_err();
+            assert!(errors_match(&err, &parse_error_at(0)));
+        }
+
+        /// An integer factor after `*` is rejected at the integer, not at the operator.
+        #[test]
+        fn rejects_integer_factor_on_right() {
+            let registry = mks_registry();
+            let err = registry.parse("m*2").unwrap_err();
+            assert!(errors_match(&err, &parse_error_at(2)));
+        }
+
+        /// A float factor is rejected, even with implicit multiplication.
+        #[test]
+        fn rejects_float_factor() {
+            let registry = mks_registry();
+            let err = registry.parse("9.81 m").unwrap_err();
+            assert!(errors_match(&err, &parse_error_at(0)));
+        }
+
+        /// Only the integer `1` is special: `1.0` is a float and is rejected.
+        #[test]
+        fn rejects_float_literal_one() {
+            let registry = mks_registry();
+            let err = registry.parse("1.0/s").unwrap_err();
+            assert!(errors_match(&err, &parse_error_at(0)));
+        }
+
+        /// The error for a bare number says numbers are not units and names `1` as the only exception.
+        #[test]
+        fn explains_why_bare_numbers_are_rejected() {
+            let registry = mks_registry();
+            for src in ["60", "m*"] {
+                let err = registry.parse(src).unwrap_err();
+                let UnitError::Parse { message, .. } = err else {
+                    panic!("expected a Parse error, got {err:?}");
+                };
+                assert!(message.contains("not units"), "message was: {message}");
+                assert!(
+                    message.contains("only `1` is allowed"),
+                    "message was: {message}"
+                );
+            }
+        }
+    }
 }
