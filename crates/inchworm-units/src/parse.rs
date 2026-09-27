@@ -8,13 +8,34 @@
 //! IDENT    := [A-Za-z_][A-Za-z0-9_]*
 //! ```
 
-use std::fmt;
+use std::fmt::{self, Write};
 use std::iter::Peekable;
 use std::str::CharIndices;
 
 use inchworm_dimensions::Exp;
 
 use crate::{Unit, UnitError};
+
+/// Star (mul) char
+pub(crate) const MUL_CHAR: char = '*';
+/// Pretty star (mul) char
+pub(crate) const PRETTY_MUL_CHAR: char = '·';
+/// Alt pretty star (mul) char
+pub(crate) const ALT_PRETTY_MUL_CHAR: char = '×';
+/// Minus char
+pub(crate) const MINUS_CHAR: char = '-';
+/// Slash (div) char
+pub(crate) const SLASH_CHAR: char = '/';
+/// Caret (exponentiation) char
+pub(crate) const CARET_CHAR: char = '^';
+/// Left parenthesis char
+pub(crate) const LPAREN_CHAR: char = '(';
+/// Right parenthesis char
+pub(crate) const RPAREN_CHAR: char = ')';
+/// Decimal separator char
+pub(crate) const DECIMAL_SEP_CHAR: char = '.';
+/// Unit of coherent 1 char
+pub(crate) const UNITARY_IDENT_CHAR: char = '1';
 
 pub(crate) fn parse_unit_expr<'a>(
     src: &'a str,
@@ -75,13 +96,15 @@ impl fmt::Display for Token {
             Token::Ident(ident) => write!(f, "{ident}"),
             Token::Int(n) => write!(f, "{n}"),
             Token::Float(n) => write!(f, "{n}"),
-            Token::Superscript(n) => write!(f, "^({n})"),
-            Token::Star => write!(f, "*"),
-            Token::Slash => write!(f, "/"),
-            Token::Caret => write!(f, "^"),
-            Token::Minus => write!(f, "-"),
-            Token::LParen => write!(f, "("),
-            Token::RParen => write!(f, ")"),
+            Token::Superscript(n) => {
+                write!(f, "{CARET_CHAR}{LPAREN_CHAR}{n}{RPAREN_CHAR}")
+            }
+            Token::Star => f.write_char(MUL_CHAR),
+            Token::Slash => f.write_char(SLASH_CHAR),
+            Token::Caret => f.write_char(CARET_CHAR),
+            Token::Minus => f.write_char(MINUS_CHAR),
+            Token::LParen => f.write_char(LPAREN_CHAR),
+            Token::RParen => f.write_char(RPAREN_CHAR),
         }
     }
 }
@@ -156,7 +179,8 @@ impl<'a> Iterator for Lexer<'a> {
         }
         let &(start, c) = self.chars.peek()?;
         if c.is_ascii_digit() {
-            let consumed = self.consume_while(start, |c| c.is_ascii_digit() || c == '.');
+            let consumed =
+                self.consume_while(start, |c| c.is_ascii_digit() || c == DECIMAL_SEP_CHAR);
             if let Ok(number) = consumed.parse::<i64>() {
                 let (token, offset) = (Token::Int(number), start);
                 Some(Ok(Spanned { token, offset }))
@@ -195,12 +219,12 @@ impl<'a> Iterator for Lexer<'a> {
                 })),
             }
         } else if let Some(token) = match c {
-            '*' | '·' | '×' => Some(Token::Star),
-            '-' => Some(Token::Minus),
-            '/' => Some(Token::Slash),
-            '^' => Some(Token::Caret),
-            '(' => Some(Token::LParen),
-            ')' => Some(Token::RParen),
+            MUL_CHAR | PRETTY_MUL_CHAR | ALT_PRETTY_MUL_CHAR => Some(Token::Star),
+            MINUS_CHAR => Some(Token::Minus),
+            SLASH_CHAR => Some(Token::Slash),
+            CARET_CHAR => Some(Token::Caret),
+            LPAREN_CHAR => Some(Token::LParen),
+            RPAREN_CHAR => Some(Token::RParen),
             _ => None,
         } {
             self.chars.next();
@@ -232,7 +256,10 @@ impl<'a> Parser<'a> {
         let spanned = self.advance()?.ok_or_else(|| UnitError::Parse {
             src: self.src.into(),
             offset: self.src.len(),
-            message: "expected a unit, `1`, or `(`, found end of input".into(),
+            message: format!(
+                "expected a unit, `{UNITARY_IDENT_CHAR}`, or `{LPAREN_CHAR}`, found end of input; \
+                bare numbers are not units, only `{UNITARY_IDENT_CHAR}` is allowed."
+            ),
         })?;
         match spanned.token {
             Token::Int(1) => Ok(Unit::empty()),
@@ -246,7 +273,10 @@ impl<'a> Parser<'a> {
             token => Err(UnitError::Parse {
                 src: self.src.into(),
                 offset: spanned.offset,
-                message: format!("expected a unit, `1`, or `(`, found {token}"),
+                message: format!(
+                    "expected a unit, `{UNITARY_IDENT_CHAR}`, or `{LPAREN_CHAR}`, found {token}; \
+                    bare numbers are not units, only `{UNITARY_IDENT_CHAR}` is allowed."
+                ),
             }),
         }
     }
@@ -271,14 +301,14 @@ impl<'a> Parser<'a> {
         let spanned = self.advance()?.ok_or_else(|| UnitError::Parse {
             src: self.src.into(),
             offset: self.src.len(),
-            message: "expected `)`, found end of input".into(),
+            message: format!("expected `{RPAREN_CHAR}`, found end of input"),
         })?;
         match spanned.token {
             Token::RParen => Ok(()),
             token => Err(UnitError::Parse {
                 src: self.src.into(),
                 offset: spanned.offset,
-                message: format!("expected `)`, found {token}"),
+                message: format!("expected `{RPAREN_CHAR}`, found {token}"),
             }),
         }
     }
