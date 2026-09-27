@@ -44,7 +44,7 @@ impl UnitRegistryId {
 
 /// How a unit atom's raw numeric value relates to the coherent unit of its dimension.
 ///
-/// `Linear` is "delta"-like: freely composable in compound `Unit` expressions.
+/// `Linear` is "delta"-like: freely composable in compound `DeltaUnit` expressions.
 /// `Affine` is "point"-like: anchored to an absolute reference, so two
 /// quantities of that kind can never be added to each other: restricted to
 /// standalone, power-1 use in compounds. See [`ConversionKind::is_point`].

@@ -14,7 +14,7 @@ use std::str::CharIndices;
 
 use inchworm_dimensions::Exp;
 
-use crate::{Unit, UnitError};
+use crate::{DeltaUnit, UnitError};
 
 /// Star (mul) char
 pub(crate) const MUL_CHAR: char = '*';
@@ -39,8 +39,8 @@ pub(crate) const UNITARY_IDENT_CHAR: char = '1';
 
 pub(crate) fn parse_unit_expr<'a>(
     src: &'a str,
-    resolve: &'a dyn Fn(&str) -> Result<Unit, UnitError>,
-) -> Result<Unit, UnitError> {
+    resolve: &'a dyn Fn(&str) -> Result<DeltaUnit, UnitError>,
+) -> Result<DeltaUnit, UnitError> {
     let chars = src.char_indices().peekable();
     let lexer = Lexer { src, chars };
     let tokens = lexer.peekable();
@@ -244,7 +244,7 @@ impl<'a> Iterator for Lexer<'a> {
 struct Parser<'a> {
     tokens: Peekable<Lexer<'a>>,
     src: &'a str,
-    resolve: &'a dyn Fn(&str) -> Result<Unit, UnitError>,
+    resolve: &'a dyn Fn(&str) -> Result<DeltaUnit, UnitError>,
 }
 
 impl<'a> Parser<'a> {
@@ -252,7 +252,7 @@ impl<'a> Parser<'a> {
         self.tokens.next().transpose()
     }
 
-    fn parse_factor(&mut self) -> Result<Unit, UnitError> {
+    fn parse_factor(&mut self) -> Result<DeltaUnit, UnitError> {
         let spanned = self.advance()?.ok_or_else(|| UnitError::Parse {
             src: self.src.into(),
             offset: self.src.len(),
@@ -262,7 +262,7 @@ impl<'a> Parser<'a> {
             ),
         })?;
         match spanned.token {
-            Token::Int(1) => Ok(Unit::empty()),
+            Token::Int(1) => Ok(DeltaUnit::empty()),
             Token::Ident(name) => (self.resolve)(&name),
             Token::LParen => {
                 // Parse expression inside `(...)´
@@ -365,7 +365,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_term(&mut self) -> Result<Unit, UnitError> {
+    fn parse_term(&mut self) -> Result<DeltaUnit, UnitError> {
         let base = self.parse_factor()?;
         // peek: if the next token is Token::Caret, advance() past it, call parse_exponent(),
         // then return base.pow(exp) - otherwise just return base unchanged (implicit exponent 1)
@@ -399,7 +399,7 @@ impl<'a> Parser<'a> {
         )
     }
 
-    fn parse_expr(&mut self) -> Result<Unit, UnitError> {
+    fn parse_expr(&mut self) -> Result<DeltaUnit, UnitError> {
         let mut result = self.parse_term()?;
         loop {
             // peek the next token:
@@ -557,7 +557,7 @@ mod tests {
         #[test]
         fn parses_literal_one_as_empty_unit() {
             let registry = mks_registry();
-            assert_eq!(registry.parse("1").unwrap(), Unit::empty());
+            assert_eq!(registry.parse("1").unwrap(), DeltaUnit::empty());
         }
 
         /// `1` works as a numerator: `1/s` is the reciprocal of `s`.

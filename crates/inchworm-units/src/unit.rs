@@ -19,7 +19,7 @@ const MAX_INLINE_FACTORS: usize = 4;
 
 /// A unit expression: a reduced product of powers over named unit atoms.
 ///
-/// A free value: once built, a `Unit` never needs its originating unit
+/// A free value: once built, a `DeltaUnit` never needs its originating unit
 /// registry again. Caches the product of its factors' dimensions,
 /// so dimension compatibility is O(1) lookup.
 ///
@@ -28,13 +28,13 @@ const MAX_INLINE_FACTORS: usize = 4;
 /// - no zero exponents
 /// - no duplicates.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Unit {
+pub struct DeltaUnit {
     factors: SmallVec<[(UnitAtom, Exp); MAX_INLINE_FACTORS]>,
     /// Cached product of factor dimensions.
     dimension: Dimension,
 }
 
-impl Unit {
+impl DeltaUnit {
     /// Returns an empty (dimensionless) unit.
     pub fn empty() -> Self {
         Self {
@@ -69,7 +69,7 @@ impl Unit {
     }
 
     /// The identity of the unit registry that minted this value's atoms, or
-    /// `None` if it has no factors (a bare dimensionless `Unit`).
+    /// `None` if it has no factors (a bare dimensionless `DeltaUnit`).
     pub(crate) fn registry_id(&self) -> Option<UnitRegistryId> {
         self.factors.first().map(|(atom, _)| atom.registry_id)
     }
@@ -81,7 +81,7 @@ impl Unit {
 }
 
 // ---- Algebra ----
-impl Unit {
+impl DeltaUnit {
     /// Merges two units, combining exponents of shared atoms, pruning any that cancel to zero.
     ///
     /// # Errors
@@ -205,7 +205,7 @@ impl Unit {
 }
 
 // ---- Display helpers ----
-impl Unit {
+impl DeltaUnit {
     fn sorted_factors(&self) -> Vec<&(UnitAtom, Exp)> {
         let mut factors: Vec<_> = self.factors.iter().collect();
         factors.sort_by(|a, b| a.0.symbol.cmp(&b.0.symbol));
@@ -232,7 +232,7 @@ fn write_factor(f: &mut fmt::Formatter<'_>, symbol: &str, exp: Exp, pretty: bool
     }
 }
 
-impl fmt::Display for Unit {
+impl fmt::Display for DeltaUnit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let pretty = f.alternate();
         let sep = if pretty { PRETTY_MUL_CHAR } else { MUL_CHAR };
@@ -263,16 +263,16 @@ mod tests {
     use crate::test_utils::{errors_match, make_unit_atom};
     use inchworm_dimensions::{DimRegistry, DimensionError};
 
-    /// `Unit` can be moved to and shared between threads (checked at compile time).
+    /// `DeltaUnit` can be moved to and shared between threads (checked at compile time).
     #[test]
     fn unit_is_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<Unit>();
+        assert_send_sync::<DeltaUnit>();
     }
 
     #[test]
     fn empty() {
-        let empty = Unit::empty();
+        let empty = DeltaUnit::empty();
         assert!(empty.factors.is_empty());
         assert!(empty.dimension.is_dimensionless());
     }
@@ -288,7 +288,7 @@ mod tests {
             let length = dim_registry.add_base("length", None).unwrap();
             let conversion = ConversionKind::Linear { scale: 2.0 };
             let atom = make_unit_atom(registry_id, name, length.clone(), conversion);
-            let unit = Unit::single(&atom, Exp::ONE).unwrap();
+            let unit = DeltaUnit::single(&atom, Exp::ONE).unwrap();
             assert_eq!(unit.factors.len(), 1);
             assert_eq!(unit.factors.first().unwrap(), &(atom, Exp::ONE));
             assert_eq!(unit.dimension, length);
@@ -302,7 +302,7 @@ mod tests {
             let length = dim_registry.add_base("length", None).unwrap();
             let conversion = ConversionKind::Linear { scale: 2.0 };
             let atom = make_unit_atom(registry_id, name, length.clone(), conversion);
-            let unit = Unit::single(&atom, Exp::ZERO).unwrap();
+            let unit = DeltaUnit::single(&atom, Exp::ZERO).unwrap();
             assert!(unit.factors.is_empty());
             assert!(unit.dimension().is_dimensionless());
         }
@@ -320,7 +320,7 @@ mod tests {
                 length.pow(Exp::int(2)).unwrap(),
                 conversion,
             );
-            let err = Unit::single(&atom, Exp::int(i64::MAX)).unwrap_err();
+            let err = DeltaUnit::single(&atom, Exp::int(i64::MAX)).unwrap_err();
             let expected_err = UnitError::Dimension(DimensionError::ExponentOverflow);
             assert!(errors_match(&err, &expected_err));
         }
@@ -335,7 +335,7 @@ mod tests {
                 offset: 273.15,
             };
             let atom = make_unit_atom(registry_id, "celsius", temperature, conversion);
-            let err = Unit::single(&atom, Exp::int(2)).unwrap_err();
+            let err = DeltaUnit::single(&atom, Exp::int(2)).unwrap_err();
             let expected_err = UnitError::NotExponentiable {
                 name: "celsius".into(),
                 registry_id,
@@ -354,7 +354,7 @@ mod tests {
                 offset: 273.15,
             };
             let atom = make_unit_atom(registry_id, "celsius", temperature, conversion);
-            let err = Unit::single(&atom, Exp::ZERO).unwrap_err();
+            let err = DeltaUnit::single(&atom, Exp::ZERO).unwrap_err();
             let expected_err = UnitError::NotExponentiable {
                 name: "celsius".into(),
                 registry_id,
@@ -373,7 +373,7 @@ mod tests {
                 offset: 2.0,
             };
             let atom = make_unit_atom(registry_id, "unit", dim.clone(), conversion);
-            let unit = Unit::single(&atom, Exp::ONE).unwrap();
+            let unit = DeltaUnit::single(&atom, Exp::ONE).unwrap();
             assert_eq!(unit.factors.len(), 1);
             assert_eq!(unit.factors.first().unwrap(), &(atom, Exp::ONE));
             assert_eq!(unit.dimension, dim);
@@ -401,8 +401,8 @@ mod tests {
                 b_dim.clone(),
                 ConversionKind::Linear { scale: 2.5 },
             );
-            let a_unit = Unit::single(&a_atom, Exp::ONE).unwrap();
-            let b_unit = Unit::single(&b_atom, Exp::ONE).unwrap();
+            let a_unit = DeltaUnit::single(&a_atom, Exp::ONE).unwrap();
+            let b_unit = DeltaUnit::single(&b_atom, Exp::ONE).unwrap();
             let ab_unit = a_unit.try_mul(&b_unit).unwrap();
             let expected_factors: SmallVec<[(UnitAtom, Exp); MAX_INLINE_FACTORS]> =
                 smallvec![(a_atom, Exp::ONE), (b_atom, Exp::ONE)];
@@ -421,8 +421,8 @@ mod tests {
                 a_dim.clone(),
                 ConversionKind::Linear { scale: 2.0 },
             );
-            let a_unit_1 = Unit::single(&a_atom, Exp::ONE).unwrap();
-            let a_unit_2 = Unit::single(&a_atom, Exp::ONE).unwrap();
+            let a_unit_1 = DeltaUnit::single(&a_atom, Exp::ONE).unwrap();
+            let a_unit_2 = DeltaUnit::single(&a_atom, Exp::ONE).unwrap();
             let ab_unit = a_unit_1.try_mul(&a_unit_2).unwrap();
             let expected_factors: SmallVec<[(UnitAtom, Exp); MAX_INLINE_FACTORS]> =
                 smallvec![(a_atom, Exp::int(2))];
@@ -441,8 +441,8 @@ mod tests {
                 a_dim.clone(),
                 ConversionKind::Linear { scale: 2.0 },
             );
-            let a_unit_1 = Unit::single(&a_atom, Exp::ONE).unwrap();
-            let a_unit_2 = Unit::single(&a_atom, Exp::int(-1)).unwrap();
+            let a_unit_1 = DeltaUnit::single(&a_atom, Exp::ONE).unwrap();
+            let a_unit_2 = DeltaUnit::single(&a_atom, Exp::int(-1)).unwrap();
             let ab_unit = a_unit_1.try_mul(&a_unit_2).unwrap();
             assert!(ab_unit.factors.is_empty());
             assert!(ab_unit.dimension.is_dimensionless());
@@ -459,8 +459,8 @@ mod tests {
                 a_dim.clone(),
                 ConversionKind::Linear { scale: 2.0 },
             );
-            let a_unit_1 = Unit::single(&a_atom, Exp::int(2)).unwrap();
-            let a_unit_2 = Unit::single(&a_atom, Exp::int(i64::MAX)).unwrap();
+            let a_unit_1 = DeltaUnit::single(&a_atom, Exp::int(2)).unwrap();
+            let a_unit_2 = DeltaUnit::single(&a_atom, Exp::int(i64::MAX)).unwrap();
             let err = a_unit_1.try_mul(&a_unit_2).unwrap_err();
             let expected_err = UnitError::Dimension(DimensionError::ExponentOverflow);
             assert!(errors_match(&err, &expected_err));
@@ -485,8 +485,8 @@ mod tests {
                 b_dim.clone(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let a_unit = Unit::single(&a_atom, Exp::ONE).unwrap();
-            let b_unit = Unit::single(&b_atom, Exp::ONE).unwrap();
+            let a_unit = DeltaUnit::single(&a_atom, Exp::ONE).unwrap();
+            let b_unit = DeltaUnit::single(&b_atom, Exp::ONE).unwrap();
             let err = a_unit.try_mul(&b_unit).unwrap_err();
             let expected_err = UnitError::Dimension(DimensionError::CrossRegistry {
                 left: a_dim_registry.id(),
@@ -503,14 +503,14 @@ mod tests {
                 Dimension::dimensionless(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let a_unit = Unit::single(&a_atom, Exp::ONE).unwrap();
+            let a_unit = DeltaUnit::single(&a_atom, Exp::ONE).unwrap();
             let b_atom = make_unit_atom(
                 UnitRegistryId::next(),
                 "b_unit",
                 Dimension::dimensionless(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let b_unit = Unit::single(&b_atom, Exp::ONE).unwrap();
+            let b_unit = DeltaUnit::single(&b_atom, Exp::ONE).unwrap();
             let err = a_unit.try_mul(&b_unit).unwrap_err();
             let expected_err = UnitError::CrossRegistry {
                 left: a_atom.registry_id,
@@ -531,14 +531,14 @@ mod tests {
                     offset: 1.0,
                 },
             );
-            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let affine_unit = DeltaUnit::single(&affine_atom, Exp::ONE).unwrap();
             let linear_atom = make_unit_atom(
                 registry_id,
                 "linear_unit",
                 Dimension::dimensionless(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let linear_unit = Unit::single(&linear_atom, Exp::ONE).unwrap();
+            let linear_unit = DeltaUnit::single(&linear_atom, Exp::ONE).unwrap();
             let err = affine_unit.try_mul(&linear_unit).unwrap_err();
             let expected_err = UnitError::NotComposable {
                 name: affine_atom.name.to_string(),
@@ -559,14 +559,14 @@ mod tests {
                     offset: 1.0,
                 },
             );
-            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let affine_unit = DeltaUnit::single(&affine_atom, Exp::ONE).unwrap();
             let linear_atom = make_unit_atom(
                 registry_id,
                 "linear_unit",
                 Dimension::dimensionless(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let linear_unit = Unit::single(&linear_atom, Exp::ONE).unwrap();
+            let linear_unit = DeltaUnit::single(&linear_atom, Exp::ONE).unwrap();
             let err = linear_unit.try_mul(&affine_unit).unwrap_err();
             let expected_err = UnitError::NotComposable {
                 name: affine_atom.name.to_string(),
@@ -587,7 +587,7 @@ mod tests {
                     offset: 1.0,
                 },
             );
-            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let affine_unit = DeltaUnit::single(&affine_atom, Exp::ONE).unwrap();
             let err = affine_unit.try_mul(&affine_unit).unwrap_err();
             let expected_err = UnitError::NotComposable {
                 name: affine_atom.name.to_string(),
@@ -622,7 +622,7 @@ mod tests {
                 .dimension
                 .try_mul(&b_atom.dimension.pow(Exp::int(3)).unwrap())
                 .unwrap();
-            let unit = Unit {
+            let unit = DeltaUnit {
                 factors: smallvec![(a_atom.clone(), Exp::ONE), (b_atom.clone(), Exp::int(3))],
                 dimension: dimension.clone(),
             };
@@ -645,7 +645,7 @@ mod tests {
                 a_dim.clone(),
                 ConversionKind::Linear { scale: 2.0 },
             );
-            let a_unit = Unit::single(&a_atom, Exp::ONE).unwrap();
+            let a_unit = DeltaUnit::single(&a_atom, Exp::ONE).unwrap();
             let raised_to_zero = a_unit.pow(Exp::ZERO).unwrap();
             assert!(raised_to_zero.factors.is_empty());
             assert!(raised_to_zero.dimension.is_dimensionless());
@@ -662,7 +662,7 @@ mod tests {
                 a_dim.clone(),
                 ConversionKind::Linear { scale: 2.0 },
             );
-            let a_unit = Unit::single(&a_atom, Exp::int(i64::MAX)).unwrap();
+            let a_unit = DeltaUnit::single(&a_atom, Exp::int(i64::MAX)).unwrap();
             let err = a_unit.pow(Exp::int(2)).unwrap_err();
             let expected_err = UnitError::Dimension(DimensionError::ExponentOverflow);
             assert!(errors_match(&err, &expected_err));
@@ -680,7 +680,7 @@ mod tests {
                     offset: 1.0,
                 },
             );
-            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let affine_unit = DeltaUnit::single(&affine_atom, Exp::ONE).unwrap();
             let err = affine_unit.pow(Exp::int(2)).unwrap_err();
             let expected_err = UnitError::NotExponentiable {
                 name: affine_atom.name.to_string(),
@@ -702,7 +702,7 @@ mod tests {
                     offset: 1.0,
                 },
             );
-            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let affine_unit = DeltaUnit::single(&affine_atom, Exp::ONE).unwrap();
             let err = affine_unit.pow(Exp::ZERO).unwrap_err();
             let expected_err = UnitError::NotExponentiable {
                 name: affine_atom.name.to_string(),
@@ -728,7 +728,7 @@ mod tests {
                     offset: 1.0,
                 },
             );
-            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let affine_unit = DeltaUnit::single(&affine_atom, Exp::ONE).unwrap();
             let err = affine_unit.recip().unwrap_err();
             let expected_err = UnitError::NotExponentiable {
                 name: affine_atom.name.to_string(),
@@ -754,14 +754,14 @@ mod tests {
                     offset: 1.0,
                 },
             );
-            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let affine_unit = DeltaUnit::single(&affine_atom, Exp::ONE).unwrap();
             let linear_atom = make_unit_atom(
                 registry_id,
                 "linear_unit",
                 Dimension::dimensionless(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let linear_unit = Unit::single(&linear_atom, Exp::ONE).unwrap();
+            let linear_unit = DeltaUnit::single(&linear_atom, Exp::ONE).unwrap();
             let err = linear_unit.try_div(&affine_unit).unwrap_err();
             let expected_err = UnitError::NotExponentiable {
                 name: affine_atom.name.to_string(),
@@ -783,14 +783,14 @@ mod tests {
                     offset: 1.0,
                 },
             );
-            let affine_unit = Unit::single(&affine_atom, Exp::ONE).unwrap();
+            let affine_unit = DeltaUnit::single(&affine_atom, Exp::ONE).unwrap();
             let linear_atom = make_unit_atom(
                 registry_id,
                 "linear_unit",
                 Dimension::dimensionless(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let linear_unit = Unit::single(&linear_atom, Exp::ONE).unwrap();
+            let linear_unit = DeltaUnit::single(&linear_atom, Exp::ONE).unwrap();
             let err = affine_unit.try_div(&linear_unit).unwrap_err();
             let expected_err = UnitError::NotComposable {
                 name: affine_atom.name.to_string(),
@@ -817,14 +817,14 @@ mod tests {
                 a_dim,
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let a = Unit::single(&a_atom, Exp::ONE).unwrap();
+            let a = DeltaUnit::single(&a_atom, Exp::ONE).unwrap();
             let b_atom = make_unit_atom(
                 registry_id,
                 "b",
                 b_dim,
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let b = Unit::single(&b_atom, Exp::ONE).unwrap();
+            let b = DeltaUnit::single(&b_atom, Exp::ONE).unwrap();
             assert_eq!(&a.try_mul(&b).unwrap().try_div(&b).unwrap(), &a)
         }
 
@@ -841,18 +841,18 @@ mod tests {
                 a_dim,
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let a = Unit::single(&a_atom, Exp::ONE).unwrap();
+            let a = DeltaUnit::single(&a_atom, Exp::ONE).unwrap();
             let b_atom = make_unit_atom(
                 registry_id,
                 "b",
                 b_dim,
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let b = Unit::single(&b_atom, Exp::ONE).unwrap();
+            let b = DeltaUnit::single(&b_atom, Exp::ONE).unwrap();
             assert_eq!(&a.try_mul(&b).unwrap(), &b.try_mul(&a).unwrap())
         }
 
-        /// A unit whose factors all cancel equals `Unit::empty()`.
+        /// A unit whose factors all cancel equals `DeltaUnit::empty()`.
         #[test]
         fn cancelled_unit_equals_empty() {
             let registry_id = UnitRegistryId::next();
@@ -864,8 +864,8 @@ mod tests {
                 a_dim,
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let a = Unit::single(&a_atom, Exp::ONE).unwrap();
-            assert_eq!(&a.try_div(&a).unwrap(), &Unit::empty())
+            let a = DeltaUnit::single(&a_atom, Exp::ONE).unwrap();
+            assert_eq!(&a.try_div(&a).unwrap(), &DeltaUnit::empty())
         }
 
         /// The same atom at different exponents is not equal: `m != m^2`.
@@ -880,8 +880,8 @@ mod tests {
                 a_dim,
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let a = Unit::single(&a_atom, Exp::ONE).unwrap();
-            let a2 = Unit::single(&a_atom, Exp::int(2)).unwrap();
+            let a = DeltaUnit::single(&a_atom, Exp::ONE).unwrap();
+            let a2 = DeltaUnit::single(&a_atom, Exp::int(2)).unwrap();
             assert_ne!(&a, &a2)
         }
 
@@ -898,7 +898,7 @@ mod tests {
                 dim.clone(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let unit_1 = Unit::single(&atom_1, Exp::ONE).unwrap();
+            let unit_1 = DeltaUnit::single(&atom_1, Exp::ONE).unwrap();
             let reg_id_2 = UnitRegistryId::next();
             let atom_2 = make_unit_atom(
                 reg_id_2,
@@ -906,7 +906,7 @@ mod tests {
                 dim.clone(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let unit_2 = Unit::single(&atom_2, Exp::ONE).unwrap();
+            let unit_2 = DeltaUnit::single(&atom_2, Exp::ONE).unwrap();
             assert_ne!(&unit_1, &unit_2)
         }
 
@@ -929,8 +929,8 @@ mod tests {
                 b_dim,
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let a_unit = Unit::single(&a_atom, Exp::ONE).unwrap();
-            let b_unit = Unit::single(&b_atom, Exp::ONE).unwrap();
+            let a_unit = DeltaUnit::single(&a_atom, Exp::ONE).unwrap();
+            let b_unit = DeltaUnit::single(&b_atom, Exp::ONE).unwrap();
             let mut set = HashSet::new();
             set.insert(a_unit.try_mul(&b_unit).unwrap());
             assert!(set.contains(&b_unit.try_mul(&a_unit).unwrap()));
@@ -971,7 +971,7 @@ mod tests {
 
         #[test]
         fn displays_dimensionless_empty_unit_as_one() {
-            assert_eq!(Unit::empty().to_string(), "1");
+            assert_eq!(DeltaUnit::empty().to_string(), "1");
         }
 
         #[test]
@@ -1008,11 +1008,11 @@ mod tests {
             assert_eq!(&registry.parse(&pascal.to_string()).unwrap(), &pascal);
         }
 
-        /// The empty unit displays as `1` and parses back to `Unit::empty()`.
+        /// The empty unit displays as `1` and parses back to `DeltaUnit::empty()`.
         #[test]
         fn roundtrips_empty_unit() {
             let registry = mks_registry();
-            let empty = Unit::empty();
+            let empty = DeltaUnit::empty();
             assert_eq!(empty.to_string(), "1");
             assert_eq!(registry.parse(&empty.to_string()).unwrap(), empty);
         }

@@ -17,4 +17,4 @@ mod unit;
 pub use atom::{UnitId, UnitRegistryId};
 pub use error::UnitError;
 pub use registry::UnitRegistry;
-pub use unit::Unit;
+pub use unit::DeltaUnit;

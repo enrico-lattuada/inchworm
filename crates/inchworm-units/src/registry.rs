@@ -9,7 +9,7 @@ use std::{
 use inchworm_dimensions::{DimRegistry, Dimension, DimensionError, Exp};
 
 use crate::{
-    Unit, UnitError, UnitId, UnitRegistryId,
+    DeltaUnit, UnitError, UnitId, UnitRegistryId,
     atom::{ConversionKind, UnitAtom, UnitData},
     parse::{is_valid_ident, parse_unit_expr},
     prefix::Prefix,
@@ -81,7 +81,7 @@ impl UnitRegistry {
 
 // ---- definition (mutation) ----
 impl UnitRegistry {
-    /// Add a unit with an attached [`ConversionKind`] to the registry and return the corresponding [`Unit`].
+    /// Add a unit with an attached [`ConversionKind`] to the registry and return the corresponding [`DeltaUnit`].
     ///
     /// # Errors
     ///
@@ -99,7 +99,7 @@ impl UnitRegistry {
         dimension: Dimension,
         conversion: ConversionKind,
         prefixable: bool,
-    ) -> Result<Unit, UnitError> {
+    ) -> Result<DeltaUnit, UnitError> {
         if !is_valid_ident(name) {
             return Err(UnitError::InvalidName { name: name.into() });
         }
@@ -149,13 +149,13 @@ impl UnitRegistry {
             prefixable,
         };
         let atom = Arc::new(data);
-        let unit = Unit::single(&atom, Exp::ONE)?;
+        let unit = DeltaUnit::single(&atom, Exp::ONE)?;
         self.atoms.insert(name.into(), atom);
         self.by_symbol.insert(symbol.into(), name.into());
         Ok(unit)
     }
 
-    /// Add a unit to the registry and return the corresponding [`Unit`].
+    /// Add a unit to the registry and return the corresponding [`DeltaUnit`].
     ///
     /// # Errors
     ///
@@ -170,12 +170,12 @@ impl UnitRegistry {
         dimension: Dimension,
         scale: f64,
         prefixable: bool,
-    ) -> Result<Unit, UnitError> {
+    ) -> Result<DeltaUnit, UnitError> {
         let conversion = ConversionKind::Linear { scale };
         self.add_unit_with_conversion(name, symbol, dimension, conversion, prefixable)
     }
 
-    /// Add an affine unit to the registry and return the corresponding [`Unit`].
+    /// Add an affine unit to the registry and return the corresponding [`DeltaUnit`].
     ///
     /// An affine unit is never prefixable.
     ///
@@ -192,7 +192,7 @@ impl UnitRegistry {
         dimension: Dimension,
         scale: f64,
         offset: f64,
-    ) -> Result<Unit, UnitError> {
+    ) -> Result<DeltaUnit, UnitError> {
         let conversion = ConversionKind::Affine { scale, offset };
         let prefixable = false;
         self.add_unit_with_conversion(name, symbol, dimension, conversion, prefixable)
@@ -258,7 +258,7 @@ impl UnitRegistry {
         &self,
         prefix_name: &str,
         base: UnitAtom,
-    ) -> Result<Unit, UnitError> {
+    ) -> Result<DeltaUnit, UnitError> {
         if !base.prefixable {
             return Err(UnitError::NotPrefixable {
                 name: base.name.to_string(),
@@ -270,7 +270,7 @@ impl UnitRegistry {
             .get(&base.id)
             .and_then(|m| m.get(prefix_name).cloned());
         if let Some(atom) = cached {
-            return Unit::single(&atom, Exp::ONE);
+            return DeltaUnit::single(&atom, Exp::ONE);
         }
         let prefix =
             self.prefixes
@@ -305,7 +305,7 @@ impl UnitRegistry {
                 })
             })
             .clone();
-        Unit::single(&atom, Exp::ONE)
+        DeltaUnit::single(&atom, Exp::ONE)
     }
 
     fn is_unit_taken(&self, candidate: &str) -> bool {
@@ -331,15 +331,15 @@ impl UnitRegistry {
             .or_else(|| self.prefix_by_symbol.get(candidate).map(|v| &**v))
     }
 
-    /// Returns the [`Unit`] corresponding to `name`.
-    pub fn get(&self, name: &str) -> Option<Unit> {
+    /// Returns the [`DeltaUnit`] corresponding to `name`.
+    pub fn get(&self, name: &str) -> Option<DeltaUnit> {
         let atom = self.find_atom(name)?;
-        Some(Unit::single(atom, Exp::ONE).expect(
+        Some(DeltaUnit::single(atom, Exp::ONE).expect(
             "pow(1) is an identity op and this atom already passed the same call in add_unit",
         ))
     }
 
-    fn resolve_ident(&self, name: &str) -> Result<Unit, UnitError> {
+    fn resolve_ident(&self, name: &str) -> Result<DeltaUnit, UnitError> {
         if let Some(unit) = self.get(name) {
             return Ok(unit);
         }
@@ -367,7 +367,7 @@ impl UnitRegistry {
     ///
     /// Returns [`UnitError::UnknownUnit`] if `expr` contains a unit unknown to the registry.
     /// Returns [`UnitError::Parse`] if `expr` cannot be correctly parsed.
-    pub fn parse(&self, expr: &str) -> Result<Unit, UnitError> {
+    pub fn parse(&self, expr: &str) -> Result<DeltaUnit, UnitError> {
         parse_unit_expr(expr, &|name| self.resolve_ident(name))
     }
 }
@@ -1087,7 +1087,7 @@ mod tests {
             const THREADS: usize = 8;
             let registry = mks_registry();
             let barrier = Barrier::new(THREADS);
-            let units: Vec<Unit> = thread::scope(|s| {
+            let units: Vec<DeltaUnit> = thread::scope(|s| {
                 let handles: Vec<_> = (0..THREADS)
                     .map(|_| {
                         s.spawn(|| {
