@@ -75,4 +75,45 @@ mod tests {
             assert_eq!(b.compatibility(&a), Compatibility::Incompatible, "reversed");
         }
     }
+
+    #[test]
+    fn base_dimension_is_irreducible() {
+        let registry = DimRegistry::standard();
+        let length = registry.get("length").unwrap();
+        assert!(length.is_irreducible())
+    }
+
+    #[test]
+    fn named_dimensionless_kind_is_irreducible() {
+        let registry = DimRegistry::standard();
+        let plane_angle = registry.get("plane_angle").unwrap();
+        assert!(plane_angle.is_irreducible())
+    }
+
+    #[test]
+    fn composite_and_bare_dimensions_are_not_irreducible() {
+        let registry = DimRegistry::standard();
+        let get = |name: &str| registry.get(name).unwrap();
+        let parse = |expr: &str| registry.parse(expr).unwrap();
+        let cases = [
+            ("velocity", get("velocity")),
+            ("area", get("area")),
+            ("length^2", parse("length^2")),
+            ("frequency", parse("frequency")),
+            ("dimensionless", Dimension::dimensionless()),
+        ];
+        for (name, case) in &cases {
+            assert!(!case.is_irreducible(), "{name} must not be irreducible");
+        }
+    }
+
+    #[test]
+    fn alias_of_base_is_irreducible_and_equals_target() {
+        let mut registry = DimRegistry::new("test_reg");
+        let length = registry.add_base("length", None).unwrap();
+        let distance = registry.add_derived("distance", &length).unwrap();
+        assert_eq!(distance, length);
+        assert_ne!(distance.factors(), length.factors());
+        assert!(distance.is_irreducible())
+    }
 }

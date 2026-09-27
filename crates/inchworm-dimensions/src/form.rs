@@ -70,6 +70,15 @@ impl Form {
     pub(crate) fn entries(&self) -> &[(Atom, Exp)] {
         &self.entries
     }
+
+    /// Returns the atom iff [`Self::entries`] has exactly one entry, and its
+    /// exponent is one.
+    pub(crate) fn single_atom(&self) -> Option<&Atom> {
+        match self.entries() {
+            [(atom, Exp::ONE)] => Some(atom),
+            _ => None,
+        }
+    }
 }
 
 // ---- algebra ----
@@ -246,6 +255,43 @@ mod tests {
             let (atom, _) = make_form_entry(0, (1, 1));
             let single = Form::single(&atom, Exp::ZERO);
             assert!(single.entries().is_empty());
+        }
+    }
+
+    mod single_atom {
+        use super::*;
+
+        #[test]
+        fn empty_form_gives_none() {
+            assert!(Form::empty().single_atom().is_none())
+        }
+
+        #[test]
+        fn one_atom_unit_exp_gives_that_atom() {
+            let (atom, _) = make_form_entry(0, (1, 1));
+            let single = Form::single(&atom, Exp::ONE);
+            assert_eq!(single.single_atom().unwrap(), &atom)
+        }
+
+        #[test]
+        fn one_atom_non_unit_exp_gives_none() {
+            let (atom, exp) = make_form_entry(0, (2, 1));
+            let single = Form::single(&atom, exp);
+            assert!(single.single_atom().is_none())
+        }
+
+        #[test]
+        fn one_atom_negative_unit_exp_gives_none() {
+            let (atom, exp) = make_form_entry(0, (-1, 1));
+            let single = Form::single(&atom, exp);
+            assert!(single.single_atom().is_none())
+        }
+
+        #[test]
+        fn two_atoms_give_none() {
+            let entries = smallvec![make_form_entry(0, (1, 1)), make_form_entry(1, (1, 1)),];
+            let form = Form { entries };
+            assert!(form.single_atom().is_none())
         }
     }
 

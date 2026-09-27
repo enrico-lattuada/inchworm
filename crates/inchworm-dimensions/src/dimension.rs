@@ -146,12 +146,7 @@ impl Dimension {
 
     /// Returns an Atom if `factors` is a single `(atom, Exp::ONE)` entry.
     fn as_named_atom(&self) -> Option<&Atom> {
-        let entries = self.factors().entries();
-        if entries.len() == 1 && entries[0].1.is_one() {
-            let atom = &entries[0].0;
-            return Some(atom);
-        }
-        None
+        self.factors.single_atom()
     }
 
     /// Returns `true` iff `factors` is a single `(atom, Exp::ONE)` entry.
@@ -167,6 +162,12 @@ impl Dimension {
     /// Returns the dimension symbol iff [`Self::is_named`] returns `true` and a symbol is stored.
     pub fn symbol(&self) -> Option<&str> {
         self.as_named_atom().and_then(|atom| atom.symbol.as_deref())
+    }
+
+    /// Returns `true` iff `self`'s canonical form reduces to a single base
+    /// dimension or named dimensionless kind.
+    pub fn is_irreducible(&self) -> bool {
+        self.canonical.single_atom().is_some()
     }
 }
 
