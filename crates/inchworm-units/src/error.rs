@@ -68,13 +68,10 @@ pub enum UnitError {
     /// `°C/min` is the canonical example: composing an anchored unit with
     /// anything else is never coherent; use an explicit delta/ratio unit instead.
     #[error(
-        "unit `{name}` in registry `{registry_id:?}` is anchored and cannot be \
-        composed with another unit (only standalone use is valid)"
+        "unit `{name}` is anchored and cannot be composed with another unit \
+        (only standalone use is valid)"
     )]
-    NotComposable {
-        name: String,
-        registry_id: UnitRegistryId,
-    },
+    NotComposable { name: String },
 
     /// The two operands' atoms were minted by different `UnitRegistry`
     /// instances.

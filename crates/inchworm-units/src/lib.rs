@@ -8,6 +8,7 @@
 mod atom;
 mod error;
 mod parse;
+mod point;
 mod prefix;
 mod registry;
 #[cfg(test)]
@@ -16,5 +17,6 @@ mod unit;
 
 pub use atom::{UnitId, UnitRegistryId};
 pub use error::UnitError;
+pub use point::PointUnit;
 pub use registry::UnitRegistry;
 pub use unit::DeltaUnit;

@@ -8,8 +8,8 @@ use crate::UnitError;
 
 /// Process-unique identity, assigned from a global counter at registration.
 ///
-/// Never reused: removing and re-adding a name yields a *new* atom, so
-/// dimensions built before the removal are distinct from ones built after.
+/// Never reused: removing and re-adding a name yields a *new* unit, so
+/// values built before the removal are distinct from ones built after.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UnitId(u64);
 

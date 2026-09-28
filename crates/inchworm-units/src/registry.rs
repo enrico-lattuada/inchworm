@@ -959,7 +959,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn builds_prefixed_linear_unit() {
+        fn builds_prefixed_delta_unit() {
             let registry = mks_registry();
             let meter = registry.get("meter").unwrap();
             let base = meter.factors().first().unwrap().clone().0;

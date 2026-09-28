@@ -110,7 +110,6 @@ impl DeltaUnit {
         {
             return Err(UnitError::NotComposable {
                 name: atom.name.to_string(),
-                registry_id: atom.registry_id,
             });
         }
         let mut factors = SmallVec::new();
@@ -532,17 +531,16 @@ mod tests {
                 },
             );
             let affine_unit = DeltaUnit::single(&affine_atom, Exp::ONE).unwrap();
-            let linear_atom = make_unit_atom(
+            let delta_atom = make_unit_atom(
                 registry_id,
-                "linear_unit",
+                "delta_unit",
                 Dimension::dimensionless(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let linear_unit = DeltaUnit::single(&linear_atom, Exp::ONE).unwrap();
-            let err = affine_unit.try_mul(&linear_unit).unwrap_err();
+            let delta_unit = DeltaUnit::single(&delta_atom, Exp::ONE).unwrap();
+            let err = affine_unit.try_mul(&delta_unit).unwrap_err();
             let expected_err = UnitError::NotComposable {
                 name: affine_atom.name.to_string(),
-                registry_id: affine_atom.registry_id,
             };
             assert!(errors_match(&err, &expected_err));
         }
@@ -560,17 +558,16 @@ mod tests {
                 },
             );
             let affine_unit = DeltaUnit::single(&affine_atom, Exp::ONE).unwrap();
-            let linear_atom = make_unit_atom(
+            let delta_atom = make_unit_atom(
                 registry_id,
-                "linear_unit",
+                "delta_unit",
                 Dimension::dimensionless(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let linear_unit = DeltaUnit::single(&linear_atom, Exp::ONE).unwrap();
-            let err = linear_unit.try_mul(&affine_unit).unwrap_err();
+            let delta_unit = DeltaUnit::single(&delta_atom, Exp::ONE).unwrap();
+            let err = delta_unit.try_mul(&affine_unit).unwrap_err();
             let expected_err = UnitError::NotComposable {
                 name: affine_atom.name.to_string(),
-                registry_id: affine_atom.registry_id,
             };
             assert!(errors_match(&err, &expected_err));
         }
@@ -591,7 +588,6 @@ mod tests {
             let err = affine_unit.try_mul(&affine_unit).unwrap_err();
             let expected_err = UnitError::NotComposable {
                 name: affine_atom.name.to_string(),
-                registry_id: affine_atom.registry_id,
             };
             assert!(errors_match(&err, &expected_err));
         }
@@ -755,14 +751,14 @@ mod tests {
                 },
             );
             let affine_unit = DeltaUnit::single(&affine_atom, Exp::ONE).unwrap();
-            let linear_atom = make_unit_atom(
+            let delta_atom = make_unit_atom(
                 registry_id,
-                "linear_unit",
+                "delta_unit",
                 Dimension::dimensionless(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let linear_unit = DeltaUnit::single(&linear_atom, Exp::ONE).unwrap();
-            let err = linear_unit.try_div(&affine_unit).unwrap_err();
+            let delta_unit = DeltaUnit::single(&delta_atom, Exp::ONE).unwrap();
+            let err = delta_unit.try_div(&affine_unit).unwrap_err();
             let expected_err = UnitError::NotExponentiable {
                 name: affine_atom.name.to_string(),
                 registry_id: affine_atom.registry_id,
@@ -784,17 +780,16 @@ mod tests {
                 },
             );
             let affine_unit = DeltaUnit::single(&affine_atom, Exp::ONE).unwrap();
-            let linear_atom = make_unit_atom(
+            let delta_atom = make_unit_atom(
                 registry_id,
-                "linear_unit",
+                "delta_unit",
                 Dimension::dimensionless(),
                 ConversionKind::Linear { scale: 1.0 },
             );
-            let linear_unit = DeltaUnit::single(&linear_atom, Exp::ONE).unwrap();
-            let err = affine_unit.try_div(&linear_unit).unwrap_err();
+            let delta_unit = DeltaUnit::single(&delta_atom, Exp::ONE).unwrap();
+            let err = affine_unit.try_div(&delta_unit).unwrap_err();
             let expected_err = UnitError::NotComposable {
                 name: affine_atom.name.to_string(),
-                registry_id: affine_atom.registry_id,
             };
             assert!(errors_match(&err, &expected_err));
         }
