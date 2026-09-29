@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     hash::{Hash, Hasher},
     sync::{
         Arc,
@@ -18,10 +19,8 @@ pub(crate) struct PointId(u64);
 static NEXT_POINT_ID: AtomicU64 = AtomicU64::new(1);
 
 impl PointId {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "called by add_point_unit (D5 step 1c)")
-    )]
+    /// Unchecked: callers validate; mints a fresh `PointId`.
+    #[cfg_attr(not(test), expect(dead_code, reason = "called by add_point_unit"))]
     pub(crate) fn next() -> Self {
         let id = NEXT_POINT_ID.fetch_add(1, Ordering::Relaxed);
         assert_ne!(
@@ -66,6 +65,19 @@ impl Hash for PointData {
 pub struct PointUnit(Arc<PointData>);
 
 impl PointUnit {
+    #[cfg_attr(not(test), expect(dead_code, reason = "called by add_point_unit"))]
+    pub(crate) fn new(name: &str, symbol: &str, delta: DeltaUnit, origin: f64) -> Self {
+        let id = PointId::next();
+        let point_data = PointData {
+            id,
+            name: name.into(),
+            symbol: symbol.into(),
+            delta,
+            origin,
+        };
+        Self(Arc::new(point_data))
+    }
+
     /// Returns the `name` of the point unit.
     pub fn name(&self) -> &str {
         &self.0.name
@@ -85,6 +97,12 @@ impl PointUnit {
     /// unit of `delta`'s dimension.
     pub fn origin(&self) -> f64 {
         self.0.origin
+    }
+}
+
+impl fmt::Display for PointUnit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.symbol())
     }
 }
 

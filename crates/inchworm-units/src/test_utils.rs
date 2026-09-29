@@ -2,7 +2,7 @@ use inchworm_dimensions::{DimRegistry, Dimension, DimensionError};
 use std::sync::Arc;
 
 use crate::{
-    UnitError, UnitId, UnitRegistry, UnitRegistryId,
+    DeltaUnit, PointUnit, UnitError, UnitId, UnitRegistry, UnitRegistryId,
     atom::{ConversionKind, UnitAtom, UnitData},
 };
 
@@ -49,6 +49,10 @@ pub(crate) fn make_unit_atom(
         conversion,
         prefixable: false,
     })
+}
+
+pub(crate) fn make_point_unit(name: &str, delta: DeltaUnit, origin: f64) -> PointUnit {
+    PointUnit::new(name, name, delta, origin)
 }
 
 fn dimension_errors_match(actual: &DimensionError, expected: &DimensionError) -> bool {

@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod atom;
+mod delta;
 mod error;
 mod parse;
 mod point;
@@ -16,7 +17,8 @@ mod test_utils;
 mod unit;
 
 pub use atom::{UnitId, UnitRegistryId};
+pub use delta::DeltaUnit;
 pub use error::UnitError;
 pub use point::PointUnit;
 pub use registry::UnitRegistry;
-pub use unit::DeltaUnit;
+pub use unit::Unit;
