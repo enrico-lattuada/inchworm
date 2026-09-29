@@ -19,6 +19,10 @@ pub(crate) const DEFAULT_REGISTRY_VERSION: &str = "0";
 
 type PrefixedCache = HashMap<UnitId, HashMap<Box<str>, UnitAtom>>;
 
+enum UnitEntry {
+    Atom(UnitAtom),
+}
+
 /// A mutable namespace and factory for named units.
 ///
 /// Instance-based: multiple registries coexist. Units from different
@@ -30,7 +34,7 @@ pub struct UnitRegistry {
     name: Box<str>,
     version: Box<str>,
     /// Map name to atom.
-    atoms: HashMap<Box<str>, UnitAtom>,
+    entries: HashMap<Box<str>, UnitEntry>,
     prefixes: HashMap<Box<str>, Prefix>,
     by_symbol: HashMap<Box<str>, Box<str>>,
     prefix_by_symbol: HashMap<Box<str>, Box<str>>,
@@ -59,7 +63,7 @@ impl UnitRegistry {
             dims,
             name: name.into(),
             version: version.into(),
-            atoms: HashMap::new(),
+            entries: HashMap::new(),
             prefixes: HashMap::new(),
             by_symbol: HashMap::new(),
             prefix_by_symbol: HashMap::new(),
@@ -158,7 +162,7 @@ impl UnitRegistry {
         };
         let atom = Arc::new(data);
         let unit = DeltaUnit::single(&atom, Exp::ONE)?;
-        self.atoms.insert(name.into(), atom);
+        self.entries.insert(name.into(), UnitEntry::Atom(atom));
         self.by_symbol.insert(symbol.into(), name.into());
         Ok(unit)
     }
@@ -217,7 +221,7 @@ impl UnitRegistry {
     pub fn add_prefix(&mut self, name: &str, symbol: &str, factor: f64) -> Result<(), UnitError> {
         check_ident(name)?;
         check_ident(symbol)?;
-        if self.is_prefix_taken(name) || self.atoms.contains_key(name) {
+        if self.is_prefix_taken(name) || self.entries.contains_key(name) {
             return Err(UnitError::DuplicateName {
                 name: name.into(),
                 registry: self.name().into(),
@@ -316,19 +320,25 @@ impl UnitRegistry {
     }
 
     fn is_unit_taken(&self, candidate: &str) -> bool {
-        self.atoms.contains_key(candidate) || self.by_symbol.contains_key(candidate)
+        self.entries.contains_key(candidate) || self.by_symbol.contains_key(candidate)
     }
 
     fn is_prefix_taken(&self, candidate: &str) -> bool {
         self.prefixes.contains_key(candidate) || self.prefix_by_symbol.contains_key(candidate)
     }
 
-    fn find_atom(&self, candidate: &str) -> Option<&UnitAtom> {
-        self.atoms.get(candidate).or_else(|| {
+    fn find_entry(&self, candidate: &str) -> Option<&UnitEntry> {
+        self.entries.get(candidate).or_else(|| {
             self.by_symbol
                 .get(candidate)
-                .and_then(|canonical| self.atoms.get(canonical))
+                .and_then(|canonical| self.entries.get(canonical))
         })
+    }
+
+    fn find_atom(&self, candidate: &str) -> Option<&UnitAtom> {
+        match self.find_entry(candidate)? {
+            UnitEntry::Atom(atom) => Some(atom),
+        }
     }
 
     fn find_prefix_name<'s>(&'s self, candidate: &'s str) -> Option<&'s str> {
@@ -448,7 +458,7 @@ mod tests {
             registry
                 .add_unit("meter", "m", length.clone(), 2.0, true)
                 .unwrap();
-            let meter = registry.atoms.get("meter").unwrap();
+            let meter = registry.find_atom("meter").unwrap();
             assert_eq!(meter.registry_id, registry.id());
             assert_eq!(meter.name, "meter".into());
             assert_eq!(meter.symbol, "m".into());
@@ -711,7 +721,7 @@ mod tests {
             registry
                 .add_affine_unit("celsius", "degC", temperature.clone(), 1.0, 273.15)
                 .unwrap();
-            let celsius = registry.atoms.get("celsius").unwrap();
+            let celsius = registry.find_atom("celsius").unwrap();
             assert_eq!(celsius.registry_id, registry.id());
             assert_eq!(celsius.name, "celsius".into());
             assert_eq!(celsius.symbol, "degC".into());
