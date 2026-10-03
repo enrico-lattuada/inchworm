@@ -24,6 +24,7 @@
 #![forbid(unsafe_code)]
 
 mod atom;
+mod atom_ids;
 mod dimension;
 mod error;
 mod exp;
@@ -42,7 +43,7 @@ mod loader;
 #[cfg(feature = "toml")]
 mod standard;
 
-pub use atom::{AtomId, RegistryId};
+pub use atom_ids::{AtomId, RegistryId};
 pub use dimension::{Compatibility, Dimension};
 pub use error::DimensionError;
 pub use exp::Exp;
