@@ -1,28 +1,6 @@
-use inchworm_dimensions::{DimRegistry, Dimension, DimensionError};
-use std::sync::Arc;
+use inchworm_dimensions::DimensionError;
 
-use crate::{
-    DeltaUnit, PointUnit, UnitError, UnitId, UnitRegistry, UnitRegistryId,
-    atom::{ConversionKind, UnitAtom, UnitData},
-};
-
-/// A registry with base dimensions `length`, `mass` and `time`; units `meter`/`m`
-/// and `second`/`s` (prefixable) and `kilogram`/`kg` (not prefixable); and the
-/// prefix `kilo`/`k` (1e3). Nothing is parsed, so the prefix cache starts cold.
-pub(crate) fn mks_registry() -> UnitRegistry {
-    let mut dims = DimRegistry::new("test-reg");
-    let length = dims.add_base("length", None).unwrap();
-    let mass = dims.add_base("mass", None).unwrap();
-    let time = dims.add_base("time", None).unwrap();
-    let mut registry = UnitRegistry::new("test-ureg", dims);
-    registry.add_unit("meter", "m", length, 1.0, true).unwrap();
-    registry.add_unit("second", "s", time, 1.0, true).unwrap();
-    registry
-        .add_unit("kilogram", "kg", mass, 1.0, false)
-        .unwrap();
-    registry.add_prefix("kilo", "k", 1e3).unwrap();
-    registry
-}
+use crate::UnitError;
 
 /// A [`UnitError::Parse`] at `offset`, to compare against with [`errors_match`]
 /// (which ignores `src` and `message` for `Parse`).
@@ -32,27 +10,6 @@ pub(crate) fn parse_error_at(offset: usize) -> UnitError {
         offset,
         message: String::new(),
     }
-}
-
-pub(crate) fn make_unit_atom(
-    registry_id: UnitRegistryId,
-    name: &str,
-    dimension: Dimension,
-    conversion: ConversionKind,
-) -> UnitAtom {
-    Arc::new(UnitData {
-        id: UnitId::next(),
-        registry_id,
-        name: name.into(),
-        symbol: name.into(),
-        dimension,
-        conversion,
-        prefixable: false,
-    })
-}
-
-pub(crate) fn make_point_unit(name: &str, delta: DeltaUnit, origin: f64) -> PointUnit {
-    PointUnit::new(name, name, delta, origin)
 }
 
 fn dimension_errors_match(actual: &DimensionError, expected: &DimensionError) -> bool {
@@ -149,18 +106,6 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                 },
             ) => name == expected_name && registry == expected_registry,
             (
-                UnitError::NonPositiveScale {
-                    name,
-                    registry,
-                    scale,
-                },
-                UnitError::NonPositiveScale {
-                    name: expected_name,
-                    registry: expected_registry,
-                    scale: expected_scale,
-                },
-            ) => name == expected_name && registry == expected_registry && scale == expected_scale,
-            (
                 UnitError::InvalidName { name },
                 UnitError::InvalidName {
                     name: expected_name,
@@ -187,26 +132,6 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                     registry: expected_registry,
                 },
             ) => name == expected_name && registry == expected_registry,
-            (
-                UnitError::NotExponentiable {
-                    name,
-                    registry_id,
-                    exp,
-                },
-                UnitError::NotExponentiable {
-                    name: expected_name,
-                    registry_id: expected_registry_id,
-                    exp: expected_exp,
-                },
-            ) => {
-                name == expected_name && registry_id == expected_registry_id && exp == expected_exp
-            }
-            (
-                UnitError::NotComposable { name },
-                UnitError::NotComposable {
-                    name: expected_name,
-                },
-            ) => name == expected_name,
             (
                 UnitError::CrossRegistry { left, right },
                 UnitError::CrossRegistry {

@@ -3,10 +3,9 @@
 //! [`UnitError`] covers every fallible operation in the crate: registry
 //! mutation, expression parsing, exponent arithmetic, TOML loading.
 
-use inchworm_dimensions::Exp;
 use thiserror::Error;
 
-use crate::atom::UnitRegistryId;
+use crate::UnitRegistryId;
 
 /// Everything that can go wrong when building, parsing, or combining units.
 ///
@@ -20,16 +19,6 @@ pub enum UnitError {
     /// a prefix name.
     #[error("name `{name}` is already defined in registry `{registry}`")]
     DuplicateName { name: String, registry: String },
-
-    /// `name`'s scale is `<= 0.0` (either a unit's conversion scale or a
-    /// prefix's factor). `0.0` can never be inverted back to the coherent unit;
-    /// a negative value corresponds to no real physical unit or prefix.
-    #[error("name `{name}` in registry `{registry}` has non-positive scale `{scale}`")]
-    NonPositiveScale {
-        name: String,
-        registry: String,
-        scale: f64,
-    },
 
     /// `name` (a unit or prefix name, or a symbol) is not a valid identifier
     #[error("name `{name}` is not a valid identifier")]
@@ -48,30 +37,6 @@ pub enum UnitError {
     /// never prefixable).
     #[error("unit `{name}` in registry `{registry}` is not prefixable")]
     NotPrefixable { name: String, registry: String },
-
-    /// `name`'s conversion is anchored and can only appear at exponent `1`;
-    /// `exp` is the exponent actually attempted.
-    /// Anchored conversions have no coherent meaning raised to any other
-    /// power: use an explicit delta/ratio unit instead.
-    #[error(
-        "unit `{name}` in registry `{registry_id:?}` is anchored and cannot be \
-        raised to exponent `{exp:?}` (only `1` is valid)"
-    )]
-    NotExponentiable {
-        name: String,
-        registry_id: UnitRegistryId,
-        exp: Exp,
-    },
-
-    /// `name`'s conversion is anchored and can only appear standalone, never
-    /// combined with another unit via multiplication or division.
-    /// `°C/min` is the canonical example: composing an anchored unit with
-    /// anything else is never coherent; use an explicit delta/ratio unit instead.
-    #[error(
-        "unit `{name}` is anchored and cannot be composed with another unit \
-        (only standalone use is valid)"
-    )]
-    NotComposable { name: String },
 
     /// The two operands' atoms were minted by different `UnitRegistry`
     /// instances.
