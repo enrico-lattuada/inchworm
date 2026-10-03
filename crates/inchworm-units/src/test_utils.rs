@@ -4,12 +4,21 @@ use crate::UnitError;
 
 /// A [`UnitError::Parse`] at `offset`, to compare against with [`errors_match`]
 /// (which ignores `src` and `message` for `Parse`).
+#[expect(dead_code, reason = "used by parser tests")]
 pub(crate) fn parse_error_at(offset: usize) -> UnitError {
     UnitError::Parse {
         src: String::new(),
         offset,
         message: String::new(),
     }
+}
+
+fn scales_match(a: f64, b: f64) -> bool {
+    a == b || (a.is_nan() && b.is_nan())
+}
+
+fn scales_close(a: f64, b: f64, rtol: f64, atol: f64) -> bool {
+    scales_match(a, b) || (a - b).abs() <= atol + rtol * b.abs()
 }
 
 fn dimension_errors_match(actual: &DimensionError, expected: &DimensionError) -> bool {
@@ -139,6 +148,22 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                     right: expected_right,
                 },
             ) => left == expected_left && right == expected_right,
+            (
+                UnitError::InvalidScale {
+                    name,
+                    registry,
+                    scale,
+                },
+                UnitError::InvalidScale {
+                    name: expected_name,
+                    registry: expected_registry,
+                    scale: expected_scale,
+                },
+            ) => {
+                name == expected_name
+                    && registry == expected_registry
+                    && scales_close(*scale, *expected_scale, 0.0, 0.0)
+            }
             (
                 UnitError::Parse { offset, .. },
                 UnitError::Parse {

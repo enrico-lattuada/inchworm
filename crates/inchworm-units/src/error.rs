@@ -15,14 +15,14 @@ use crate::UnitRegistryId;
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum UnitError {
+    /// `name` (a unit or prefix name, or a symbol) is not a valid identifier
+    #[error("name `{name}` is not a valid identifier")]
+    InvalidName { name: String },
+
     /// `name` is already registered in `registry`, either as a unit name or as
     /// a prefix name.
     #[error("name `{name}` is already defined in registry `{registry}`")]
     DuplicateName { name: String, registry: String },
-
-    /// `name` (a unit or prefix name, or a symbol) is not a valid identifier
-    #[error("name `{name}` is not a valid identifier")]
-    InvalidName { name: String },
 
     /// `name` isn't a registered canonical name in `registry`.
     #[error("unknown unit `{name}` in registry `{registry}`")]
@@ -44,6 +44,16 @@ pub enum UnitError {
     CrossRegistry {
         left: UnitRegistryId,
         right: UnitRegistryId,
+    },
+
+    /// `name`'s scale must be positive and finite.
+    #[error(
+        "name `{name}`'s scale (`{scale}`) in registry `{registry}` must be positive and finite"
+    )]
+    InvalidScale {
+        name: String,
+        registry: String,
+        scale: f64,
     },
 
     /// A unit expression failed to parse. `offset` is the byte offset
