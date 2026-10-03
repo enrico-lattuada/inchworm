@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::{
-    AtomId, Dimension, DimensionError, RegistryId,
-    atom::{Atom, AtomData, AtomKind},
+    DimId, DimRegistryId, Dimension, DimensionError,
+    atom::{AtomData, AtomKind, DimAtom},
     parser::{is_valid_ident, parse_dim_expr},
 };
 
@@ -47,11 +47,11 @@ pub(crate) const DEFAULT_REGISTRY_VERSION: &str = "0";
 /// ```
 #[cfg_attr(test, derive(Debug))]
 pub struct DimRegistry {
-    id: RegistryId,
+    id: DimRegistryId,
     name: Box<str>,
     version: Box<str>,
     /// Map name to atom.
-    atoms: HashMap<Box<str>, Atom>,
+    atoms: HashMap<Box<str>, DimAtom>,
     aliases: HashMap<Box<str>, Box<str>>,
 }
 
@@ -64,7 +64,7 @@ impl DimRegistry {
     /// Creates an empty registry with a name and a version.
     pub(crate) fn new_with_meta(name: &str, version: &str) -> Self {
         Self {
-            id: RegistryId::next(),
+            id: DimRegistryId::next(),
             name: name.into(),
             version: version.into(),
             atoms: HashMap::new(),
@@ -73,7 +73,7 @@ impl DimRegistry {
     }
 
     /// Returns the `id` of the registry.
-    pub fn id(&self) -> RegistryId {
+    pub fn id(&self) -> DimRegistryId {
         self.id
     }
 
@@ -112,13 +112,13 @@ impl DimRegistry {
             });
         }
         let data = AtomData {
-            id: AtomId::next(),
+            id: DimId::next(),
             registry_id: self.id(),
             name: name.into(),
             symbol: symbol.map(Into::into),
             kind: AtomKind::Base,
         };
-        let atom = Atom::new(data);
+        let atom = DimAtom::new(data);
         let dimension = Dimension::from_atom(&atom);
         self.atoms.insert(name.into(), atom);
         Ok(dimension)
@@ -156,7 +156,7 @@ impl DimRegistry {
             });
         }
         let data = AtomData {
-            id: AtomId::next(),
+            id: DimId::next(),
             registry_id: self.id(),
             name: name.into(),
             symbol: None,
@@ -165,7 +165,7 @@ impl DimRegistry {
                 dimensionless_kind: definition.is_dimensionless(),
             },
         };
-        let atom = Atom::new(data);
+        let atom = DimAtom::new(data);
         let dimension = Dimension::from_atom(&atom);
         self.atoms.insert(name.into(), atom);
         Ok(dimension)

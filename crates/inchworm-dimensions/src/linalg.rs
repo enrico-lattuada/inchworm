@@ -9,7 +9,7 @@
 
 use std::collections::HashSet;
 
-use crate::{AtomId, DimensionError, Exp, PiVariable, RegistryId};
+use crate::{DimId, DimRegistryId, DimensionError, Exp, PiVariable};
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -53,10 +53,10 @@ impl RatMatrix {
     pub(crate) fn from_dims(
         dims: &[PiVariable],
         use_canonical: bool,
-    ) -> Result<(Self, Vec<AtomId>), DimensionError> {
+    ) -> Result<(Self, Vec<DimId>), DimensionError> {
         let mut atom_ids = Vec::new();
-        let mut atoms_exps: Vec<Vec<(AtomId, Exp)>> = Vec::new();
-        let mut registry_id: Option<RegistryId> = None;
+        let mut atoms_exps: Vec<Vec<(DimId, Exp)>> = Vec::new();
+        let mut registry_id: Option<DimRegistryId> = None;
         for variable in dims {
             if let Some(this_registry_id) = variable.dimension.registry_id() {
                 match registry_id {
@@ -214,10 +214,10 @@ mod tests {
 
     mod from_dims {
         use super::*;
-        use crate::{AtomId, DimRegistry, Dimension};
+        use crate::{DimId, DimRegistry, Dimension};
 
         /// Extract atom id from base dimension.
-        fn get_base_dim_atom_id(base_dim: &Dimension) -> AtomId {
+        fn get_base_dim_atom_id(base_dim: &Dimension) -> DimId {
             base_dim.canonical_form().entries()[0].0.id
         }
 

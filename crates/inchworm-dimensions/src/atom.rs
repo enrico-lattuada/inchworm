@@ -1,9 +1,9 @@
 //! Atom identity and registration records.
 //!
-//! An [`Atom`](crate::atom::Atom) (`Arc<AtomData>`) is the crate's unit of
+//! A [`DimAtom`](crate::atom::DimAtom) (`Arc<AtomData>`) is the crate's unit of
 //! registered identity: every base or derived dimension added to a
 //! [`DimRegistry`](crate::DimRegistry) becomes one, tagged with a
-//! process-unique [`AtomId`] and the [`RegistryId`] of the registry that
+//! process-unique [`DimId`] and the [`DimRegistryId`] of the registry that
 //! created it. [`Dimension`](crate::Dimension) values hold [`Arc`](std::sync::Arc)
 //! clones of the atoms in their signature, so they stay valid independent of
 //! the registry's own lifetime.
@@ -11,7 +11,7 @@
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use crate::{AtomId, Dimension, RegistryId};
+use crate::{DimId, DimRegistryId, Dimension};
 
 #[derive(Debug)]
 pub(crate) enum AtomKind {
@@ -33,9 +33,9 @@ pub(crate) enum AtomKind {
 #[derive(Debug)]
 pub(crate) struct AtomData {
     /// This atom's process-unique identity.
-    pub id: AtomId,
+    pub id: DimId,
     /// The registry that created this atom.
-    pub registry_id: RegistryId,
+    pub registry_id: DimRegistryId,
     /// Dimension name (e.g. "plane_angle").
     pub name: Box<str>,
     /// Dimension symbol (e.g. "L", "Θ").
@@ -70,4 +70,4 @@ impl PartialEq for AtomData {
 
 impl Eq for AtomData {}
 
-pub(crate) type Atom = Arc<AtomData>;
+pub(crate) type DimAtom = Arc<AtomData>;

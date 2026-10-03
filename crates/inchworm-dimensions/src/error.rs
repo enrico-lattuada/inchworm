@@ -6,7 +6,7 @@
 
 use thiserror::Error;
 
-use crate::RegistryId;
+use crate::DimRegistryId;
 
 /// Everything that can go wrong when building, parsing, or combining dimensions.
 ///
@@ -32,7 +32,10 @@ pub enum DimensionError {
     /// An operation mixed dimensions from two different [`DimRegistry`](crate::DimRegistry)
     /// instances, identified by `left` and `right`.
     #[error("cannot mix dimensions from registry `{left:?}` and registry `{right:?}`")]
-    CrossRegistry { left: RegistryId, right: RegistryId },
+    CrossRegistry {
+        left: DimRegistryId,
+        right: DimRegistryId,
+    },
 
     /// `name` can't be removed because `dependents` still reference it in
     /// their own definitions.

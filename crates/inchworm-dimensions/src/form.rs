@@ -10,7 +10,7 @@ use std::fmt;
 
 use smallvec::{SmallVec, smallvec};
 
-use crate::atom::Atom;
+use crate::atom::DimAtom;
 use crate::error::DimensionError;
 use crate::exp::Exp;
 
@@ -41,7 +41,7 @@ const MAX_INLINE_FACTORS: usize = 4;
 /// ```
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Form {
-    entries: SmallVec<[(Atom, Exp); MAX_INLINE_FACTORS]>,
+    entries: SmallVec<[(DimAtom, Exp); MAX_INLINE_FACTORS]>,
 }
 
 impl Form {
@@ -53,7 +53,7 @@ impl Form {
     }
 
     /// Returns a form with a single entry, or an empty form if `exp` is zero.
-    pub(crate) fn single(atom: &Atom, exp: Exp) -> Self {
+    pub(crate) fn single(atom: &DimAtom, exp: Exp) -> Self {
         if exp.is_zero() {
             return Self::empty();
         }
@@ -67,13 +67,13 @@ impl Form {
         self.entries.is_empty()
     }
 
-    pub(crate) fn entries(&self) -> &[(Atom, Exp)] {
+    pub(crate) fn entries(&self) -> &[(DimAtom, Exp)] {
         &self.entries
     }
 
     /// Returns the atom iff [`Self::entries`] has exactly one entry, and its
     /// exponent is one.
-    pub(crate) fn single_atom(&self) -> Option<&Atom> {
+    pub(crate) fn single_atom(&self) -> Option<&DimAtom> {
         match self.entries() {
             [(atom, Exp::ONE)] => Some(atom),
             _ => None,
@@ -151,7 +151,7 @@ impl Form {
 // ---- test utils ----
 impl Form {
     #[cfg(test)]
-    pub(crate) fn raw(entries: impl IntoIterator<Item = (Atom, Exp)>) -> Self {
+    pub(crate) fn raw(entries: impl IntoIterator<Item = (DimAtom, Exp)>) -> Self {
         Self {
             entries: entries.into_iter().collect(),
         }
@@ -194,7 +194,7 @@ pub struct Signature(pub(crate) Form);
 
 impl Signature {
     #[cfg(test)]
-    pub(crate) fn raw(entries: impl IntoIterator<Item = (Atom, Exp)>) -> Self {
+    pub(crate) fn raw(entries: impl IntoIterator<Item = (DimAtom, Exp)>) -> Self {
         Self(Form::raw(entries))
     }
 }
@@ -496,7 +496,7 @@ mod tests {
 
         use super::*;
         use crate::{
-            AtomId, RegistryId,
+            DimId, DimRegistryId,
             atom::{AtomData, AtomKind},
         };
 
@@ -510,8 +510,8 @@ mod tests {
         fn omits_unit_exp() {
             let exp = Exp::ONE;
             let atom_data = AtomData {
-                id: AtomId::raw(0),
-                registry_id: RegistryId::raw(0),
+                id: DimId::raw(0),
+                registry_id: DimRegistryId::raw(0),
                 name: "length".into(),
                 symbol: None,
                 kind: AtomKind::Base,
@@ -524,8 +524,8 @@ mod tests {
         fn integer_nonunit_exp() {
             let exp = Exp::int(3);
             let atom_data = AtomData {
-                id: AtomId::raw(0),
-                registry_id: RegistryId::raw(0),
+                id: DimId::raw(0),
+                registry_id: DimRegistryId::raw(0),
                 name: "length".into(),
                 symbol: None,
                 kind: AtomKind::Base,
@@ -538,8 +538,8 @@ mod tests {
         fn negative_integer_nonunit_exp() {
             let exp = Exp::int(-3);
             let atom_data = AtomData {
-                id: AtomId::raw(0),
-                registry_id: RegistryId::raw(0),
+                id: DimId::raw(0),
+                registry_id: DimRegistryId::raw(0),
                 name: "length".into(),
                 symbol: None,
                 kind: AtomKind::Base,
@@ -552,8 +552,8 @@ mod tests {
         fn fractional() {
             let exp = Exp::new(1, 3).unwrap();
             let atom_data = AtomData {
-                id: AtomId::raw(0),
-                registry_id: RegistryId::raw(0),
+                id: DimId::raw(0),
+                registry_id: DimRegistryId::raw(0),
                 name: "length".into(),
                 symbol: None,
                 kind: AtomKind::Base,

@@ -43,7 +43,7 @@ mod loader;
 #[cfg(feature = "toml")]
 mod standard;
 
-pub use atom_ids::{AtomId, RegistryId};
+pub use atom_ids::{DimId, DimRegistryId};
 pub use dimension::{Compatibility, Dimension};
 pub use error::DimensionError;
 pub use exp::Exp;

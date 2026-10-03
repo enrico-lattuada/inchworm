@@ -7,8 +7,8 @@
 //! irreducible, used for [`Compatibility::Full`] and `==`).
 
 use crate::{
-    DimensionError, Exp, Form, RegistryId, Signature,
-    atom::{Atom, AtomKind},
+    DimRegistryId, DimensionError, Exp, Form, Signature,
+    atom::{AtomKind, DimAtom},
 };
 
 /// How two [`Dimension`]s relate.
@@ -79,7 +79,7 @@ impl Dimension {
     }
 
     /// Returns a dimension from an [`Atom`].
-    pub(crate) fn from_atom(atom: &Atom) -> Self {
+    pub(crate) fn from_atom(atom: &DimAtom) -> Self {
         match &atom.kind {
             AtomKind::Base => {
                 let factors = Form::single(atom, Exp::ONE);
@@ -137,7 +137,7 @@ impl Dimension {
     }
 
     /// Returns the [`RegistryId`] of the registry where `self` is defined.
-    pub fn registry_id(&self) -> Option<RegistryId> {
+    pub fn registry_id(&self) -> Option<DimRegistryId> {
         self.factors
             .entries()
             .first()
@@ -145,7 +145,7 @@ impl Dimension {
     }
 
     /// Returns an Atom if `factors` is a single `(atom, Exp::ONE)` entry.
-    fn as_named_atom(&self) -> Option<&Atom> {
+    fn as_named_atom(&self) -> Option<&DimAtom> {
         self.factors.single_atom()
     }
 

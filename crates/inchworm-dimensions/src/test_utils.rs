@@ -1,6 +1,6 @@
 use crate::{
-    AtomId, Dimension, DimensionError, Exp, RegistryId,
-    atom::{Atom, AtomData, AtomKind},
+    DimId, DimRegistryId, Dimension, DimensionError, Exp,
+    atom::{AtomData, AtomKind, DimAtom},
 };
 use std::sync::Arc;
 
@@ -8,12 +8,12 @@ pub(crate) fn make_form_entry_in_registry(
     id: u64,
     num_den: (i64, i64),
     registry_id: u64,
-) -> (Atom, Exp) {
+) -> (DimAtom, Exp) {
     let (num, den) = num_den;
     let exp = Exp::raw(num, den);
     let atom_data = AtomData {
-        id: AtomId::raw(id),
-        registry_id: RegistryId::raw(registry_id),
+        id: DimId::raw(id),
+        registry_id: DimRegistryId::raw(registry_id),
         name: "foo".into(),
         symbol: None,
         kind: AtomKind::Base,
@@ -21,7 +21,7 @@ pub(crate) fn make_form_entry_in_registry(
     (Arc::new(atom_data), exp)
 }
 
-pub(crate) fn make_form_entry(id: u64, num_den: (i64, i64)) -> (Atom, Exp) {
+pub(crate) fn make_form_entry(id: u64, num_den: (i64, i64)) -> (DimAtom, Exp) {
     make_form_entry_in_registry(id, num_den, 0)
 }
 

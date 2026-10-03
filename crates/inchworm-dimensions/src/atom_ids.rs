@@ -5,16 +5,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// Never reused: removing and re-adding a name yields a *new* atom, so
 /// dimensions built before the removal are distinct from ones built after.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct AtomId(u64);
+pub struct DimId(u64);
 
 /// Process-unique registry identity, used to detect cross-registry mixing.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct RegistryId(u64);
+pub struct DimRegistryId(u64);
 
 static NEXT_ATOM_ID: AtomicU64 = AtomicU64::new(1);
 static NEXT_REGISTRY_ID: AtomicU64 = AtomicU64::new(1);
 
-impl AtomId {
+impl DimId {
     pub(crate) fn next() -> Self {
         let id = NEXT_ATOM_ID.fetch_add(1, Ordering::Relaxed);
         assert_ne!(
@@ -25,7 +25,7 @@ impl AtomId {
     }
 }
 
-impl RegistryId {
+impl DimRegistryId {
     pub(crate) fn next() -> Self {
         let id = NEXT_REGISTRY_ID.fetch_add(1, Ordering::Relaxed);
         assert_ne!(
@@ -37,14 +37,14 @@ impl RegistryId {
 }
 
 // ---- test utils ----
-impl AtomId {
+impl DimId {
     #[cfg(test)]
     pub(crate) fn raw(id: u64) -> Self {
         Self(id)
     }
 }
 
-impl RegistryId {
+impl DimRegistryId {
     #[cfg(test)]
     pub(crate) fn raw(registry_id: u64) -> Self {
         Self(registry_id)
@@ -60,7 +60,7 @@ mod tests {
 
         #[test]
         fn next() {
-            assert_ne!(AtomId::next(), AtomId::next());
+            assert_ne!(DimId::next(), DimId::next());
         }
     }
 
@@ -69,7 +69,7 @@ mod tests {
 
         #[test]
         fn next() {
-            assert_ne!(RegistryId::next(), RegistryId::next());
+            assert_ne!(DimRegistryId::next(), DimRegistryId::next());
         }
     }
 }
