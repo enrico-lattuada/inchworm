@@ -1,6 +1,27 @@
-use inchworm_dimensions::DimensionError;
+use inchworm_dimensions::{Dimension, DimensionError};
 
-use crate::UnitError;
+use crate::{
+    UnitError, UnitId, UnitRegistryId,
+    atom::{AtomData, AtomKind, UnitAtom},
+};
+
+/// Build a `UnitAtom` with `name = symbol` and `prefixable: false`
+pub(crate) fn make_atom(
+    registry_id: UnitRegistryId,
+    symbol: &str,
+    dimension: Dimension,
+) -> UnitAtom {
+    let data = AtomData {
+        id: UnitId::next(),
+        registry_id,
+        name: symbol.into(),
+        symbol: symbol.into(),
+        dimension,
+        prefixable: false,
+        kind: AtomKind::Base,
+    };
+    UnitAtom::new(data)
+}
 
 /// A [`UnitError::Parse`] at `offset`, to compare against with [`errors_match`]
 /// (which ignores `src` and `message` for `Parse`).

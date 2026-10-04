@@ -25,10 +25,6 @@ pub(crate) struct AtomData {
     /// This atom's process-unique identity.
     pub id: UnitId,
     /// The registry that created this atom.
-    #[expect(
-        dead_code,
-        reason = "read by unit algebra to reject mixing units from different registries"
-    )]
     pub registry_id: UnitRegistryId,
     /// Unit name.
     #[expect(
@@ -37,16 +33,8 @@ pub(crate) struct AtomData {
     )]
     pub name: Box<str>,
     /// Unit symbol.
-    #[expect(
-        dead_code,
-        reason = "read by unit Display and when building prefixed unit symbols"
-    )]
     pub symbol: Box<str>,
     /// Unit dimension.
-    #[expect(
-        dead_code,
-        reason = "read when building unit values, which cache their dimension"
-    )]
     pub dimension: Dimension,
     /// Whether this unit is prefixable.
     #[expect(

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use inchworm_dimensions::{DimRegistry, Dimension};
 
 use crate::{
-    Scale, Unit, UnitError, UnitId, UnitRegistryId,
+    DeltaUnit, Scale, UnitError, UnitId, UnitRegistryId,
     atom::{AtomData, AtomKind, UnitAtom},
     parse::validate_ident,
     prefix::Prefix,
@@ -79,7 +79,7 @@ impl UnitRegistry {
         symbol: &str,
         dimension: &Dimension,
         prefixable: bool,
-    ) -> Result<Unit, UnitError> {
+    ) -> Result<DeltaUnit, UnitError> {
         self.validate_unit(name, symbol)?;
         let data = AtomData {
             id: UnitId::next(),
@@ -91,7 +91,7 @@ impl UnitRegistry {
             kind: AtomKind::Base,
         };
         let atom = UnitAtom::new(data);
-        let unit = Unit::from_atom(&atom);
+        let unit = DeltaUnit::from_atom(&atom);
         self.atoms.insert(name.into(), atom);
         Ok(unit)
     }

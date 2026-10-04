@@ -7,7 +7,9 @@
 
 mod atom;
 mod atom_ids;
+mod delta;
 mod error;
+mod form;
 mod parse;
 mod prefix;
 mod registry;
@@ -17,7 +19,9 @@ mod test_utils;
 mod unit;
 
 pub use atom_ids::{UnitId, UnitRegistryId};
+pub use delta::DeltaUnit;
 pub use error::UnitError;
+pub use form::UnitForm;
 pub use registry::UnitRegistry;
 pub use scale::Scale;
 pub use unit::Unit;

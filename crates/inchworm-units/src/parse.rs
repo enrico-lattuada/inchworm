@@ -35,10 +35,6 @@ pub(crate) const RPAREN_CHAR: char = ')';
 /// Decimal separator char
 pub(crate) const DECIMAL_SEP_CHAR: char = '.';
 /// Unit of coherent 1 char
-#[expect(
-    dead_code,
-    reason = "read by the parser for the 1 factor and by Display for a dimensionless unit"
-)]
 pub(crate) const UNITARY_IDENT_CHAR: char = '1';
 
 pub(crate) fn is_valid_ident(src: &str) -> bool {
@@ -139,7 +135,6 @@ fn superscript_to_digit(c: char) -> Option<char> {
     }
 }
 
-#[expect(dead_code, reason = "used by the pretty Display of units")]
 pub(crate) fn digit_to_superscript(c: char) -> Option<char> {
     match c {
         '0' => Some('⁰'),
