@@ -11,7 +11,11 @@ use crate::{
 
 pub(crate) const DEFAULT_REGISTRY_VERSION: &str = "0";
 
-/// A mutable
+/// A mutable namespace and factory for named units.
+///
+/// Instance-based: multiple registries coexist. Units from different
+/// registries cannot be mixed; the mismatch is detected via the [`UnitRegistryId`]
+/// carried by every atom.
 ///
 /// # Examples
 ///
