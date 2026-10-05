@@ -23,7 +23,7 @@ pub(crate) const DEFAULT_REGISTRY_VERSION: &str = "0";
 /// A mutable namespace and factory for named dimensions.
 ///
 /// Instance-based: multiple registries coexist. Dimensions from different
-/// registries cannot be mixed; the mismatch is detected via the [`RegistryId`]
+/// registries cannot be mixed; the mismatch is detected via the [`DimRegistryId`]
 /// carried by every atom.
 ///
 /// # Examples

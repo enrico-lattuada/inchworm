@@ -19,7 +19,7 @@ const MAX_INLINE_FACTORS: usize = 4;
 /// A reduced product of powers over named atoms.
 ///
 /// Invariants:
-/// - sorted by [`AtomId`](crate::AtomId) ascending
+/// - sorted by [`DimId`](crate::DimId) ascending
 /// - no zero exponents
 /// - no duplicates.
 ///

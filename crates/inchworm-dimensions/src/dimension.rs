@@ -136,7 +136,7 @@ impl Dimension {
         self.signature.0.is_empty()
     }
 
-    /// Returns the [`RegistryId`] of the registry where `self` is defined.
+    /// Returns the [`DimRegistryId`] of the registry where `self` is defined.
     pub fn registry_id(&self) -> Option<DimRegistryId> {
         self.factors
             .entries()
