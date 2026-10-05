@@ -15,23 +15,9 @@ pub enum Scale {
 
 impl Scale {
     /// The identity scale.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "starting value when expanding a unit to base units"
-        )
-    )]
     pub(crate) const ONE: Self = Self::Linear(1.0);
 
     /// Composes two scales.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "combines factor scales when expanding a unit to base units"
-        )
-    )]
     pub(crate) fn mul(self, rhs: Self) -> Self {
         match (self, rhs) {
             (Self::Linear(a), Self::Linear(b)) => Self::Linear(a * b),
@@ -39,13 +25,6 @@ impl Scale {
     }
 
     /// Raises the scale to `e`.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "raises a factor's scale to its exponent when expanding a unit to base units"
-        )
-    )]
     pub(crate) fn pow(self, e: Exp) -> Self {
         match self {
             Self::Linear(a) => Self::Linear(a.powf(e.to_f64())),

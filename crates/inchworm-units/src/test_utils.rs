@@ -1,7 +1,7 @@
 use inchworm_dimensions::{Dimension, DimensionError};
 
 use crate::{
-    UnitError, UnitId, UnitRegistryId,
+    DeltaUnit, Scale, UnitError, UnitId, UnitRegistryId,
     atom::{AtomData, AtomKind, UnitAtom},
 };
 
@@ -23,6 +23,28 @@ pub(crate) fn make_atom(
     UnitAtom::new(data)
 }
 
+/// Build a `Derived` `UnitAtom` with `name = symbol` and `prefixable: false`
+pub(crate) fn make_derived_atom(
+    registry_id: UnitRegistryId,
+    symbol: &str,
+    definition: &DeltaUnit,
+    scale: Scale,
+) -> UnitAtom {
+    let data = AtomData {
+        id: UnitId::next(),
+        registry_id,
+        name: symbol.into(),
+        symbol: symbol.into(),
+        dimension: definition.dimension().clone(),
+        prefixable: false,
+        kind: AtomKind::Derived {
+            definition: Box::new(definition.clone()),
+            scale,
+        },
+    };
+    UnitAtom::new(data)
+}
+
 /// A [`UnitError::Parse`] at `offset`, to compare against with [`errors_match`]
 /// (which ignores `src` and `message` for `Parse`).
 #[expect(dead_code, reason = "used by parser tests")]
@@ -38,8 +60,16 @@ fn scales_match(a: f64, b: f64) -> bool {
     a == b || (a.is_nan() && b.is_nan())
 }
 
-fn scales_close(a: f64, b: f64, rtol: f64, atol: f64) -> bool {
-    scales_match(a, b) || (a - b).abs() <= atol + rtol * b.abs()
+fn scales_close(a: f64, b: f64, rtol: f64) -> bool {
+    scales_match(a, b) || (a - b).abs() <= rtol * b.abs()
+}
+
+#[track_caller]
+pub(crate) fn assert_scale_close(actual: Scale, expected: f64) {
+    let is_close = match actual {
+        Scale::Linear(a) => scales_close(a, expected, 1e-12),
+    };
+    assert!(is_close, "{actual:?} is not close to {expected}")
 }
 
 fn dimension_errors_match(actual: &DimensionError, expected: &DimensionError) -> bool {
@@ -183,7 +213,7 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
             ) => {
                 name == expected_name
                     && registry == expected_registry
-                    && scales_close(*scale, *expected_scale, 0.0, 0.0)
+                    && scales_close(*scale, *expected_scale, 0.0)
             }
             (
                 UnitError::Parse { offset, .. },

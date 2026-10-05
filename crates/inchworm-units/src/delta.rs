@@ -7,7 +7,10 @@
 use inchworm_dimensions::{Dimension, Exp};
 use std::fmt;
 
-use crate::{UnitError, UnitForm, UnitRegistryId, atom::UnitAtom};
+use crate::{
+    Scale, UnitError, UnitForm, UnitRegistryId,
+    atom::{AtomKind, UnitAtom},
+};
 
 /// A composable unit: a reduced product of unit-atom powers with its cached
 /// [`Dimension`].
@@ -158,6 +161,38 @@ impl DeltaUnit {
     }
 }
 
+/// Expands one atom to base units: `1 atom = scale × base`.
+fn expand_atom(atom: &UnitAtom) -> Result<(Scale, DeltaUnit), UnitError> {
+    match &atom.kind {
+        AtomKind::Base => Ok((Scale::ONE, DeltaUnit::from_atom(atom))),
+        AtomKind::Derived { definition, scale } => {
+            let (definition_scale, base) = definition.to_base()?;
+            Ok((scale.mul(definition_scale), base))
+        }
+    }
+}
+
+// ---- transformation ----
+impl DeltaUnit {
+    /// Expands every factor down to base units: `1 self = scale × base`.
+    ///
+    /// # Errors
+    /// Returns [`UnitError::Dimension`] wrapping
+    /// [`ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
+    /// if combining exponents overflows.
+    pub fn to_base(&self) -> Result<(Scale, DeltaUnit), UnitError> {
+        let (mut scale, mut base) = (Scale::ONE, DeltaUnit::dimensionless());
+        for (atom, exp) in self.factors.entries() {
+            let (atom_scale, atom_base) = expand_atom(atom)?;
+            let atom_scale = atom_scale.pow(*exp);
+            let atom_base = atom_base.pow(*exp)?;
+            scale = scale.mul(atom_scale);
+            base = base.try_mul(&atom_base)?;
+        }
+        Ok((scale, base))
+    }
+}
+
 impl fmt::Display for DeltaUnit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.factors.fmt(f)
@@ -168,8 +203,8 @@ impl fmt::Display for DeltaUnit {
 mod tests {
     use super::*;
     use crate::{
-        UnitRegistryId,
-        test_utils::{errors_match, make_atom},
+        Scale, UnitRegistryId,
+        test_utils::{errors_match, make_atom, make_derived_atom},
     };
     use inchworm_dimensions::DimRegistry;
 
@@ -356,6 +391,159 @@ mod tests {
             let one_over_m = m.recip().unwrap();
             assert_eq!(one_over_m.factors().entries(), [(m_atom, Exp::int(-1))]);
             assert_eq!(*one_over_m.dimension(), length.recip().unwrap());
+        }
+    }
+
+    struct Mks {
+        m: DeltaUnit,
+        kg: DeltaUnit,
+        s: DeltaUnit,
+        registry_id: UnitRegistryId,
+    }
+
+    fn mks() -> Mks {
+        let mut dim_reg = DimRegistry::new("test-reg");
+        let length = dim_reg.add_base("length", None).unwrap();
+        let time = dim_reg.add_base("time", None).unwrap();
+        let mass = dim_reg.add_base("mass", None).unwrap();
+        let ureg_id = UnitRegistryId::next();
+        let m_atom = make_atom(ureg_id, "m", length);
+        let s_atom = make_atom(ureg_id, "s", time);
+        let kg_atom = make_atom(ureg_id, "kg", mass);
+        let m = DeltaUnit::from_atom(&m_atom);
+        let s = DeltaUnit::from_atom(&s_atom);
+        let kg = DeltaUnit::from_atom(&kg_atom);
+        Mks {
+            m,
+            kg,
+            s,
+            registry_id: ureg_id,
+        }
+    }
+
+    fn derive(
+        registry_id: UnitRegistryId,
+        symbol: &str,
+        definition: &DeltaUnit,
+        scale: f64,
+    ) -> DeltaUnit {
+        DeltaUnit::from_atom(&make_derived_atom(
+            registry_id,
+            symbol,
+            definition,
+            Scale::Linear(scale),
+        ))
+    }
+
+    mod to_base {
+        use crate::test_utils::assert_scale_close;
+
+        use super::*;
+
+        #[test]
+        fn base_unit_expands_to_itself() {
+            let m = mks().m;
+            assert_eq!(m.to_base().unwrap(), (Scale::ONE, m));
+        }
+
+        #[test]
+        fn dimensionless_expands_to_itself() {
+            let unit = DeltaUnit::dimensionless();
+            assert_eq!(
+                unit.to_base().unwrap(),
+                (Scale::ONE, DeltaUnit::dimensionless())
+            );
+        }
+
+        #[test]
+        fn derived_unit_expands_to_its_definition() {
+            let Mks { m, registry_id, .. } = mks();
+            let km = derive(registry_id, "km", &m, 1e3);
+            let (scale, base) = km.to_base().unwrap();
+            assert_scale_close(scale, 1e3);
+            assert_eq!(base, m);
+        }
+
+        #[test]
+        fn chained_definitions_multiply_scales() {
+            let Mks {
+                kg, registry_id, ..
+            } = mks();
+            let g = derive(registry_id, "g", &kg, 1e-3);
+            let mg = derive(registry_id, "mg", &g, 1e-3);
+            let (scale, base) = mg.to_base().unwrap();
+            assert_scale_close(scale, 1e-6);
+            assert_eq!(base, kg);
+        }
+
+        #[test]
+        fn exponent_applies_to_scale_and_base() {
+            let Mks { m, registry_id, .. } = mks();
+            let km = derive(registry_id, "km", &m, 1e3);
+            let km2 = km.pow(Exp::int(2)).unwrap();
+            let (scale, base) = km2.to_base().unwrap();
+            assert_scale_close(scale, 1e6);
+            assert_eq!(base, m.pow(Exp::int(2)).unwrap());
+        }
+
+        #[test]
+        fn compound_unit_expands_each_factor() {
+            let Mks {
+                m, s, registry_id, ..
+            } = mks();
+            let km = derive(registry_id, "km", &m, 1e3);
+            let h = derive(registry_id, "h", &s, 3600.0);
+            let km_per_hour = km.try_div(&h).unwrap();
+            let (scale, base) = km_per_hour.to_base().unwrap();
+            assert_scale_close(scale, 1e3 / 3600.0);
+            assert_eq!(base, m.try_div(&s).unwrap());
+        }
+
+        #[test]
+        fn dimensionless_definition_expands_to_one() {
+            let percent = derive(
+                UnitRegistryId::next(),
+                "perc",
+                &DeltaUnit::dimensionless(),
+                0.01,
+            );
+            let (scale, base) = percent.to_base().unwrap();
+            assert_scale_close(scale, 0.01);
+            assert_eq!(base, DeltaUnit::dimensionless());
+        }
+
+        #[test]
+        fn equivalent_units_share_base_form() {
+            let Mks {
+                m,
+                kg,
+                s,
+                registry_id,
+            } = mks();
+            let newton_def = kg
+                .try_mul(&m)
+                .unwrap()
+                .try_div(&s.pow(Exp::int(2)).unwrap())
+                .unwrap();
+            let newton = derive(registry_id, "N", &newton_def, 1.0);
+            let joule_def = newton_def.try_mul(&m).unwrap();
+            let joule = derive(registry_id, "J", &joule_def, 1.0);
+            let newton_meter = newton.try_mul(&m).unwrap();
+            assert_eq!(newton_meter.to_base().unwrap(), joule.to_base().unwrap());
+        }
+
+        #[test]
+        fn works_without_the_registry() {
+            let m = {
+                use crate::UnitRegistry;
+                let mut dim_reg = DimRegistry::new("test-reg");
+                let length = dim_reg.add_base("length", None).unwrap();
+                let mut unit_reg = UnitRegistry::new("test-ureg", dim_reg);
+                unit_reg.add_base("m", "m", &length, true).unwrap()
+            };
+            let (scale, base) = m.to_base().unwrap();
+            assert_scale_close(scale, 1.0);
+            assert_eq!(base, m);
         }
     }
 

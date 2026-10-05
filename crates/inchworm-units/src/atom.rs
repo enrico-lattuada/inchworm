@@ -13,11 +13,22 @@ use std::sync::Arc;
 
 use inchworm_dimensions::Dimension;
 
-use crate::{UnitId, UnitRegistryId};
+use crate::{DeltaUnit, Scale, UnitId, UnitRegistryId};
 
 #[derive(Debug)]
 pub(crate) enum AtomKind {
+    /// The unit of one irreducible dimension.
+    /// The frame every other unit of that dimension is measured in.
     Base,
+    /// `1 self = scale × definition`.
+    #[cfg_attr(not(test), expect(dead_code, reason = "used by add_derived"))]
+    Derived {
+        /// The definition as written.
+        /// Boxed: an unboxed `Derived` would make every atom as large as `DeltaUnit`.
+        definition: Box<DeltaUnit>,
+        /// The factor from `definition` to `self`.
+        scale: Scale,
+    },
 }
 
 #[derive(Debug)]
