@@ -2,7 +2,7 @@ use inchworm_dimensions::{Dimension, DimensionError};
 
 use crate::{
     DeltaUnit, Scale, UnitError, UnitId, UnitRegistryId,
-    atom::{AtomData, AtomKind, UnitAtom},
+    atom::{AtomData, AtomKind, PointAtom, PointData, UnitAtom},
 };
 
 /// Build a `UnitAtom` with `name = symbol` and `prefixable: false`
@@ -43,6 +43,24 @@ pub(crate) fn make_derived_atom(
         },
     };
     UnitAtom::new(data)
+}
+
+/// Build a `PointAtom` with `name = symbol`
+pub(crate) fn make_point_atom(
+    registry_id: UnitRegistryId,
+    symbol: &str,
+    delta: &DeltaUnit,
+    offset: f64,
+) -> PointAtom {
+    let data = PointData {
+        id: UnitId::next(),
+        registry_id,
+        name: symbol.into(),
+        symbol: symbol.into(),
+        delta: delta.clone(),
+        offset,
+    };
+    PointAtom::new(data)
 }
 
 /// A [`UnitError::Parse`] at `offset`, to compare against with [`errors_match`]
@@ -215,6 +233,12 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                     && registry == expected_registry
                     && scales_close(*scale, *expected_scale, 0.0)
             }
+            (
+                UnitError::NotComposable { name },
+                UnitError::NotComposable {
+                    name: expected_name,
+                },
+            ) => name == expected_name,
             (
                 UnitError::Parse { offset, .. },
                 UnitError::Parse {

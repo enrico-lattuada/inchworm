@@ -56,6 +56,11 @@ pub enum UnitError {
         scale: f64,
     },
 
+    /// `name` is a point unit (a reading such as `degC`), which cannot be multiplied, divided,
+    /// or raised to a power. For a rate such as `degC/min`, use the delta unit: `K/min`.
+    #[error("point unit `{name}` cannot be multiplied, divided, or raised to a power")]
+    NotComposable { name: String },
+
     /// A unit expression failed to parse. `offset` is the byte offset
     /// into `src` where the error was detected.
     #[error("parse error at byte {offset}: {message} in `{src}`")]

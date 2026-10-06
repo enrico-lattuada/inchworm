@@ -64,14 +64,14 @@ impl PartialEq for AtomData {
 }
 impl Eq for AtomData {}
 
-impl Ord for AtomData {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.id.cmp(&other.id)
-    }
-}
 impl PartialOrd for AtomData {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+impl Ord for AtomData {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id.cmp(&other.id)
     }
 }
 
@@ -82,3 +82,34 @@ impl Hash for AtomData {
 }
 
 pub(crate) type UnitAtom = Arc<AtomData>;
+
+#[derive(Debug)]
+pub(crate) struct PointData {
+    /// This atom's process-unique identity.
+    pub id: UnitId,
+    /// The registry that created this atom.
+    pub registry_id: UnitRegistryId,
+    /// Unit name.
+    pub name: Box<str>,
+    /// Unit symbol.
+    pub symbol: Box<str>,
+    /// The unit of a difference between two readings.
+    pub delta: DeltaUnit,
+    /// The `delta` value at this unit's zero.
+    pub offset: f64,
+}
+
+impl PartialEq for PointData {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for PointData {}
+
+impl Hash for PointData {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+pub(crate) type PointAtom = Arc<PointData>;
