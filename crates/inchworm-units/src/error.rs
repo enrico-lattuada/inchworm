@@ -61,6 +61,34 @@ pub enum UnitError {
     #[error("point unit `{name}` cannot be multiplied, divided, or raised to a power")]
     NotComposable { name: String },
 
+    /// `name` cannot be a base unit: its dimension is not irreducible, i.e., not a
+    /// single base dimension (`length`) or named dimensionless kind (`plane_angle`).
+    /// `velocity`, `area`, and the bare dimensionless `1` are not irreducible.
+    #[error("base unit `{name}` in registry `{registry}` needs an irreducible dimension")]
+    NotIrreducible { name: String, registry: String },
+
+    /// `name` cannot be a base unit: `existing` is already the base unit of its
+    /// dimension. A registry has at most one base unit per irreducible dimension;
+    /// define `name` as a derived unit of `existing` instead.
+    #[error(
+        "`{name}` cannot be a base unit in registry `{registry}`: \
+        `{existing}` is already the base unit of its dimension"
+    )]
+    DuplicateBase {
+        name: String,
+        existing: String,
+        registry: String,
+    },
+
+    /// `name`'s offset is NaN or infinite. A point unit's offset is the reading
+    /// of its zero in `delta` units, so it must be a finite number.
+    #[error("point unit `{name}`'s offset (`{offset}`) in registry `{registry}` must be finite")]
+    NonFiniteOffset {
+        name: String,
+        registry: String,
+        offset: f64,
+    },
+
     /// A unit expression failed to parse. `offset` is the byte offset
     /// into `src` where the error was detected.
     #[error("parse error at byte {offset}: {message} in `{src}`")]

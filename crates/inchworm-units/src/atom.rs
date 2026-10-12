@@ -21,7 +21,6 @@ pub(crate) enum AtomKind {
     /// The frame every other unit of that dimension is measured in.
     Base,
     /// `1 self = scale × definition`.
-    #[cfg_attr(not(test), expect(dead_code, reason = "used by add_derived"))]
     Derived {
         /// The definition as written.
         /// Boxed: an unboxed `Derived` would make every atom as large as `DeltaUnit`.
@@ -38,10 +37,6 @@ pub(crate) struct AtomData {
     /// The registry that created this atom.
     pub registry_id: UnitRegistryId,
     /// Unit name.
-    #[expect(
-        dead_code,
-        reason = "read when building prefixed unit names and in error messages"
-    )]
     pub name: Box<str>,
     /// Unit symbol.
     pub symbol: Box<str>,

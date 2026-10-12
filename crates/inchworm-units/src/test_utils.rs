@@ -1,7 +1,7 @@
-use inchworm_dimensions::{Dimension, DimensionError};
+use inchworm_dimensions::{DimRegistry, Dimension, DimensionError, Exp};
 
 use crate::{
-    DeltaUnit, Scale, UnitError, UnitId, UnitRegistryId,
+    DeltaUnit, Scale, UnitError, UnitId, UnitRegistry, UnitRegistryId,
     atom::{AtomData, AtomKind, PointAtom, PointData, UnitAtom},
 };
 
@@ -74,18 +74,18 @@ pub(crate) fn parse_error_at(offset: usize) -> UnitError {
     }
 }
 
-fn scales_match(a: f64, b: f64) -> bool {
+fn floats_match(a: f64, b: f64) -> bool {
     a == b || (a.is_nan() && b.is_nan())
 }
 
-fn scales_close(a: f64, b: f64, rtol: f64) -> bool {
-    scales_match(a, b) || (a - b).abs() <= rtol * b.abs()
+fn is_close(a: f64, b: f64, rtol: f64) -> bool {
+    floats_match(a, b) || (a - b).abs() <= rtol * b.abs()
 }
 
 #[track_caller]
 pub(crate) fn assert_scale_close(actual: Scale, expected: f64) {
     let is_close = match actual {
-        Scale::Linear(a) => scales_close(a, expected, 1e-12),
+        Scale::Linear(a) => is_close(a, expected, 1e-12),
     };
     assert!(is_close, "{actual:?} is not close to {expected}")
 }
@@ -231,7 +231,7 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
             ) => {
                 name == expected_name
                     && registry == expected_registry
-                    && scales_close(*scale, *expected_scale, 0.0)
+                    && is_close(*scale, *expected_scale, 0.0)
             }
             (
                 UnitError::NotComposable { name },
@@ -239,6 +239,45 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                     name: expected_name,
                 },
             ) => name == expected_name,
+            (
+                UnitError::NotIrreducible { name, registry },
+                UnitError::NotIrreducible {
+                    name: expected_name,
+                    registry: expected_registry,
+                },
+            ) => name == expected_name && registry == expected_registry,
+            (
+                UnitError::DuplicateBase {
+                    name,
+                    existing,
+                    registry,
+                },
+                UnitError::DuplicateBase {
+                    name: expected_name,
+                    existing: expected_existing,
+                    registry: expected_registry,
+                },
+            ) => {
+                name == expected_name
+                    && existing == expected_existing
+                    && registry == expected_registry
+            }
+            (
+                UnitError::NonFiniteOffset {
+                    name,
+                    registry,
+                    offset,
+                },
+                UnitError::NonFiniteOffset {
+                    name: expected_name,
+                    registry: expected_registry,
+                    offset: expected_offset,
+                },
+            ) => {
+                name == expected_name
+                    && registry == expected_registry
+                    && is_close(*offset, *expected_offset, 0.0)
+            }
             (
                 UnitError::Parse { offset, .. },
                 UnitError::Parse {
@@ -252,4 +291,49 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
     } else {
         false
     }
+}
+
+/// A registry with:
+/// - dimensions `length`, `mass`, `time`, `temperature`;
+/// - prefixes `kilo`/`k`, `milli`/`m`, `centi`/`c`;
+/// - base units `kilogram`/`kg` (prefixed, with stem `gram`/`g`), `meter`/`m`,
+///   `second`/`s`, `kelvin`/`K`;
+/// - derived units `joule`/`J` (`kg·m²/s²`) and `delta_deg_Fahrenheit`/`delta_degF` (5/9 K);
+/// - point units `degree_Celsius`/`degC` (`K` + 273.15) and
+///   `degree_Fahrenheit`/`degF` (`delta_degF` + 459.67).
+///
+/// Built only through the public `add_*` methods, so it also exercises them.
+pub(crate) fn mks_registry() -> UnitRegistry {
+    let mut dims = DimRegistry::new("test-reg");
+    let length = dims.add_base("length", None).unwrap();
+    let mass = dims.add_base("mass", None).unwrap();
+    let time = dims.add_base("time", None).unwrap();
+    let temperature = dims.add_base("temperature", None).unwrap();
+    let mut ureg = UnitRegistry::new("test-ureg", dims);
+    ureg.add_prefix("kilo", "k", 1e3).unwrap();
+    ureg.add_prefix("milli", "m", 1e-3).unwrap();
+    ureg.add_prefix("centi", "c", 1e-2).unwrap();
+    let kg = ureg.add_prefixed_base("kilo", "gram", "g", &mass).unwrap();
+    let m = ureg.add_base("meter", "m", &length, true).unwrap();
+    let s = ureg.add_base("second", "s", &time, true).unwrap();
+    let kelvin = ureg.add_base("kelvin", "K", &temperature, true).unwrap();
+    let m2 = m.pow(Exp::int(2)).unwrap();
+    let s2 = s.pow(Exp::int(2)).unwrap();
+    let joule_def = kg.try_mul(&m2).unwrap().try_div(&s2).unwrap();
+    ureg.add_derived("joule", "J", &joule_def, Scale::ONE, true)
+        .unwrap();
+    let delta_deg_fahrenheit = ureg
+        .add_derived(
+            "delta_deg_Fahrenheit",
+            "delta_degF",
+            &kelvin,
+            Scale::Linear(5.0 / 9.0),
+            false,
+        )
+        .unwrap();
+    ureg.add_point("degree_Celsius", "degC", &kelvin, 273.15)
+        .unwrap();
+    ureg.add_point("degree_Fahrenheit", "degF", &delta_deg_fahrenheit, 459.67)
+        .unwrap();
+    ureg
 }

@@ -16,7 +16,6 @@ pub struct PointUnit(PointAtom);
 // ---- instantiation ----
 impl PointUnit {
     /// Returns the unit made of `atom` alone.
-    #[cfg_attr(not(test), expect(dead_code, reason = "used by add_point"))]
     pub(crate) fn from_atom(atom: &PointAtom) -> Self {
         Self(atom.clone())
     }
