@@ -65,7 +65,6 @@ pub(crate) fn make_point_atom(
 
 /// A [`UnitError::Parse`] at `offset`, to compare against with [`errors_match`]
 /// (which ignores `src` and `message` for `Parse`).
-#[expect(dead_code, reason = "used by parser tests")]
 pub(crate) fn parse_error_at(offset: usize) -> UnitError {
     UnitError::Parse {
         src: String::new(),

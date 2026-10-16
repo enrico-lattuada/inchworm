@@ -8,7 +8,7 @@ use inchworm_dimensions::{DimRegistry, Dimension, DimensionError};
 use crate::{
     DeltaUnit, PointUnit, Scale, Unit, UnitError, UnitId, UnitRegistryId,
     atom::{AtomData, AtomKind, PointAtom, PointData, UnitAtom},
-    parse::validate_ident,
+    parse::{parse_unit_expr, validate_ident},
     prefix::Prefix,
 };
 
@@ -495,6 +495,24 @@ impl UnitRegistry {
         self.prefixes.insert(name.into(), prefix);
         self.prefix_by_symbol.insert(symbol.into(), name.into());
         Ok(())
+    }
+}
+
+// ---- parsing and loading ----
+impl UnitRegistry {
+    /// Parses a unit expression (e.g., "m / s^2") against this registry's names.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::UnknownUnit`] if `expr` contains a unit unknown to the registry.
+    /// Returns [`UnitError::Parse`] if `expr` cannot be correctly parsed.
+    pub fn parse(&self, expr: &str) -> Result<Unit, UnitError> {
+        parse_unit_expr(expr, &|name| {
+            self.get(name).ok_or_else(|| UnitError::UnknownUnit {
+                name: name.into(),
+                registry: self.name().into(),
+            })
+        })
     }
 }
 
