@@ -1151,6 +1151,19 @@ mod tests {
             };
             assert!(errors_match(&err, &expected_err));
         }
+
+        #[test]
+        fn rejects_double_minus_in_exponent() {
+            let mut registry = DimRegistry::new("test_reg");
+            let _length = registry.add_base("length", Some("L")).unwrap();
+            let err = registry.parse("length^--2").unwrap_err();
+            let expected_err = DimensionError::Parse {
+                src: "".into(),
+                offset: 8,
+                message: "".into(),
+            };
+            assert!(errors_match(&err, &expected_err));
+        }
     }
 
     #[cfg(feature = "toml")]

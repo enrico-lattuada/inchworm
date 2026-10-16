@@ -309,11 +309,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_exponent(&mut self, allow_fraction: bool) -> Result<Exp, UnitError> {
+    fn parse_exponent(&mut self) -> Result<Exp, UnitError> {
         let negative = self.consume_if(&Token::Minus)?;
         let num = self.expect_int()?;
         let num = if negative { -num } else { num };
-        if allow_fraction && self.consume_if(&Token::Slash)? {
+        if self.consume_if(&Token::Slash)? {
             let den = self.expect_int()?;
             Exp::new(num, den).map_err(UnitError::Dimension)
         } else {
@@ -370,7 +370,12 @@ impl<'a> Parser<'a> {
         }
         let outer_negative = self.consume_if(&Token::Minus)?;
         let parenthesized = self.consume_if(&Token::LParen)?;
-        let exp = self.parse_exponent(parenthesized)?;
+        let exp = if parenthesized {
+            self.parse_exponent()?
+        } else {
+            let n = self.expect_int()?;
+            Exp::int(n)
+        };
         if parenthesized {
             self.expect_rparen()?;
         }
@@ -510,7 +515,14 @@ mod tests {
     #[test]
     fn syntax_errors_report_offset() {
         let ureg = mks_registry();
-        let cases = [("m*", 2), ("(m", 2), ("m^", 2), ("*m", 0)];
+        let cases = [
+            ("m*", 2),
+            ("(m", 2),
+            ("m^", 2),
+            ("*m", 0),
+            ("m^--2", 3),
+            ("m^2.5", 2),
+        ];
         for (expr, offset) in cases {
             let actual = ureg.parse(expr).unwrap_err();
             let expected = parse_error_at(offset);
