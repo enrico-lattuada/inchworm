@@ -17,3 +17,4 @@ thiserror = "2"
 smallvec = "1"
 toml = { version = "0.8" }
 tempfile = "3"
+criterion = "0.8.2"

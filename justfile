@@ -30,3 +30,11 @@ doc:
 
 # Run fmt-check, clippy, and test
 ci: fmt-check clippy-strict-ndf clippy-strict test
+
+# Save a benchmark baseline named NAME
+bench-save NAME:
+    cargo bench -p inchworm-units -- --save-baseline {{NAME}}
+
+# Compare the benchmarks against the baseline named NAME
+bench-compare NAME:
+    cargo bench -p inchworm-units -- --baseline {{NAME}}

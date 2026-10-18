@@ -18,4 +18,12 @@ thiserror = { workspace = true }
 toml = { workspace = true, optional = true }
 
 [dev-dependencies]
+criterion = { workspace = true }
 tempfile = { workspace = true }
+
+[[bench]]
+name = "units"
+harness = false
+
+[lib]
+bench = false
