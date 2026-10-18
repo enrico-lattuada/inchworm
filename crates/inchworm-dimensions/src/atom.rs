@@ -23,9 +23,7 @@ pub(crate) enum AtomKind {
     /// `definition.signature()` is empty (plane_angle, solid_angle, strain, ...).
     /// Such atoms are *irreducible*: canonicalization never expands them.
     Derived {
-        /// Boxed: `Dimension` is ~3 inline SmallVecs wide, and `Base` carries
-        /// nothing; the definition is only touched at registration time.
-        definition: Box<Dimension>,
+        definition: Dimension,
         dimensionless_kind: bool,
     },
 }

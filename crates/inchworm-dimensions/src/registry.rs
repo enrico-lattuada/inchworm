@@ -161,7 +161,7 @@ impl DimRegistry {
             name: name.into(),
             symbol: None,
             kind: AtomKind::Derived {
-                definition: Box::new(definition.clone()),
+                definition: definition.clone(),
                 dimensionless_kind: definition.is_dimensionless(),
             },
         };

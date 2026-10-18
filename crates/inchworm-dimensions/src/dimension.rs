@@ -6,6 +6,8 @@
 //! (expanded, but keeping named-dimensionless atoms like `plane_angle`
 //! irreducible, used for [`Compatibility::Full`] and `==`).
 
+use std::sync::{Arc, LazyLock};
+
 use crate::{
     DimRegistryId, DimensionError, Exp, Form, Signature,
     atom::{AtomKind, DimAtom},
@@ -23,6 +25,31 @@ pub enum Compatibility {
     Partial,
     /// Different base signatures.
     Incompatible,
+}
+
+/// The three forms of a [`Dimension`], shared behind an [`Arc`] so that a
+/// `Dimension` is one pointer wide and cloning it is a reference-count increment.
+#[derive(Debug)]
+struct DimensionData {
+    /// Stored (display/identity) form: the named composite the user built,
+    /// with like factors combined and zero powers dropped.
+    /// `velocity * time` stores `{velocity¹, time¹}` — NOT reduced to `{length¹}`.
+    factors: Form,
+    /// Full expansion to base atoms (dimensionless kinds vanish).
+    signature: Signature,
+    /// Expansion to base atoms + irreducible dimensionless-kind atoms.
+    canonical: Form,
+}
+
+impl DimensionData {
+    /// All three forms empty: the bare dimensionless value.
+    fn empty() -> Self {
+        Self {
+            factors: Form::empty(),
+            signature: Signature(Form::empty()),
+            canonical: Form::empty(),
+        }
+    }
 }
 
 /// An immutable dimension value.
@@ -54,28 +81,23 @@ pub enum Compatibility {
 /// assert_ne!(velocity.factors(), length_over_time.factors());
 /// ```
 #[derive(Clone, Debug)]
-pub struct Dimension {
-    /// Stored (display/identity) form: the named composite the user built,
-    /// with like factors combined and zero powers dropped.
-    /// `velocity * time` stores `{velocity¹, time¹}` — NOT reduced to `{length¹}`.
-    factors: Form,
-    /// Full expansion to base atoms (dimensionless kinds vanish).
-    signature: Signature,
-    /// Expansion to base atoms + irreducible dimensionless-kind atoms.
-    canonical: Form,
-}
+pub struct Dimension(Arc<DimensionData>);
+
+static DIMENSIONLESS: LazyLock<Dimension> =
+    LazyLock::new(|| Dimension::new(DimensionData::empty()));
 
 impl Dimension {
+    /// The only place a `Dimension` is built.
+    fn new(data: DimensionData) -> Self {
+        Self(Arc::new(data))
+    }
+
     /// Returns a dimensionless dimension.
     ///
     /// The universal bare-dimensionless value; belongs to no registry and is
     /// usable in arithmetic with dimensions of any registry.
     pub fn dimensionless() -> Self {
-        Self {
-            factors: Form::empty(),
-            signature: Signature(Form::empty()),
-            canonical: Form::empty(),
-        }
+        DIMENSIONLESS.clone()
     }
 
     /// Returns a dimension from an [`Atom`].
@@ -85,60 +107,60 @@ impl Dimension {
                 let factors = Form::single(atom, Exp::ONE);
                 let signature = Signature(factors.clone());
                 let canonical = factors.clone();
-                Self {
+                Self::new(DimensionData {
                     factors,
                     signature,
                     canonical,
-                }
+                })
             }
             AtomKind::Derived {
                 definition,
                 dimensionless_kind,
             } => {
                 let factors = Form::single(atom, Exp::ONE);
-                let signature = definition.signature.clone();
+                let signature = definition.signature().clone();
                 let canonical = if *dimensionless_kind {
                     factors.clone()
                 } else {
                     definition.canonical_form().clone()
                 };
-                Self {
+                Self::new(DimensionData {
                     factors,
                     signature,
                     canonical,
-                }
+                })
             }
         }
     }
 
     /// The stored named-composite factors (what `Display` prints).
     pub fn factors(&self) -> &Form {
-        &self.factors
+        &self.0.factors
     }
 
     /// The base signature of the dimension.
     pub fn signature(&self) -> &Signature {
-        &self.signature
+        &self.0.signature
     }
 
     /// The canonical form of the dimension.
     pub fn canonical_form(&self) -> &Form {
-        &self.canonical
+        &self.0.canonical
     }
 
     /// Returns `true` iff canonically bare dimensionless (i.e., a pure number).
     pub fn is_dimensionless(&self) -> bool {
-        self.canonical.is_empty()
+        self.canonical_form().is_empty()
     }
 
     /// Returns `true` iff the base signature is empty.
     pub fn has_dimensionless_signature(&self) -> bool {
-        self.signature.0.is_empty()
+        self.signature().0.is_empty()
     }
 
     /// Returns the [`DimRegistryId`] of the registry where `self` is defined.
     pub fn registry_id(&self) -> Option<DimRegistryId> {
-        self.factors
+        self.factors()
             .entries()
             .first()
             .map(|(atom, _)| atom.registry_id)
@@ -146,7 +168,7 @@ impl Dimension {
 
     /// Returns an Atom if `factors` is a single `(atom, Exp::ONE)` entry.
     fn as_named_atom(&self) -> Option<&DimAtom> {
-        self.factors.single_atom()
+        self.factors().single_atom()
     }
 
     /// Returns `true` iff `factors` is a single `(atom, Exp::ONE)` entry.
@@ -167,7 +189,7 @@ impl Dimension {
     /// Returns `true` iff `self`'s canonical form reduces to a single base
     /// dimension or named dimensionless kind.
     pub fn is_irreducible(&self) -> bool {
-        self.canonical.single_atom().is_some()
+        self.canonical_form().single_atom().is_some()
     }
 }
 
@@ -188,14 +210,14 @@ impl Dimension {
                 right: rhs_id,
             });
         }
-        let factors = self.factors.mul(&rhs.factors)?;
-        let signature = Signature(self.signature.0.mul(&rhs.signature.0)?);
-        let canonical = self.canonical.mul(&rhs.canonical)?;
-        Ok(Self {
+        let factors = self.factors().mul(rhs.factors())?;
+        let signature = Signature(self.signature().0.mul(&rhs.signature().0)?);
+        let canonical = self.canonical_form().mul(rhs.canonical_form())?;
+        Ok(Self::new(DimensionData {
             factors,
             signature,
             canonical,
-        })
+        }))
     }
 
     /// Divides `self` by `rhs`.
@@ -214,14 +236,14 @@ impl Dimension {
     ///
     /// Returns [`DimensionError::ExponentOverflow`] if multiplying an atom's exponent by `e` overflows.
     pub fn pow(&self, e: Exp) -> Result<Self, DimensionError> {
-        let factors = self.factors.pow(e)?;
-        let signature = Signature(self.signature.0.pow(e)?);
-        let canonical = self.canonical.pow(e)?;
-        Ok(Self {
+        let factors = self.factors().pow(e)?;
+        let signature = Signature(self.signature().0.pow(e)?);
+        let canonical = self.canonical_form().pow(e)?;
+        Ok(Self::new(DimensionData {
             factors,
             signature,
             canonical,
-        })
+        }))
     }
 
     /// Computes the reciprocal of `self` by raising it to the power of `-1`.
@@ -230,14 +252,14 @@ impl Dimension {
     ///
     /// Returns [`DimensionError::ExponentOverflow`] if computing the reciprocal of an atom's exponents overflows.
     pub fn recip(&self) -> Result<Self, DimensionError> {
-        let factors = self.factors.recip()?;
-        let signature = Signature(self.signature.0.recip()?);
-        let canonical = self.canonical.recip()?;
-        Ok(Self {
+        let factors = self.factors().recip()?;
+        let signature = Signature(self.signature().0.recip()?);
+        let canonical = self.canonical_form().recip()?;
+        Ok(Self::new(DimensionData {
             factors,
             signature,
             canonical,
-        })
+        }))
     }
 }
 
@@ -247,7 +269,7 @@ impl Dimension {
     pub fn compatibility(&self, rhs: &Self) -> Compatibility {
         if self == rhs {
             Compatibility::Full
-        } else if self.signature == rhs.signature {
+        } else if self.signature() == rhs.signature() {
             Compatibility::Partial
         } else {
             Compatibility::Incompatible
@@ -258,7 +280,7 @@ impl Dimension {
 impl std::hash::Hash for Dimension {
     /// Two dimensions are equal iff they are canonically equivalent.
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.canonical.hash(state);
+        self.canonical_form().hash(state);
     }
 }
 
@@ -267,7 +289,7 @@ impl PartialEq for Dimension {
     ///
     /// Two dimensions are equal iff they are canonically equivalent.
     fn eq(&self, other: &Self) -> bool {
-        self.canonical == other.canonical
+        Arc::ptr_eq(&self.0, &other.0) || self.canonical_form() == other.canonical_form()
     }
 }
 
@@ -354,14 +376,19 @@ mod tests {
         assert_exactly_eq, errors_match, make_form_entry, make_form_entry_in_registry,
     };
 
+    #[test]
+    fn is_one_pointer_wide() {
+        assert_eq!(size_of::<Dimension>(), size_of::<usize>());
+    }
+
     mod dimensionless {
         use super::*;
 
         #[test]
         fn has_empty_canonical_and_signature() {
             let dimensionless = Dimension::dimensionless();
-            assert_eq!(dimensionless.canonical, Form::empty());
-            assert_eq!(dimensionless.signature, Signature(Form::empty()));
+            assert_eq!(dimensionless.canonical_form(), &Form::empty());
+            assert_eq!(dimensionless.signature(), &Signature(Form::empty()));
         }
 
         #[test]
@@ -376,10 +403,10 @@ mod tests {
         #[test]
         fn basic() {
             let factors = Form::raw(vec![make_form_entry(0, (1, 2))]);
-            let dimension = Dimension {
+            let dimension = Dimension::new(DimensionData {
                 factors: factors.clone(),
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             assert!(dimension.registry_id().is_some());
             let dim_registry_id = dimension.registry_id().unwrap();
             let fac_registry_id = factors.entries()[0].0.registry_id;
@@ -461,14 +488,14 @@ mod tests {
         fn compatibility_full_for_empty_canonical_forms() {
             let canonical1 = Form::empty();
             let canonical2 = Form::empty();
-            let dimension1 = Dimension {
+            let dimension1 = Dimension::new(DimensionData {
                 canonical: canonical1,
-                ..Dimension::dimensionless()
-            };
-            let dimension2 = Dimension {
+                ..DimensionData::empty()
+            });
+            let dimension2 = Dimension::new(DimensionData {
                 canonical: canonical2,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             assert!(matches!(
                 dimension1.compatibility(&dimension2),
                 Compatibility::Full
@@ -482,14 +509,14 @@ mod tests {
                 make_form_entry(2, (-4, 3)),
             ]);
             let canonical2 = canonical1.clone();
-            let lhs = Dimension {
+            let lhs = Dimension::new(DimensionData {
                 canonical: canonical1,
-                ..Dimension::dimensionless()
-            };
-            let rhs = Dimension {
+                ..DimensionData::empty()
+            });
+            let rhs = Dimension::new(DimensionData {
                 canonical: canonical2,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             assert!(matches!(lhs.compatibility(&rhs), Compatibility::Full));
         }
 
@@ -498,15 +525,15 @@ mod tests {
             let canonical1 = Form::raw(vec![make_form_entry(0, (1, 2))]);
             let signature1 = Signature(Form::empty());
             let signature2 = Signature(Form::raw(vec![make_form_entry(0, (1, 2))]));
-            let dimension1 = Dimension {
+            let dimension1 = Dimension::new(DimensionData {
                 canonical: canonical1,
                 signature: signature1,
-                ..Dimension::dimensionless()
-            };
-            let dimension2 = Dimension {
+                ..DimensionData::empty()
+            });
+            let dimension2 = Dimension::new(DimensionData {
                 signature: signature2,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             assert!(matches!(
                 dimension1.compatibility(&dimension2),
                 Compatibility::Incompatible
@@ -519,16 +546,16 @@ mod tests {
             let canonical2 = Form::raw(vec![make_form_entry(0, (1, 2))]);
             let signature1 = Signature(Form::raw(vec![make_form_entry(1, (-3, 4))]));
             let signature2 = Signature(Form::raw(vec![make_form_entry(1, (-3, 4))]));
-            let lhs = Dimension {
+            let lhs = Dimension::new(DimensionData {
                 signature: signature1,
                 canonical: canonical1,
-                ..Dimension::dimensionless()
-            };
-            let rhs = Dimension {
+                ..DimensionData::empty()
+            });
+            let rhs = Dimension::new(DimensionData {
                 signature: signature2,
                 canonical: canonical2,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             assert!(matches!(lhs.compatibility(&rhs), Compatibility::Partial));
         }
 
@@ -560,16 +587,16 @@ mod tests {
                 make_form_entry(length_id, (2, 1)),
                 make_form_entry(mass_id, (1, 1)),
             ]);
-            let torque = Dimension {
+            let torque = Dimension::new(DimensionData {
                 canonical: torque_canonical,
                 signature: torque_signature,
-                ..Dimension::dimensionless()
-            };
-            let energy = Dimension {
+                ..DimensionData::empty()
+            });
+            let energy = Dimension::new(DimensionData {
                 canonical: energy_canonical,
                 signature: energy_signature,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             assert!(matches!(
                 torque.compatibility(&energy),
                 Compatibility::Partial
@@ -584,10 +611,10 @@ mod tests {
             // canonical = [] ; signature = []
             let plane_angle_id = 0;
             let plane_angle_canonical = Form::raw(vec![make_form_entry(plane_angle_id, (1, 1))]);
-            let plane_angle = Dimension {
+            let plane_angle = Dimension::new(DimensionData {
                 canonical: plane_angle_canonical,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             let bare_number = Dimension::dimensionless();
             assert!(matches!(
                 plane_angle.compatibility(&bare_number),
@@ -610,16 +637,16 @@ mod tests {
                 Signature::raw(vec![make_form_entry(time_id, (-1, 1))]);
             let frequency_canonical = Form::raw(vec![make_form_entry(time_id, (-1, 1))]);
             let frequency_signature = Signature::raw(vec![make_form_entry(time_id, (-1, 1))]);
-            let angular_velocity = Dimension {
+            let angular_velocity = Dimension::new(DimensionData {
                 canonical: angular_velocity_canonical,
                 signature: angular_velocity_signature,
-                ..Dimension::dimensionless()
-            };
-            let frequency = Dimension {
+                ..DimensionData::empty()
+            });
+            let frequency = Dimension::new(DimensionData {
                 canonical: frequency_canonical,
                 signature: frequency_signature,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             assert!(matches!(
                 angular_velocity.compatibility(&frequency),
                 Compatibility::Partial
@@ -650,36 +677,36 @@ mod tests {
                 make_form_entry(5, (6, 7)),
             ]);
             let canonical12 = Form::raw(vec![]);
-            let dimension1 = Dimension {
+            let dimension1 = Dimension::new(DimensionData {
                 factors: factors1,
                 signature: signature1,
                 canonical: canonical1,
-            };
-            let dimension2 = Dimension {
+            });
+            let dimension2 = Dimension::new(DimensionData {
                 factors: factors2,
                 signature: signature2,
                 canonical: canonical2,
-            };
-            let dimension12 = Dimension {
+            });
+            let dimension12 = Dimension::new(DimensionData {
                 factors: factors12,
                 signature: signature12,
                 canonical: canonical12,
-            };
+            });
             assert_exactly_eq(&dimension1.try_mul(&dimension2).unwrap(), &dimension12);
         }
 
         #[test]
         fn err_on_exponent_overflow() {
             let lhs_factors = Form::raw(vec![make_form_entry(0, (i64::MAX, 1))]);
-            let lhs = Dimension {
+            let lhs = Dimension::new(DimensionData {
                 factors: lhs_factors,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             let rhs_factors = Form::raw(vec![make_form_entry(0, (2, 1))]);
-            let rhs = Dimension {
+            let rhs = Dimension::new(DimensionData {
                 factors: rhs_factors,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             assert!(errors_match(
                 &lhs.try_mul(&rhs).unwrap_err(),
                 &DimensionError::ExponentOverflow
@@ -707,16 +734,16 @@ mod tests {
                 make_form_entry(3, (-10, 7)),
                 make_form_entry(5, (6, 7)),
             ]);
-            let dimension1 = Dimension {
+            let dimension1 = Dimension::new(DimensionData {
                 factors: factors1,
                 signature: signature1,
                 canonical: canonical1,
-            };
-            let dimension2 = Dimension {
+            });
+            let dimension2 = Dimension::new(DimensionData {
                 factors: factors2,
                 signature: signature2,
                 canonical: canonical2,
-            };
+            });
             let dim1_times_dim2 = dimension1.try_mul(&dimension2).unwrap();
             assert_exactly_eq(&(&dimension1 * &dimension2), &dim1_times_dim2);
             assert_exactly_eq(&(&dimension1 * dimension2.clone()), &dim1_times_dim2);
@@ -727,14 +754,14 @@ mod tests {
         #[test]
         #[should_panic]
         fn panics_on_cross_registry_mixing() {
-            let a = Dimension {
+            let a = Dimension::new(DimensionData {
                 factors: Form::raw(vec![make_form_entry_in_registry(0, (1, 1), 0)]),
-                ..Dimension::dimensionless()
-            };
-            let b = Dimension {
+                ..DimensionData::empty()
+            });
+            let b = Dimension::new(DimensionData {
                 factors: Form::raw(vec![make_form_entry_in_registry(1, (1, 1), 1)]),
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             let _ = &a * &b;
         }
 
@@ -742,15 +769,15 @@ mod tests {
         #[should_panic]
         fn panics_on_exponent_overflow() {
             let lhs_factors = Form::raw(vec![make_form_entry(0, (i64::MAX, 1))]);
-            let lhs = Dimension {
+            let lhs = Dimension::new(DimensionData {
                 factors: lhs_factors,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             let rhs_factors = Form::raw(vec![make_form_entry(0, (2, 1))]);
-            let rhs = Dimension {
+            let rhs = Dimension::new(DimensionData {
                 factors: rhs_factors,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             let _ = lhs * rhs;
         }
     }
@@ -769,11 +796,11 @@ mod tests {
                 make_form_entry(3, (10, 7)),
                 make_form_entry(5, (6, 7)),
             ]);
-            let dimension = Dimension {
+            let dimension = Dimension::new(DimensionData {
                 factors,
                 signature,
                 canonical,
-            };
+            });
             assert!(dimension.try_div(&dimension).unwrap().is_dimensionless());
         }
     }
@@ -792,11 +819,11 @@ mod tests {
                 make_form_entry(3, (10, 7)),
                 make_form_entry(5, (6, 7)),
             ]);
-            let dimension = Dimension {
+            let dimension = Dimension::new(DimensionData {
                 factors,
                 signature,
                 canonical,
-            };
+            });
             let dim_div_dim = dimension.try_div(&dimension).unwrap();
             assert_exactly_eq(&(&dimension / &dimension), &dim_div_dim);
             assert_exactly_eq(&(&dimension / dimension.clone()), &dim_div_dim);
@@ -807,14 +834,14 @@ mod tests {
         #[test]
         #[should_panic]
         fn panics_on_cross_registry_mixing() {
-            let a = Dimension {
+            let a = Dimension::new(DimensionData {
                 factors: Form::raw(vec![make_form_entry_in_registry(0, (1, 1), 0)]),
-                ..Dimension::dimensionless()
-            };
-            let b = Dimension {
+                ..DimensionData::empty()
+            });
+            let b = Dimension::new(DimensionData {
                 factors: Form::raw(vec![make_form_entry_in_registry(1, (1, 1), 1)]),
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             let _ = &a / &b;
         }
 
@@ -822,15 +849,15 @@ mod tests {
         #[should_panic]
         fn panics_on_exponent_overflow() {
             let lhs_factors = Form::raw(vec![make_form_entry(0, (i64::MAX, 1))]);
-            let lhs = Dimension {
+            let lhs = Dimension::new(DimensionData {
                 factors: lhs_factors,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             let rhs_factors = Form::raw(vec![make_form_entry(0, (-2, 1))]);
-            let rhs = Dimension {
+            let rhs = Dimension::new(DimensionData {
                 factors: rhs_factors,
-                ..Dimension::dimensionless()
-            };
+                ..DimensionData::empty()
+            });
             let _ = lhs / rhs;
         }
     }
@@ -849,11 +876,11 @@ mod tests {
                 make_form_entry(3, (10, 7)),
                 make_form_entry(5, (6, 7)),
             ]);
-            let dimension = Dimension {
+            let dimension = Dimension::new(DimensionData {
                 factors,
                 signature,
                 canonical,
-            };
+            });
             assert!(dimension.pow(Exp::ZERO).unwrap().is_dimensionless());
         }
 
@@ -868,11 +895,11 @@ mod tests {
                 make_form_entry(3, (10, 7)),
                 make_form_entry(5, (6, 7)),
             ]);
-            let dimension = Dimension {
+            let dimension = Dimension::new(DimensionData {
                 factors,
                 signature,
                 canonical,
-            };
+            });
             assert_exactly_eq(
                 &dimension.pow(Exp::int(-1)).unwrap(),
                 &dimension.recip().unwrap(),
@@ -891,11 +918,11 @@ mod tests {
             make_form_entry(3, (10, 7)),
             make_form_entry(5, (6, 7)),
         ]);
-        let dimension = Dimension {
+        let dimension = Dimension::new(DimensionData {
             factors,
             signature,
             canonical,
-        };
+        });
         assert_exactly_eq(&dimension.recip().unwrap().recip().unwrap(), &dimension);
     }
 
@@ -909,15 +936,15 @@ mod tests {
             make_form_entry(3, (10, 7)),
             make_form_entry(5, (6, 7)),
         ]);
-        let dimension = Dimension {
+        let dimension = Dimension::new(DimensionData {
             factors,
             canonical: canonical.clone(),
-            ..Dimension::dimensionless()
-        };
-        let other_dimension = Dimension {
+            ..DimensionData::empty()
+        });
+        let other_dimension = Dimension::new(DimensionData {
             canonical: canonical.clone(),
-            ..Dimension::dimensionless()
-        };
+            ..DimensionData::empty()
+        });
         assert!(dimension == other_dimension);
     }
 }

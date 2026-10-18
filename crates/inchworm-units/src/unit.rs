@@ -6,10 +6,6 @@ use crate::{DeltaUnit, PointUnit, UnitError, UnitRegistryId};
 /// A unit as it appears in an expression or on a quantity.
 ///
 /// Either a composable delta unit or a point unit, which rejects all algebra.
-#[expect(
-    clippy::large_enum_variant,
-    reason = "`DeltaUnit` is ~450 bytes vs 8 for `PointUnit`; shrinks once `Dimension` is Arc-backed."
-)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Unit {
     /// A relative interval, difference, or displacement between two points (e.g., m, km/h).
