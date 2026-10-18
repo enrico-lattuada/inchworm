@@ -1,7 +1,10 @@
 //! [`UnitRegistry`]: the mutable, instance-based namespace that units are registered in,
 //! and the only place unit invariants are checked.
 
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
+};
 
 use inchworm_dimensions::{DimRegistry, Dimension, DimensionError};
 
@@ -21,6 +24,14 @@ enum Entry {
 }
 
 impl Entry {
+    /// The registered name of this entry's unit.
+    fn name(&self) -> &str {
+        match self {
+            Entry::Delta(atom) => &atom.name,
+            Entry::Point(atom) => &atom.name,
+        }
+    }
+
     /// The unit value this entry refers to.
     fn to_unit(&self) -> Unit {
         match self {
@@ -29,6 +40,10 @@ impl Entry {
         }
     }
 }
+
+/// Interned prefixed atoms, keyed by (stem id, prefix name), so `km`, `kilometer`,
+/// and `kmeter` share one atom.
+type PrefixedCache = HashMap<(UnitId, Box<str>), UnitAtom>;
 
 /// A mutable namespace and factory for named units.
 ///
@@ -67,6 +82,7 @@ pub struct UnitRegistry {
     bases: HashMap<Dimension, UnitAtom>,
     prefixes: HashMap<Box<str>, Prefix>,
     prefix_by_symbol: HashMap<Box<str>, Box<str>>,
+    prefixed: RwLock<PrefixedCache>,
 }
 
 // ---- instantiation ----
@@ -89,6 +105,7 @@ impl UnitRegistry {
             bases: HashMap::new(),
             prefixes: HashMap::new(),
             prefix_by_symbol: HashMap::new(),
+            prefixed: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -123,9 +140,10 @@ impl UnitRegistry {
         })
     }
 
-    /// Returns the unit registered under `name_or_symbol` (`meter` or `m`), or `None`.
+    /// Returns the unit named `name_or_symbol` (`meter` or `m`), or its prefixed form
+    /// (`kilometer` or `km`), or `None`.
     pub fn get(&self, name_or_symbol: &str) -> Option<Unit> {
-        self.find_entry(name_or_symbol).map(Entry::to_unit)
+        self.resolve_ident(name_or_symbol).ok()
     }
 
     /// Returns this registry's base units, one per irreducible dimension, in no particular order.
@@ -172,7 +190,7 @@ impl UnitRegistry {
         symbol: &str,
         dimension: &Dimension,
         prefixable: bool,
-    ) -> DeltaUnit {
+    ) -> UnitAtom {
         let data = AtomData {
             id: UnitId::next(),
             registry_id: self.id,
@@ -183,10 +201,9 @@ impl UnitRegistry {
             kind: AtomKind::Base,
         };
         let atom = UnitAtom::new(data);
-        let unit = DeltaUnit::from_atom(&atom);
         self.bases.insert(dimension.clone(), atom.clone());
-        self.insert_entry(name, symbol, Entry::Delta(atom));
-        unit
+        self.insert_entry(name, symbol, Entry::Delta(atom.clone()));
+        atom
     }
 
     /// Unchecked: builds and stores the atom. Callers must validate the name,
@@ -198,7 +215,7 @@ impl UnitRegistry {
         definition: &DeltaUnit,
         scale: Scale,
         prefixable: bool,
-    ) -> DeltaUnit {
+    ) -> UnitAtom {
         let data = AtomData {
             id: UnitId::next(),
             registry_id: self.id,
@@ -212,9 +229,8 @@ impl UnitRegistry {
             },
         };
         let atom = UnitAtom::new(data);
-        let unit = DeltaUnit::from_atom(&atom);
-        self.insert_entry(name, symbol, Entry::Delta(atom));
-        unit
+        self.insert_entry(name, symbol, Entry::Delta(atom.clone()));
+        atom
     }
 
     /// Unchecked: builds and stores the atom. Callers must validate the name,
@@ -381,7 +397,8 @@ impl UnitRegistry {
     ) -> Result<DeltaUnit, UnitError> {
         self.validate_unit(name, symbol)?;
         self.validate_base_dimension(name, dimension)?;
-        let unit = self.insert_base(name, symbol, dimension, prefixable);
+        let atom = self.insert_base(name, symbol, dimension, prefixable);
+        let unit = DeltaUnit::from_atom(&atom);
         Ok(unit)
     }
 
@@ -418,9 +435,14 @@ impl UnitRegistry {
         self.validate_unit(stem_name, stem_symbol)?;
         self.validate_base_dimension(&name, dimension)?;
 
-        let base = self.insert_base(&name, &symbol, dimension, false);
+        let atom = self.insert_base(&name, &symbol, dimension, false);
+        let base = DeltaUnit::from_atom(&atom);
         let scale = Scale::Linear(1.0 / prefix.factor);
-        self.insert_derived(stem_name, stem_symbol, &base, scale, true);
+        let stem = self.insert_derived(stem_name, stem_symbol, &base, scale, true);
+        self.prefixed
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert((stem.id, prefix.name.clone()), atom.clone());
         Ok(base)
     }
 
@@ -446,8 +468,41 @@ impl UnitRegistry {
         self.validate_unit(name, symbol)?;
         self.validate_registry(definition)?;
         self.validate_scale(name, scale)?;
-        let derived = self.insert_derived(name, symbol, definition, scale, prefixable);
+        let atom = self.insert_derived(name, symbol, definition, scale, prefixable);
+        let derived = DeltaUnit::from_atom(&atom);
         Ok(derived)
+    }
+
+    /// Adds a derived (delta) unit using `expr` for the definition.
+    /// Its dimension is the definition's.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::InvalidName`] if `name` or `symbol` is not an identifier.
+    /// Returns [`UnitError::DuplicateName`] if `name` or `symbol` is already a unit name or
+    /// symbol, or `name` is a prefix name.
+    /// Returns [`UnitError::UnknownUnit`] if `expr` contains a unit unknown to the registry.
+    /// Returns [`UnitError::Parse`] if `expr` cannot be correctly parsed.
+    /// Returns [`UnitError::NotPrefixable`] if prefixes are added to non-prefixable units in `expr`.
+    /// Returns [`UnitError::NotComposable`] if `expr` contains point units.
+    /// Returns [`UnitError::InvalidScale`] if `scale` is not valid (i.e., a linear scale is not
+    /// positive and finite).
+    pub fn add_derived_expr(
+        &mut self,
+        name: &str,
+        symbol: &str,
+        expr: &str,
+        scale: Scale,
+        prefixable: bool,
+    ) -> Result<DeltaUnit, UnitError> {
+        self.validate_unit(name, symbol)?;
+        let unit = self.parse(expr)?;
+        match unit {
+            Unit::Delta(delta) => self.add_derived(name, symbol, &delta, scale, prefixable),
+            Unit::Point(point) => Err(UnitError::NotComposable {
+                name: point.name().into(),
+            }),
+        }
     }
 
     /// Adds a point (affine) unit: a reading `x` in it is the `delta` value `x + offset`
@@ -498,6 +553,46 @@ impl UnitRegistry {
     }
 }
 
+// ---- prefix cache ----
+impl UnitRegistry {
+    // `prefixed` is a grow-only memo of interned atoms, so it is still consistent
+    // after a thread panics while holding it.
+    fn prefixed_read(&self) -> RwLockReadGuard<'_, PrefixedCache> {
+        self.prefixed.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn prefixed_write(&self) -> RwLockWriteGuard<'_, PrefixedCache> {
+        self.prefixed
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn prefixed_atom(&self, prefix: &Prefix, stem: &UnitAtom) -> UnitAtom {
+        let key = (stem.id, prefix.name.clone());
+        if let Some(atom) = self.prefixed_read().get(&key) {
+            return atom.clone();
+        }
+        self.prefixed_write()
+            .entry(key)
+            .or_insert_with(|| {
+                let data = AtomData {
+                    id: UnitId::next(),
+                    registry_id: self.id,
+                    name: format!("{}{}", prefix.name, stem.name).into(),
+                    symbol: format!("{}{}", prefix.symbol, stem.symbol).into(),
+                    dimension: stem.dimension.clone(),
+                    prefixable: false,
+                    kind: AtomKind::Derived {
+                        definition: Box::new(DeltaUnit::from_atom(stem)),
+                        scale: Scale::Linear(prefix.factor),
+                    },
+                };
+                UnitAtom::new(data)
+            })
+            .clone()
+    }
+}
+
 // ---- parsing and loading ----
 impl UnitRegistry {
     /// Parses a unit expression (e.g., "m / s^2") against this registry's names.
@@ -506,20 +601,57 @@ impl UnitRegistry {
     ///
     /// Returns [`UnitError::UnknownUnit`] if `expr` contains a unit unknown to the registry.
     /// Returns [`UnitError::Parse`] if `expr` cannot be correctly parsed.
+    /// Returns [`UnitError::NotPrefixable`] if prefixes are added to non-prefixable units in `expr`.
     pub fn parse(&self, expr: &str) -> Result<Unit, UnitError> {
-        parse_unit_expr(expr, &|name| {
-            self.get(name).ok_or_else(|| UnitError::UnknownUnit {
+        parse_unit_expr(expr, &|name| self.resolve_ident(name))
+    }
+
+    /// Resolves one identifier: an exact name or symbol first, then a prefix
+    /// followed by a prefixable stem (`km` = `k` + `m`), longest prefix first.
+    fn resolve_ident(&self, ident: &str) -> Result<Unit, UnitError> {
+        if let Some(entry) = self.find_entry(ident) {
+            return Ok(entry.to_unit());
+        }
+        let mut not_prefixable = None;
+        for (split, _) in ident.char_indices().rev().filter(|&(split, _)| split > 0) {
+            let (prefix, stem) = ident.split_at(split);
+            let Ok(prefix) = self.find_prefix(prefix) else {
+                continue;
+            };
+            match self.find_entry(stem) {
+                Some(Entry::Delta(stem)) if stem.prefixable => {
+                    let atom = self.prefixed_atom(prefix, stem);
+                    return Ok(Unit::Delta(DeltaUnit::from_atom(&atom)));
+                }
+                Some(entry) => {
+                    not_prefixable.get_or_insert(entry.name());
+                }
+                None => {}
+            }
+        }
+        match not_prefixable {
+            None => Err(UnitError::UnknownUnit {
+                name: ident.into(),
+                registry: self.name().into(),
+            }),
+            Some(name) => Err(UnitError::NotPrefixable {
                 name: name.into(),
                 registry: self.name().into(),
-            })
-        })
+            }),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{assert_scale_close, errors_match, mks_registry};
+    use crate::test_utils::{assert_expands_to, assert_scale_close, errors_match, mks_registry};
+
+    #[test]
+    fn registry_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<UnitRegistry>();
+    }
 
     mod add_prefix {
         use super::*;
@@ -787,7 +919,7 @@ mod tests {
             let mass = dims.add_base("mass", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             ureg.add_prefix("kilo", "k", 1e3).unwrap();
-            let _g = ureg.add_base("gram", "g", &mass, true).unwrap();
+            let g = ureg.add_base("gram", "g", &mass, true).unwrap();
             let actual = ureg
                 .add_prefixed_base("kilo", "gram", "g", &mass)
                 .unwrap_err();
@@ -796,7 +928,10 @@ mod tests {
                 registry: "test-ureg".into(),
             };
             assert!(errors_match(&actual, &expected));
-            assert!(ureg.get("kilogram").is_none());
+            // No `kilogram` base was registered: gram is still the base of mass
+            assert_eq!(ureg.base_unit(&mass), Some(g));
+            // `kilogram` only resolves as the prefixed form of gram.
+            assert_expands_to(&ureg, "kilogram", 1e3, "g");
         }
     }
 
@@ -988,6 +1123,159 @@ mod tests {
             assert_eq!(ureg.base_unit(&length), Some(m.clone()));
             assert_eq!(ureg.base_unit(&distance), Some(m.clone()));
             assert!(ureg.base_unit(&time).is_none());
+        }
+    }
+
+    mod resolve {
+        use super::*;
+
+        #[test]
+        fn prefixed_units_expand_to_base_units() {
+            let ureg = mks_registry();
+            let cases = [
+                ("km", 1e3, "m"),        // prefix symbol + stem symbol
+                ("kilometer", 1e3, "m"), // prefix name + stem name
+                ("cm", 1e-2, "m"),
+                ("mg", 1e-6, "kg"),        // stem of a prefixed base
+                ("kJ", 1e3, "kg*m^2/s^2"), // derived stem
+                ("km/s", 1e3, "m/s"),      // inside a compound
+            ];
+            for (expr, scale, base) in cases {
+                assert_expands_to(&ureg, expr, scale, base);
+            }
+        }
+
+        #[test]
+        fn prefixed_units_are_interned() {
+            let ureg = mks_registry();
+            assert_eq!(ureg.parse("km").unwrap(), ureg.parse("km").unwrap());
+            assert_eq!(ureg.parse("km").unwrap(), ureg.get("km").unwrap());
+            assert_eq!(ureg.parse("km").unwrap(), ureg.parse("kmeter").unwrap());
+            assert_eq!(ureg.parse("km").unwrap(), ureg.parse("kilom").unwrap());
+        }
+
+        #[test]
+        fn prefix_and_stem_of_a_prefixed_base_is_the_base() {
+            let ureg = mks_registry();
+            assert_eq!(ureg.get("kgram").unwrap(), ureg.get("kg").unwrap());
+        }
+
+        #[test]
+        fn exact_name_wins_over_prefix_split() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let time = dims.add_base("time", None).unwrap();
+            let mut ureg = UnitRegistry::new("test-ureg", dims);
+            ureg.add_prefix("milli", "m", 1e-3).unwrap();
+            let min = ureg.add_base("minute", "min", &time, true).unwrap();
+            ureg.add_base("inch", "in", &length, true).unwrap();
+            assert_eq!(ureg.parse("min").unwrap(), Unit::Delta(min));
+        }
+
+        #[test]
+        fn longest_prefix_wins() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let time = dims.add_base("time", None).unwrap();
+            let mut ureg = UnitRegistry::new("test-ureg", dims);
+            ureg.add_prefix("deci", "d", 0.1).unwrap();
+            ureg.add_prefix("deca", "da", 10.0).unwrap();
+            ureg.add_base("meter", "m", &length, true).unwrap();
+            ureg.add_base("am", "am", &time, true).unwrap();
+            assert_expands_to(&ureg, "dam", 10.0, "m");
+        }
+
+        #[test]
+        fn prefers_a_valid_split_over_a_non_prefixable_one() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let time = dims.add_base("time", None).unwrap();
+            let mut ureg = UnitRegistry::new("test-ureg", dims);
+            ureg.add_prefix("deci", "d", 0.1).unwrap();
+            ureg.add_prefix("deca", "da", 10.0).unwrap();
+            // we make meter non prefixable
+            ureg.add_base("meter", "m", &length, false).unwrap();
+            ureg.add_base("am", "am", &time, true).unwrap();
+            assert_expands_to(&ureg, "dam", 0.1, "am");
+        }
+
+        #[test]
+        fn rejects_prefix_on_non_prefixable_unit() {
+            let ureg = mks_registry();
+            let cases = [
+                ("kkg", "kilogram"),
+                ("kdegC", "degree_Celsius"),
+                ("kdelta_degF", "delta_deg_Fahrenheit"),
+            ];
+            for (expr, stem) in cases {
+                let actual = ureg.parse(expr).unwrap_err();
+                let expected = UnitError::NotPrefixable {
+                    name: stem.into(),
+                    registry: ureg.name().into(),
+                };
+                assert!(errors_match(&actual, &expected), "{expr}: {actual:?}");
+            }
+        }
+
+        #[test]
+        fn rejects_unknown_prefix_or_stem() {
+            let ureg = mks_registry();
+            let cases = ["xm", "kfoo"];
+            for expr in cases {
+                let actual = ureg.parse(expr).unwrap_err();
+                let expected = UnitError::UnknownUnit {
+                    name: expr.into(),
+                    registry: ureg.name().into(),
+                };
+                assert!(errors_match(&actual, &expected), "{expr}: {actual:?}");
+            }
+        }
+    }
+
+    mod add_derived_expr {
+        use super::*;
+
+        #[test]
+        fn defines_from_expression() {
+            let mut ureg = mks_registry();
+            ureg.add_derived_expr("newton", "N", "kg*m/s^2", Scale::ONE, true)
+                .unwrap();
+            assert_expands_to(&ureg, "N", 1.0, "kg*m/s^2");
+        }
+
+        #[test]
+        fn accepts_prefixed_units() {
+            let mut ureg = mks_registry();
+            ureg.add_derived_expr("x", "X", "kJ/kg", Scale::ONE, false)
+                .unwrap();
+            assert_expands_to(&ureg, "X", 1e3, "m^2/s^2");
+        }
+
+        #[test]
+        fn rejects_point_definition() {
+            let mut ureg = mks_registry();
+            let actual = ureg
+                .add_derived_expr("x", "X", "degC", Scale::ONE, true)
+                .unwrap_err();
+            let expected = UnitError::NotComposable {
+                name: "degree_Celsius".into(),
+            };
+            assert!(errors_match(&actual, &expected));
+        }
+
+        #[test]
+        fn propagates_parse_and_unknown_unit_errors() {
+            let mut ureg = mks_registry();
+            assert!(matches!(
+                ureg.add_derived_expr("x", "X", "m*", Scale::ONE, true)
+                    .unwrap_err(),
+                UnitError::Parse { .. }
+            ));
+            assert!(matches!(
+                ureg.add_derived_expr("x", "X", "parsec", Scale::ONE, true)
+                    .unwrap_err(),
+                UnitError::UnknownUnit { .. }
+            ));
         }
     }
 }

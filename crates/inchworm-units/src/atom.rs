@@ -43,10 +43,6 @@ pub(crate) struct AtomData {
     /// Unit dimension.
     pub dimension: Dimension,
     /// Whether this unit is prefixable.
-    #[expect(
-        dead_code,
-        reason = "read by prefix resolution when parsing prefixed names"
-    )]
     pub prefixable: bool,
     /// Whether this is a base unit or a derived one.
     pub kind: AtomKind,

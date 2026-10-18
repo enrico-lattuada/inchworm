@@ -1,7 +1,7 @@
 use inchworm_dimensions::{DimRegistry, Dimension, DimensionError, Exp};
 
 use crate::{
-    DeltaUnit, Scale, UnitError, UnitId, UnitRegistry, UnitRegistryId,
+    DeltaUnit, Scale, Unit, UnitError, UnitId, UnitRegistry, UnitRegistryId,
     atom::{AtomData, AtomKind, PointAtom, PointData, UnitAtom},
 };
 
@@ -87,6 +87,29 @@ pub(crate) fn assert_scale_close(actual: Scale, expected: f64) {
         Scale::Linear(a) => is_close(a, expected, 1e-12),
     };
     assert!(is_close, "{actual:?} is not close to {expected}")
+}
+
+#[track_caller]
+pub(crate) fn parse_delta(ureg: &UnitRegistry, expr: &str) -> DeltaUnit {
+    match ureg.parse(expr) {
+        Ok(Unit::Delta(delta)) => delta,
+        other => panic!("`{expr}` should parse to a delta unit, got {other:?}"),
+    }
+}
+
+#[track_caller]
+pub(crate) fn assert_expands_to(ureg: &UnitRegistry, expr: &str, scale: f64, base: &str) {
+    let (actual_scale, actual_base) = parse_delta(ureg, expr).to_base().unwrap();
+    let Scale::Linear(actual_scale) = actual_scale;
+    assert!(
+        is_close(actual_scale, scale, 1e-12),
+        "`{expr}` expands with scale {actual_scale}, expected {scale}"
+    );
+    assert_eq!(
+        actual_base,
+        parse_delta(ureg, base),
+        "`{expr}` should expand to `{base}`"
+    );
 }
 
 fn dimension_errors_match(actual: &DimensionError, expected: &DimensionError) -> bool {
