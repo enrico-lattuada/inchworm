@@ -1,6 +1,5 @@
 /// A named multiplicative prefix (e.g., SI's "kilo") that combines with a
-/// prefixable unit atom to lazily derive a new, interned atom (see
-/// [`UnitRegistry::prefixed_unit`](crate::UnitRegistry::prefixed_unit)).
+/// prefixable unit atom to lazily derive a new, interned atom.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Prefix {
     /// Prefix name, e.g. "kilo".

@@ -1,7 +1,7 @@
 //! The crate's unified error type.
 //!
 //! [`UnitError`] covers every fallible operation in the crate: registry
-//! mutation, expression parsing, exponent arithmetic, TOML loading.
+//! mutation, expression parsing, exponent arithmetic.
 
 use thiserror::Error;
 
@@ -33,7 +33,7 @@ pub enum UnitError {
     UnknownPrefix { name: String, registry: String },
 
     /// `name` cannot be combined with a prefix: its underlying unit was
-    /// registered as non-prefixable (anchored/affine units, for instance, are
+    /// registered as non-prefixable (point units, for instance, are
     /// never prefixable).
     #[error("unit `{name}` in registry `{registry}` is not prefixable")]
     NotPrefixable { name: String, registry: String },
