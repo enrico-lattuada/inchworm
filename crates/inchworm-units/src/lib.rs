@@ -1,8 +1,14 @@
 //! # inchworm-units
 //!
-//! Named units built on inchworm-dimensions: unit atoms (meter, degree,
-//! celsius) and Unit values (reduced multisets of atom/rational-power
-//! factors with cached dimension). No magnitudes (see inchworm-quantities).
+//! Named units built on inchworm-dimensions, with no magnitudes (see
+//! inchworm-quantities). A [`UnitRegistry`] holds three kinds of unit:
+//! - **base** units, one per irreducible dimension, possibly prefixed (`kg`, `cm`);
+//! - **derived** delta units, `scale × definition` (`km`, `J`, `delta_degF`);
+//! - **point** (affine) units, a delta unit plus an offset (`degC`, `degF`).
+//!
+//! Delta units compose into [`DeltaUnit`] values; [`Unit`] wraps either kind.
+//! Values never need their registry after creation: [`DeltaUnit::to_base`]
+//! expands any unit to base units on its own.
 #![forbid(unsafe_code)]
 
 mod atom;
