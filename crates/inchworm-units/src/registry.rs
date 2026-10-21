@@ -6,13 +6,14 @@ use std::{
     sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use inchworm_dimensions::{DimRegistry, Dimension, DimensionError};
+use inchworm_dimensions::{DimRegistry, Dimension, DimensionError, Exp};
 
 use crate::{
-    DeltaUnit, PointUnit, Scale, Unit, UnitError, UnitId, UnitRegistryId,
+    DeltaUnit, PointUnit, Unit, UnitError, UnitId, UnitRegistryId,
     atom::{AtomData, AtomKind, PointAtom, PointData, UnitAtom},
     parse::{parse_unit_expr, validate_ident},
     prefix::Prefix,
+    scale::Scale,
 };
 
 pub(crate) const DEFAULT_REGISTRY_VERSION: &str = "0";
@@ -55,7 +56,7 @@ type PrefixedCache = HashMap<(UnitId, Box<str>), UnitAtom>;
 ///
 /// ```
 /// use inchworm_dimensions::DimRegistry;
-/// use inchworm_units::{Scale, UnitRegistry};
+/// use inchworm_units::UnitRegistry;
 ///
 /// let mut dims = DimRegistry::new("mechanics");
 /// let length = dims.add_base("length", Some("L")).unwrap();
@@ -65,7 +66,7 @@ type PrefixedCache = HashMap<(UnitId, Box<str>), UnitAtom>;
 ///
 /// let m = units.add_base("meter", "m", &length, true).unwrap();
 /// let kg = units.add_prefixed_base("kilo", "gram", "g", &mass).unwrap();
-/// let km = units.add_derived("kilometer", "km", &m, Scale::Linear(1e3), false).unwrap();
+/// let km = units.add_derived("kilometer", "km", &m, 1e3, false).unwrap();
 ///
 /// assert_eq!(units.base_units().count(), 2); // kg and m
 /// assert!(units.get("g").is_some());         // the stem is registered too
@@ -318,16 +319,12 @@ impl UnitRegistry {
         Ok(())
     }
 
-    fn validate_scale(&self, name: &str, scale: Scale) -> Result<(), UnitError> {
-        if !scale.is_valid() {
-            let Scale::Linear(scale_value) = scale;
-            return Err(UnitError::InvalidScale {
-                name: name.into(),
-                registry: self.name().into(),
-                scale: scale_value,
-            });
-        }
-        Ok(())
+    fn validate_scale(&self, name: &str, scale: f64) -> Result<Scale, UnitError> {
+        Scale::new(scale).ok_or_else(|| UnitError::InvalidScale {
+            name: name.into(),
+            registry: self.name().into(),
+            scale,
+        })
     }
 
     fn validate_offset(&self, name: &str, offset: f64) -> Result<(), UnitError> {
@@ -361,10 +358,6 @@ impl UnitRegistry {
         } else {
             Ok(())
         }
-    }
-
-    fn validate_prefix_factor(&self, name: &str, factor: f64) -> Result<(), UnitError> {
-        self.validate_scale(name, Scale::Linear(factor))
     }
 }
 
@@ -434,10 +427,16 @@ impl UnitRegistry {
         self.validate_unit(&name, &symbol)?;
         self.validate_unit(stem_name, stem_symbol)?;
         self.validate_base_dimension(&name, dimension)?;
+        let scale =
+            prefix
+                .factor
+                .checked_pow(Exp::int(-1))
+                .ok_or_else(|| UnitError::ScaleOutOfRange {
+                    unit: stem_name.to_string(),
+                })?;
 
         let atom = self.insert_base(&name, &symbol, dimension, false);
         let base = DeltaUnit::from_atom(&atom);
-        let scale = Scale::Linear(1.0 / prefix.factor);
         let stem = self.insert_derived(stem_name, stem_symbol, &base, scale, true);
         self.prefixed
             .get_mut()
@@ -455,19 +454,27 @@ impl UnitRegistry {
     /// Returns [`UnitError::DuplicateName`] if `name` or `symbol` is already a unit name or
     /// symbol, or `name` is a prefix name.
     /// Returns [`UnitError::CrossRegistry`] if `definition` comes from another unit registry.
-    /// Returns [`UnitError::InvalidScale`] if `scale` is not valid (i.e., a linear scale is not
-    /// positive and finite).
+    /// Returns [`UnitError::InvalidScale`] if `scale` is not positive, finite, and normal.
+    /// Returns [`UnitError::ScaleOutOfRange`] if the `definition`'s scale or its combination
+    /// with `scale` overflows or underflows.
+    /// Returns [`UnitError::Dimension`] wrapping
+    /// [`ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
+    /// if expanding `definition` to base units overflows an exponent.
     pub fn add_derived(
         &mut self,
         name: &str,
         symbol: &str,
         definition: &DeltaUnit,
-        scale: Scale,
+        scale: f64,
         prefixable: bool,
     ) -> Result<DeltaUnit, UnitError> {
         self.validate_unit(name, symbol)?;
         self.validate_registry(definition)?;
-        self.validate_scale(name, scale)?;
+        let scale = self.validate_scale(name, scale)?;
+        let (definition_scale, _) = definition.scale_and_base()?;
+        if definition_scale.checked_mul(scale).is_none() {
+            return Err(UnitError::ScaleOutOfRange { unit: name.into() });
+        }
         let atom = self.insert_derived(name, symbol, definition, scale, prefixable);
         let derived = DeltaUnit::from_atom(&atom);
         Ok(derived)
@@ -485,14 +492,18 @@ impl UnitRegistry {
     /// Returns [`UnitError::Parse`] if `expr` cannot be correctly parsed.
     /// Returns [`UnitError::NotPrefixable`] if prefixes are added to non-prefixable units in `expr`.
     /// Returns [`UnitError::NotComposable`] if `expr` contains point units.
-    /// Returns [`UnitError::InvalidScale`] if `scale` is not valid (i.e., a linear scale is not
-    /// positive and finite).
+    /// Returns [`UnitError::InvalidScale`] if `scale` is not positive, finite, and normal.
+    /// Returns [`UnitError::ScaleOutOfRange`] if the `expr`'s scale or its combination
+    /// with `scale` overflows or underflows.
+    /// Returns [`UnitError::Dimension`] wrapping
+    /// [`ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
+    /// if expanding `expr` to base units overflows an exponent.
     pub fn add_derived_expr(
         &mut self,
         name: &str,
         symbol: &str,
         expr: &str,
-        scale: Scale,
+        scale: f64,
         prefixable: bool,
     ) -> Result<DeltaUnit, UnitError> {
         self.validate_unit(name, symbol)?;
@@ -538,14 +549,14 @@ impl UnitRegistry {
     /// Returns [`UnitError::InvalidName`] if `name` or `symbol` is not an identifier.
     /// Returns [`UnitError::DuplicateName`] if `name` is already a prefix or unit name or symbol,
     /// or `symbol` is already a prefix name or symbol.
-    /// Returns [`UnitError::InvalidScale`] if `factor` is not positive and finite.
+    /// Returns [`UnitError::InvalidScale`] if `factor` is not positive, finite, and normal.
     pub fn add_prefix(&mut self, name: &str, symbol: &str, factor: f64) -> Result<(), UnitError> {
         self.validate_prefix(name, symbol)?;
-        self.validate_prefix_factor(name, factor)?;
+        let scale = self.validate_scale(name, factor)?;
         let prefix = Prefix {
             name: name.into(),
             symbol: symbol.into(),
-            factor,
+            factor: scale,
         };
         self.prefixes.insert(name.into(), prefix);
         self.prefix_by_symbol.insert(symbol.into(), name.into());
@@ -567,29 +578,35 @@ impl UnitRegistry {
             .unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn prefixed_atom(&self, prefix: &Prefix, stem: &UnitAtom) -> UnitAtom {
+    fn prefixed_atom(&self, prefix: &Prefix, stem: &UnitAtom) -> Result<UnitAtom, UnitError> {
         let key = (stem.id, prefix.name.clone());
         if let Some(atom) = self.prefixed_read().get(&key) {
-            return atom.clone();
+            return Ok(atom.clone());
         }
-        self.prefixed_write()
+        let atom_name = format!("{}{}", prefix.name, stem.name);
+        let (stem_scale, _) = DeltaUnit::from_atom(stem).scale_and_base()?;
+        if stem_scale.checked_mul(prefix.factor).is_none() {
+            return Err(UnitError::ScaleOutOfRange { unit: atom_name });
+        }
+        Ok(self
+            .prefixed_write()
             .entry(key)
             .or_insert_with(|| {
                 let data = AtomData {
                     id: UnitId::next(),
                     registry_id: self.id,
-                    name: format!("{}{}", prefix.name, stem.name).into(),
+                    name: atom_name.into(),
                     symbol: format!("{}{}", prefix.symbol, stem.symbol).into(),
                     dimension: stem.dimension.clone(),
                     prefixable: false,
                     kind: AtomKind::Derived {
                         definition: Box::new(DeltaUnit::from_atom(stem)),
-                        scale: Scale::Linear(prefix.factor),
+                        scale: prefix.factor,
                     },
                 };
                 UnitAtom::new(data)
             })
-            .clone()
+            .clone())
     }
 }
 
@@ -602,6 +619,7 @@ impl UnitRegistry {
     /// Returns [`UnitError::UnknownUnit`] if `expr` contains a unit unknown to the registry.
     /// Returns [`UnitError::Parse`] if `expr` cannot be correctly parsed.
     /// Returns [`UnitError::NotPrefixable`] if prefixes are added to non-prefixable units in `expr`.
+    /// Returns [`UnitError::ScaleOutOfRange`] if the `expr`'s scale overflows or underflows.
     pub fn parse(&self, expr: &str) -> Result<Unit, UnitError> {
         parse_unit_expr(expr, &|name| self.resolve_ident(name))
     }
@@ -620,7 +638,7 @@ impl UnitRegistry {
             };
             match self.find_entry(stem) {
                 Some(Entry::Delta(stem)) if stem.prefixable => {
-                    let atom = self.prefixed_atom(prefix, stem);
+                    let atom = self.prefixed_atom(prefix, stem)?;
                     return Ok(Unit::Delta(DeltaUnit::from_atom(&atom)));
                 }
                 Some(entry) => {
@@ -659,7 +677,7 @@ mod tests {
         #[test]
         fn rejects_invalid_factor() {
             let mut ureg = UnitRegistry::new("test-ureg", DimRegistry::new("test-reg"));
-            for factor in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            for factor in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::MIN_POSITIVE / 2.0] {
                 let actual = ureg.add_prefix("x", "x", factor).unwrap_err();
                 let expected = UnitError::InvalidScale {
                     name: "x".into(),
@@ -914,6 +932,24 @@ mod tests {
         }
 
         #[test]
+        fn rejects_prefix_whose_reciprocal_underflows() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut ureg = UnitRegistry::new("test-ureg", dims);
+            ureg.add_prefix("huge", "H", 1e308).unwrap();
+            let actual = ureg
+                .add_prefixed_base("huge", "meter", "m", &length)
+                .unwrap_err();
+            let expected = UnitError::ScaleOutOfRange {
+                unit: "meter".into(),
+            };
+            assert!(errors_match(&actual, &expected));
+            assert!(ureg.get("hugemeter").is_none());
+            assert!(ureg.get("meter").is_none());
+            assert!(ureg.base_unit(&length).is_none());
+        }
+
+        #[test]
         fn failed_add_leaves_registry_unchanged() {
             let mut dims = DimRegistry::new("test-reg");
             let mass = dims.add_base("mass", None).unwrap();
@@ -944,9 +980,7 @@ mod tests {
             let Some(Unit::Delta(m)) = ureg.get("m") else {
                 panic!("m is not in the mks registry")
             };
-            let km = ureg
-                .add_derived("kilometer", "km", &m, Scale::Linear(1e3), false)
-                .unwrap();
+            let km = ureg.add_derived("kilometer", "km", &m, 1e3, false).unwrap();
             let (scale, base) = km.to_base().unwrap();
             assert_scale_close(scale, 1e3);
             assert_eq!(base, m);
@@ -957,13 +991,7 @@ mod tests {
             let dims = DimRegistry::new("test-reg");
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             let percent = ureg
-                .add_derived(
-                    "percent",
-                    "pct",
-                    &DeltaUnit::dimensionless(),
-                    Scale::Linear(0.01),
-                    false,
-                )
+                .add_derived("percent", "pct", &DeltaUnit::dimensionless(), 0.01, false)
                 .unwrap();
             let (scale, base) = percent.to_base().unwrap();
             assert_scale_close(scale, 0.01);
@@ -974,16 +1002,10 @@ mod tests {
         fn rejects_invalid_scale() {
             let dims = DimRegistry::new("test-reg");
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            let cases = [0.0, -1.0, f64::NAN, f64::INFINITY];
+            let cases = [0.0, -1.0, f64::NAN, f64::INFINITY, f64::MIN_POSITIVE / 2.0];
             for scale in cases {
                 let actual = ureg
-                    .add_derived(
-                        "invalid",
-                        "na",
-                        &DeltaUnit::dimensionless(),
-                        Scale::Linear(scale),
-                        false,
-                    )
+                    .add_derived("invalid", "na", &DeltaUnit::dimensionless(), scale, false)
                     .unwrap_err();
                 let expected = UnitError::InvalidScale {
                     name: "invalid".into(),
@@ -995,6 +1017,25 @@ mod tests {
         }
 
         #[test]
+        fn rejects_scale_overflowing_definition() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut ureg = UnitRegistry::new("test-ureg", dims);
+            let meter = ureg.add_base("meter", "m", &length, true).unwrap();
+            let huge = ureg
+                .add_derived("huge", "huge", &meter, 1e200, false)
+                .unwrap();
+            let actual = ureg
+                .add_derived("huger", "huger", &huge, 1e200, false)
+                .unwrap_err();
+            let expected = UnitError::ScaleOutOfRange {
+                unit: "huger".into(),
+            };
+            assert!(errors_match(&actual, &expected));
+            assert!(ureg.get("huger").is_none());
+        }
+
+        #[test]
         fn rejects_definition_from_another_registry() {
             let mut ureg = mks_registry();
             let other = mks_registry();
@@ -1002,7 +1043,7 @@ mod tests {
                 panic!("m is not in the mks registry")
             };
             let actual = ureg
-                .add_derived("distance", "dist", &m, Scale::ONE, false)
+                .add_derived("distance", "dist", &m, 1.0, false)
                 .unwrap_err();
             let expected = UnitError::CrossRegistry {
                 left: ureg.id(),
@@ -1230,6 +1271,22 @@ mod tests {
                 assert!(errors_match(&actual, &expected), "{expr}: {actual:?}");
             }
         }
+
+        #[test]
+        fn rejects_prefix_overflowing_stem_scale() {
+            let mut ureg = mks_registry();
+            ureg.add_prefix("quetta", "Q", 1e30).unwrap();
+            let Some(Unit::Delta(m)) = ureg.get("m") else {
+                panic!("meter is not a delta unit");
+            };
+            ureg.add_derived("giant", "gnt", &m, 1e300, true).unwrap();
+            let actual = ureg.parse("Qgnt").unwrap_err();
+            let expected = UnitError::ScaleOutOfRange {
+                unit: "quettagiant".into(),
+            };
+            assert!(errors_match(&actual, &expected));
+            assert!(ureg.parse("gnt").is_ok());
+        }
     }
 
     mod add_derived_expr {
@@ -1238,7 +1295,7 @@ mod tests {
         #[test]
         fn defines_from_expression() {
             let mut ureg = mks_registry();
-            ureg.add_derived_expr("newton", "N", "kg*m/s^2", Scale::ONE, true)
+            ureg.add_derived_expr("newton", "N", "kg*m/s^2", 1.0, true)
                 .unwrap();
             assert_expands_to(&ureg, "N", 1.0, "kg*m/s^2");
         }
@@ -1246,7 +1303,7 @@ mod tests {
         #[test]
         fn accepts_prefixed_units() {
             let mut ureg = mks_registry();
-            ureg.add_derived_expr("x", "X", "kJ/kg", Scale::ONE, false)
+            ureg.add_derived_expr("x", "X", "kJ/kg", 1.0, false)
                 .unwrap();
             assert_expands_to(&ureg, "X", 1e3, "m^2/s^2");
         }
@@ -1255,7 +1312,7 @@ mod tests {
         fn rejects_point_definition() {
             let mut ureg = mks_registry();
             let actual = ureg
-                .add_derived_expr("x", "X", "degC", Scale::ONE, true)
+                .add_derived_expr("x", "X", "degC", 1.0, true)
                 .unwrap_err();
             let expected = UnitError::NotComposable {
                 name: "degree_Celsius".into(),
@@ -1267,12 +1324,12 @@ mod tests {
         fn propagates_parse_and_unknown_unit_errors() {
             let mut ureg = mks_registry();
             assert!(matches!(
-                ureg.add_derived_expr("x", "X", "m*", Scale::ONE, true)
+                ureg.add_derived_expr("x", "X", "m*", 1.0, true)
                     .unwrap_err(),
                 UnitError::Parse { .. }
             ));
             assert!(matches!(
-                ureg.add_derived_expr("x", "X", "parsec", Scale::ONE, true)
+                ureg.add_derived_expr("x", "X", "parsec", 1.0, true)
                     .unwrap_err(),
                 UnitError::UnknownUnit { .. }
             ));

@@ -2,40 +2,37 @@
 
 use inchworm_dimensions::Exp;
 
-/// How a derived unit relates to its definition.
+/// How a derived unit relates to its definition: `1 unit = factor × definition`.
 ///
-/// `#[non_exhaustive]`: logarithmic scales may be added later, so `match`es
-/// outside this crate need a wildcard arm.
-#[non_exhaustive]
+/// Always positive, finite, and normal (not subnormal), so it keeps full f64 precision.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Scale {
-    /// `1 unit = factor × definition`
-    Linear(f64),
-}
+pub(crate) struct Scale(f64);
 
 impl Scale {
     /// The identity scale.
-    pub(crate) const ONE: Self = Self::Linear(1.0);
+    pub(crate) const ONE: Self = Self(1.0);
 
+    /// `None` if `value` is zero, negative, subnormal, infinite, or NaN.
+    pub(crate) fn new(value: f64) -> Option<Self> {
+        (value > 0.0 && value.is_normal()).then_some(Self(value))
+    }
+
+    /// The value of the scale.
+    pub(crate) fn value(self) -> f64 {
+        self.0
+    }
+}
+
+// ---- algebra ----
+impl Scale {
     /// Composes two scales.
-    pub(crate) fn mul(self, rhs: Self) -> Self {
-        match (self, rhs) {
-            (Self::Linear(a), Self::Linear(b)) => Self::Linear(a * b),
-        }
+    pub(crate) fn checked_mul(self, rhs: Self) -> Option<Self> {
+        Self::new(self.value() * rhs.value())
     }
 
     /// Raises the scale to `e`.
-    pub(crate) fn pow(self, e: Exp) -> Self {
-        match self {
-            Self::Linear(a) => Self::Linear(a.powf(e.to_f64())),
-        }
-    }
-
-    /// Checks the scale is finite and strictly positive.
-    pub(crate) fn is_valid(self) -> bool {
-        match self {
-            Self::Linear(a) => a > 0.0 && a.is_finite(),
-        }
+    pub(crate) fn checked_pow(self, e: Exp) -> Option<Self> {
+        Self::new(self.value().powf(e.to_f64()))
     }
 }
 
@@ -43,77 +40,115 @@ impl Scale {
 mod tests {
     use super::*;
 
-    mod mul {
-        use super::*;
-
-        #[test]
-        fn one_is_identity() {
-            let scale = Scale::Linear(42.0);
-            assert_eq!(scale, scale.mul(Scale::ONE));
-        }
-
-        #[test]
-        fn returns_prod_for_linears() {
-            assert_eq!(
-                Scale::Linear(2.0).mul(Scale::Linear(3.0)),
-                Scale::Linear(6.0)
-            );
-        }
-    }
-
-    mod pow {
-        use super::*;
-
-        #[test]
-        fn returns_pow_of_scale_for_linear() {
-            let scale = Scale::Linear(1e6);
-            assert_eq!(scale.pow(Exp::new(1, 2).unwrap()), Scale::Linear(1e3));
-        }
-
-        #[test]
-        fn zero_gives_one() {
-            let scale = Scale::Linear(42.0);
-            assert_eq!(scale.pow(Exp::ZERO), Scale::ONE);
-        }
-
-        #[test]
-        fn minus_one_gives_reciprocal() {
-            let scale = Scale::Linear(2.0);
-            assert_eq!(scale.pow(Exp::int(-1)), Scale::Linear(0.5));
-        }
-    }
-
-    mod is_valid {
+    mod new {
         use super::*;
 
         #[test]
         fn accepts_positive_finite_value() {
-            let scale = Scale::Linear(42.0);
-            assert!(scale.is_valid());
+            let scale = Scale::new(42.0);
+            assert!(scale.is_some());
         }
 
         #[test]
-        fn rejects_linear_zero() {
-            let scale = Scale::Linear(0.0);
-            assert!(!scale.is_valid());
+        fn accepts_min_positive() {
+            let scale = Scale::new(f64::MIN_POSITIVE);
+            assert!(scale.is_some());
         }
 
         #[test]
-        fn rejects_linear_negative() {
-            let scale = Scale::Linear(-1.0);
-            assert!(!scale.is_valid());
+        fn rejects_subnormal() {
+            let scale = Scale::new(f64::MIN_POSITIVE / 2.0);
+            assert!(scale.is_none());
         }
 
         #[test]
-        fn rejects_linear_nan() {
-            let scale = Scale::Linear(f64::NAN);
-            assert!(!scale.is_valid());
+        fn rejects_zero() {
+            let scale = Scale::new(0.0);
+            assert!(scale.is_none());
         }
 
         #[test]
-        fn rejects_linear_infinity() {
-            let scale = Scale::Linear(f64::INFINITY);
-            assert!(!scale.is_valid());
+        fn rejects_negative() {
+            let scale = Scale::new(-1.0);
+            assert!(scale.is_none());
+        }
+
+        #[test]
+        fn rejects_nan() {
+            let scale = Scale::new(f64::NAN);
+            assert!(scale.is_none());
+        }
+
+        #[test]
+        fn rejects_infinity() {
+            let scale = Scale::new(f64::INFINITY);
+            assert!(scale.is_none());
+        }
+    }
+
+    mod checked_mul {
+        use super::*;
+
+        #[test]
+        fn one_is_identity() {
+            let scale = Scale(42.0);
+            assert_eq!(scale.checked_mul(Scale::ONE), Some(scale));
+        }
+
+        #[test]
+        fn returns_product() {
+            assert_eq!(Scale(2.0).checked_mul(Scale(3.0)), Some(Scale(6.0)));
+        }
+
+        #[test]
+        fn rejects_overflow() {
+            let scale = Scale(1e200);
+            assert!(scale.checked_mul(scale).is_none())
+        }
+
+        #[test]
+        fn rejects_underflow_to_zero() {
+            let scale = Scale(1e-200);
+            assert!(scale.checked_mul(scale).is_none())
+        }
+
+        #[test]
+        fn rejects_underflow_to_subnormal() {
+            assert!(Scale(1e-154).checked_mul(Scale(1e-155)).is_none())
+        }
+    }
+
+    mod checked_pow {
+        use super::*;
+
+        #[test]
+        fn returns_pow_of_scale() {
+            let scale = Scale(1e6);
+            assert_eq!(scale.checked_pow(Exp::new(1, 2).unwrap()), Some(Scale(1e3)));
+        }
+
+        #[test]
+        fn zero_gives_one() {
+            let scale = Scale(42.0);
+            assert_eq!(scale.checked_pow(Exp::ZERO), Some(Scale::ONE));
+        }
+
+        #[test]
+        fn minus_one_gives_reciprocal() {
+            let scale = Scale(2.0);
+            assert_eq!(scale.checked_pow(Exp::int(-1)), Some(Scale(0.5)));
+        }
+
+        #[test]
+        fn rejects_overflow() {
+            let scale = Scale(1e200);
+            assert!(scale.checked_pow(Exp::int(2)).is_none())
+        }
+
+        #[test]
+        fn rejects_negative_exponent_overflow() {
+            let scale = Scale(1e-200);
+            assert!(scale.checked_pow(Exp::int(-2)).is_none())
         }
     }
 }

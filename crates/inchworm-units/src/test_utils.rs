@@ -1,8 +1,9 @@
 use inchworm_dimensions::{DimRegistry, Dimension, DimensionError, Exp};
 
 use crate::{
-    DeltaUnit, Scale, Unit, UnitError, UnitId, UnitRegistry, UnitRegistryId,
+    DeltaUnit, Unit, UnitError, UnitId, UnitRegistry, UnitRegistryId,
     atom::{AtomData, AtomKind, PointAtom, PointData, UnitAtom},
+    scale::Scale,
 };
 
 /// Build a `UnitAtom` with `name = symbol` and `prefixable: false`
@@ -82,11 +83,9 @@ fn is_close(a: f64, b: f64, rtol: f64) -> bool {
 }
 
 #[track_caller]
-pub(crate) fn assert_scale_close(actual: Scale, expected: f64) {
-    let is_close = match actual {
-        Scale::Linear(a) => is_close(a, expected, 1e-12),
-    };
-    assert!(is_close, "{actual:?} is not close to {expected}")
+pub(crate) fn assert_scale_close(actual: f64, expected: f64) {
+    let is_close = is_close(actual, expected, 1e-12);
+    assert!(is_close, "{actual} is not close to {expected}")
 }
 
 #[track_caller]
@@ -100,7 +99,6 @@ pub(crate) fn parse_delta(ureg: &UnitRegistry, expr: &str) -> DeltaUnit {
 #[track_caller]
 pub(crate) fn assert_expands_to(ureg: &UnitRegistry, expr: &str, scale: f64, base: &str) {
     let (actual_scale, actual_base) = parse_delta(ureg, expr).to_base().unwrap();
-    let Scale::Linear(actual_scale) = actual_scale;
     assert!(
         is_close(actual_scale, scale, 1e-12),
         "`{expr}` expands with scale {actual_scale}, expected {scale}"
@@ -256,6 +254,12 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                     && is_close(*scale, *expected_scale, 0.0)
             }
             (
+                UnitError::ScaleOutOfRange { unit },
+                UnitError::ScaleOutOfRange {
+                    unit: expected_unit,
+                },
+            ) => unit == expected_unit,
+            (
                 UnitError::NotComposable { name },
                 UnitError::NotComposable {
                     name: expected_name,
@@ -342,14 +346,14 @@ pub(crate) fn mks_registry() -> UnitRegistry {
     let m2 = m.pow(Exp::int(2)).unwrap();
     let s2 = s.pow(Exp::int(2)).unwrap();
     let joule_def = kg.try_mul(&m2).unwrap().try_div(&s2).unwrap();
-    ureg.add_derived("joule", "J", &joule_def, Scale::ONE, true)
+    ureg.add_derived("joule", "J", &joule_def, 1.0, true)
         .unwrap();
     let delta_deg_fahrenheit = ureg
         .add_derived(
             "delta_deg_Fahrenheit",
             "delta_degF",
             &kelvin,
-            Scale::Linear(5.0 / 9.0),
+            5.0 / 9.0,
             false,
         )
         .unwrap();

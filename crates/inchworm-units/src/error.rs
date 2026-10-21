@@ -46,15 +46,22 @@ pub enum UnitError {
         right: UnitRegistryId,
     },
 
-    /// `name`'s scale must be positive and finite.
+    /// `name`'s scale must be positive, finite, and not subnormal.
     #[error(
-        "name `{name}`'s scale (`{scale}`) in registry `{registry}` must be positive and finite"
+        "name `{name}`'s scale (`{scale}`) in registry `{registry}` must be \
+        positive, finite, and not subnormal"
     )]
     InvalidScale {
         name: String,
         registry: String,
         scale: f64,
     },
+
+    /// `unit`'s scale relative to the base units is not a positive finite `f64`:
+    /// combining its factors' scales overflowed to infinity or underflowed below
+    /// the smallest normal `f64`.
+    #[error("scale of unit `{unit}` relative to the base units overflows or underflows")]
+    ScaleOutOfRange { unit: String },
 
     /// `name` is a point unit (a reading such as `degC`), which cannot be multiplied, divided,
     /// or raised to a power. For a rate such as `degC/min`, use the delta unit: `K/min`.

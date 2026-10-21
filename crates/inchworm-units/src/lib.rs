@@ -31,5 +31,4 @@ pub use error::UnitError;
 pub use form::UnitForm;
 pub use point::PointUnit;
 pub use registry::UnitRegistry;
-pub use scale::Scale;
 pub use unit::Unit;

@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use inchworm_dimensions::{DimRegistry, Exp};
-use inchworm_units::{Scale, Unit, UnitRegistry};
+use inchworm_units::{Unit, UnitRegistry};
 
 /// Same contents as the crate's `mks_registry` test fixture, built from the public API.
 fn mks() -> UnitRegistry {
@@ -22,14 +22,14 @@ fn mks() -> UnitRegistry {
     let m2 = m.pow(Exp::int(2)).unwrap();
     let s2 = s.pow(Exp::int(2)).unwrap();
     let joule_def = kg.try_mul(&m2).unwrap().try_div(&s2).unwrap();
-    ureg.add_derived("joule", "J", &joule_def, Scale::Linear(1.0), true)
+    ureg.add_derived("joule", "J", &joule_def, 1.0, true)
         .unwrap();
     let delta_deg_fahrenheit = ureg
         .add_derived(
             "delta_deg_Fahrenheit",
             "delta_degF",
             &kelvin,
-            Scale::Linear(5.0 / 9.0),
+            5.0 / 9.0,
             false,
         )
         .unwrap();

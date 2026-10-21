@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use inchworm_dimensions::Dimension;
 
-use crate::{DeltaUnit, Scale, UnitId, UnitRegistryId};
+use crate::{DeltaUnit, UnitId, UnitRegistryId, scale::Scale};
 
 #[derive(Debug)]
 pub(crate) enum AtomKind {
