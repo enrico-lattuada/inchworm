@@ -163,19 +163,10 @@ impl DeltaUnit {
 }
 
 /// Expands one atom to base units: `1 atom = scale × base`.
-fn expand_atom(atom: &UnitAtom) -> Result<(Scale, DeltaUnit), UnitError> {
+fn expand_atom(atom: &UnitAtom) -> (Scale, DeltaUnit) {
     match &atom.kind {
-        AtomKind::Base => Ok((Scale::ONE, DeltaUnit::from_atom(atom))),
-        AtomKind::Derived { definition, scale } => {
-            let (definition_scale, base) = definition.scale_and_base()?;
-            let total_scale =
-                scale
-                    .checked_mul(definition_scale)
-                    .ok_or_else(|| UnitError::ScaleOutOfRange {
-                        unit: atom.name.as_ref().into(),
-                    })?;
-            Ok((total_scale, base))
-        }
+        AtomKind::Base => (Scale::ONE, DeltaUnit::from_atom(atom)),
+        AtomKind::Derived(expansion) => (expansion.scale(), expansion.base().clone()),
     }
 }
 
@@ -183,7 +174,7 @@ fn expand_atom(atom: &UnitAtom) -> Result<(Scale, DeltaUnit), UnitError> {
 impl DeltaUnit {
     /// Expands every factor down to base units: `1 self = scale × base`.
     ///
-    /// Returns a [`Scale`] instead of the internal `f64` value.
+    /// Like [`Self::to_base()`], but keeps the validated [`Scale`].
     ///
     /// # Errors
     /// Returns [`UnitError::Dimension`] wrapping
@@ -192,21 +183,17 @@ impl DeltaUnit {
     /// Returns [`UnitError::ScaleOutOfRange`] if the scale relative to the
     /// base units overflows or underflows.
     pub(crate) fn scale_and_base(&self) -> Result<(Scale, Self), UnitError> {
+        let out_of_range = || UnitError::ScaleOutOfRange {
+            unit: self.to_string(),
+        };
         let (mut scale, mut base) = (Scale::ONE, DeltaUnit::dimensionless());
         for (atom, exp) in self.factors.entries() {
-            let (atom_scale, atom_base) = expand_atom(atom)?;
-            let atom_scale =
-                atom_scale
-                    .checked_pow(*exp)
-                    .ok_or_else(|| UnitError::ScaleOutOfRange {
-                        unit: self.to_string(),
-                    })?;
+            let (atom_scale, atom_base) = expand_atom(atom);
             let atom_base = atom_base.pow(*exp)?;
-            scale = scale
-                .checked_mul(atom_scale)
-                .ok_or_else(|| UnitError::ScaleOutOfRange {
-                    unit: self.to_string(),
-                })?;
+            scale = atom_scale
+                .checked_pow(*exp)
+                .and_then(|s| scale.checked_mul(s))
+                .ok_or_else(out_of_range)?;
             base = base.try_mul(&atom_base)?;
         }
         Ok((scale, base))

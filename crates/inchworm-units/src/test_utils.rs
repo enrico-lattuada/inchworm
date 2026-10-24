@@ -2,7 +2,7 @@ use inchworm_dimensions::{DimRegistry, Dimension, DimensionError, Exp};
 
 use crate::{
     DeltaUnit, Unit, UnitError, UnitId, UnitRegistry, UnitRegistryId,
-    atom::{AtomData, AtomKind, PointAtom, PointData, UnitAtom},
+    atom::{AtomData, AtomKind, Expansion, PointAtom, PointData, UnitAtom},
     scale::Scale,
 };
 
@@ -38,10 +38,7 @@ pub(crate) fn make_derived_atom(
         symbol: symbol.into(),
         dimension: definition.dimension().clone(),
         prefixable: false,
-        kind: AtomKind::Derived {
-            definition: Box::new(definition.clone()),
-            scale,
-        },
+        kind: AtomKind::Derived(Box::new(Expansion::new(symbol, definition, scale).unwrap())),
     };
     UnitAtom::new(data)
 }

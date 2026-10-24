@@ -10,7 +10,7 @@ use inchworm_dimensions::{DimRegistry, Dimension, DimensionError, Exp};
 
 use crate::{
     DeltaUnit, PointUnit, Unit, UnitError, UnitId, UnitRegistryId,
-    atom::{AtomData, AtomKind, PointAtom, PointData, UnitAtom},
+    atom::{AtomData, AtomKind, Expansion, PointAtom, PointData, UnitAtom},
     parse::{parse_unit_expr, validate_ident},
     prefix::Prefix,
     scale::Scale,
@@ -213,8 +213,7 @@ impl UnitRegistry {
         &mut self,
         name: &str,
         symbol: &str,
-        definition: &DeltaUnit,
-        scale: Scale,
+        expansion: Expansion,
         prefixable: bool,
     ) -> UnitAtom {
         let data = AtomData {
@@ -222,12 +221,9 @@ impl UnitRegistry {
             registry_id: self.id,
             name: name.into(),
             symbol: symbol.into(),
-            dimension: definition.dimension().clone(),
+            dimension: expansion.base().dimension().clone(),
             prefixable,
-            kind: AtomKind::Derived {
-                definition: Box::new(definition.clone()),
-                scale,
-            },
+            kind: AtomKind::Derived(Box::new(expansion)),
         };
         let atom = UnitAtom::new(data);
         self.insert_entry(name, symbol, Entry::Delta(atom.clone()));
@@ -437,7 +433,9 @@ impl UnitRegistry {
 
         let atom = self.insert_base(&name, &symbol, dimension, false);
         let base = DeltaUnit::from_atom(&atom);
-        let stem = self.insert_derived(stem_name, stem_symbol, &base, scale, true);
+        let expansion = Expansion::new(stem_name, &base, scale)
+            .expect("a base atom expands to itself, the reciprocal was validated above");
+        let stem = self.insert_derived(stem_name, stem_symbol, expansion, true);
         self.prefixed
             .get_mut()
             .unwrap_or_else(PoisonError::into_inner)
@@ -471,11 +469,8 @@ impl UnitRegistry {
         self.validate_unit(name, symbol)?;
         self.validate_registry(definition)?;
         let scale = self.validate_scale(name, scale)?;
-        let (definition_scale, _) = definition.scale_and_base()?;
-        if definition_scale.checked_mul(scale).is_none() {
-            return Err(UnitError::ScaleOutOfRange { unit: name.into() });
-        }
-        let atom = self.insert_derived(name, symbol, definition, scale, prefixable);
+        let expansion = Expansion::new(name, definition, scale)?;
+        let atom = self.insert_derived(name, symbol, expansion, prefixable);
         let derived = DeltaUnit::from_atom(&atom);
         Ok(derived)
     }
@@ -584,10 +579,7 @@ impl UnitRegistry {
             return Ok(atom.clone());
         }
         let atom_name = format!("{}{}", prefix.name, stem.name);
-        let (stem_scale, _) = DeltaUnit::from_atom(stem).scale_and_base()?;
-        if stem_scale.checked_mul(prefix.factor).is_none() {
-            return Err(UnitError::ScaleOutOfRange { unit: atom_name });
-        }
+        let expansion = Expansion::new(&atom_name, &DeltaUnit::from_atom(stem), prefix.factor)?;
         Ok(self
             .prefixed_write()
             .entry(key)
@@ -599,10 +591,7 @@ impl UnitRegistry {
                     symbol: format!("{}{}", prefix.symbol, stem.symbol).into(),
                     dimension: stem.dimension.clone(),
                     prefixable: false,
-                    kind: AtomKind::Derived {
-                        definition: Box::new(DeltaUnit::from_atom(stem)),
-                        scale: prefix.factor,
-                    },
+                    kind: AtomKind::Derived(Box::new(expansion)),
                 };
                 UnitAtom::new(data)
             })

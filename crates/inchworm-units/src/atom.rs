@@ -13,21 +13,52 @@ use std::sync::Arc;
 
 use inchworm_dimensions::Dimension;
 
-use crate::{DeltaUnit, UnitId, UnitRegistryId, scale::Scale};
+use crate::{DeltaUnit, UnitError, UnitId, UnitRegistryId, scale::Scale};
+
+/// A derived atom's definition expanded to base units: `1 atom = scale × base`.
+///
+/// Built only by [`Self::new`], so it always matches its definition.
+#[derive(Debug)]
+pub(crate) struct Expansion {
+    scale: Scale,
+    base: DeltaUnit,
+}
+
+impl Expansion {
+    /// Expands `1 name = scale × definition` to base units.
+    ///
+    /// # Errors
+    /// Returns [`UnitError::Dimension`] wrapping
+    /// [`ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
+    /// if combining exponents overflows.
+    /// Returns [`UnitError::ScaleOutOfRange`] if the scale relative to the
+    /// base units overflows or underflows.
+    pub(crate) fn new(name: &str, definition: &DeltaUnit, scale: Scale) -> Result<Self, UnitError> {
+        let (def_scale, base) = definition.scale_and_base()?;
+        let total = def_scale
+            .checked_mul(scale)
+            .ok_or_else(|| UnitError::ScaleOutOfRange { unit: name.into() })?;
+        Ok(Self { scale: total, base })
+    }
+
+    /// The scale of the expansion to base units.
+    pub(crate) fn scale(&self) -> Scale {
+        self.scale
+    }
+
+    /// The base units of the expansion.
+    pub(crate) fn base(&self) -> &DeltaUnit {
+        &self.base
+    }
+}
 
 #[derive(Debug)]
 pub(crate) enum AtomKind {
     /// The unit of one irreducible dimension.
     /// The frame every other unit of that dimension is measured in.
     Base,
-    /// `1 self = scale × definition`.
-    Derived {
-        /// The definition as written.
-        /// Boxed: an unboxed `Derived` would make every atom as large as `DeltaUnit`.
-        definition: Box<DeltaUnit>,
-        /// The factor from `definition` to `self`.
-        scale: Scale,
-    },
+    /// `1 self = scale × base`.
+    Derived(Box<Expansion>),
 }
 
 #[derive(Debug)]
@@ -104,3 +135,56 @@ impl Hash for PointData {
 }
 
 pub(crate) type PointAtom = Arc<PointData>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{assert_scale_close, errors_match, make_atom, make_derived_atom};
+    use inchworm_dimensions::DimRegistry;
+
+    fn meter() -> (UnitRegistryId, DeltaUnit) {
+        let mut dims = DimRegistry::new("test-reg");
+        let length = dims.add_base("length", None).unwrap();
+        let id = UnitRegistryId::next();
+        let meter = make_atom(id, "m", length);
+        (id, DeltaUnit::from_atom(&meter))
+    }
+
+    mod expansion_new {
+        use super::*;
+
+        #[test]
+        fn base_definition_expands_to_scale_and_base() {
+            let (_, m) = meter();
+            let expansion = Expansion::new("km", &m, Scale::new(1e3).unwrap()).unwrap();
+            assert_scale_close(expansion.scale().value(), 1e3);
+            assert_eq!(expansion.base(), &m);
+        }
+
+        #[test]
+        fn composes_through_derived_definition() {
+            let (id, m) = meter();
+            let km =
+                DeltaUnit::from_atom(&make_derived_atom(id, "km", &m, Scale::new(1e3).unwrap()));
+            let expansion = Expansion::new("Mm", &km, Scale::new(1e3).unwrap()).unwrap();
+            assert_scale_close(expansion.scale().value(), 1e6);
+            assert_eq!(expansion.base(), &m);
+        }
+
+        #[test]
+        fn rejects_out_of_range_total() {
+            let (id, m) = meter();
+            let huge = DeltaUnit::from_atom(&make_derived_atom(
+                id,
+                "huge",
+                &m,
+                Scale::new(1e200).unwrap(),
+            ));
+            let actual = Expansion::new("huger", &huge, Scale::new(1e200).unwrap()).unwrap_err();
+            let expected = UnitError::ScaleOutOfRange {
+                unit: "huger".into(),
+            };
+            assert!(errors_match(&actual, &expected));
+        }
+    }
+}
