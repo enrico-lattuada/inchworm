@@ -6,6 +6,7 @@
 //! (expanded, but keeping named-dimensionless atoms like `plane_angle`
 //! irreducible, used for [`Compatibility::Full`] and `==`).
 
+use std::fmt;
 use std::sync::{Arc, LazyLock};
 
 use crate::{
@@ -366,6 +367,12 @@ impl std::ops::Div<Dimension> for &Dimension {
     type Output = Dimension;
     fn div(self, rhs: Dimension) -> Self::Output {
         self / &rhs
+    }
+}
+
+impl fmt::Display for Dimension {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.factors().fmt(f)
     }
 }
 
@@ -946,5 +953,37 @@ mod tests {
             ..DimensionData::empty()
         });
         assert!(dimension == other_dimension);
+    }
+
+    mod display {
+        use super::*;
+        use crate::DimRegistry;
+
+        #[test]
+        fn displays_named_dimension() {
+            let mut registry = DimRegistry::new("test-reg");
+            registry.add_base("length", Some("L")).unwrap();
+            registry.add_base("time", Some("T")).unwrap();
+            let velocity = registry
+                .add_derived_expr("velocity", "length/time")
+                .unwrap();
+            assert_eq!(velocity.to_string(), "velocity");
+        }
+
+        #[test]
+        fn displays_composite_dimension() {
+            let mut registry = DimRegistry::new("test-reg");
+            registry.add_base("length", Some("L")).unwrap();
+            registry.add_base("time", Some("T")).unwrap();
+            assert_eq!(
+                registry.parse("length/time").unwrap().to_string(),
+                "length·time^-1"
+            );
+        }
+
+        #[test]
+        fn displays_dimensionless_as_one() {
+            assert_eq!(Dimension::dimensionless().to_string(), "1");
+        }
     }
 }
