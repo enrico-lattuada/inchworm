@@ -3,6 +3,7 @@
 //! [`UnitError`] covers every fallible operation in the crate: registry
 //! mutation, expression parsing, exponent arithmetic.
 
+use inchworm_dimensions::Dimension;
 use thiserror::Error;
 
 use crate::UnitRegistryId;
@@ -105,8 +106,26 @@ pub enum UnitError {
         message: String,
     },
 
-    /// The underlying dimension algebra failed: incompatible dimensions,
-    /// exponent overflow, and so on.
+    /// `left` and `right` measure different physical quantities: their base
+    /// signatures differ (e.g., `length` vs `time`), so no conversion exists.
+    #[error(
+        "cannot convert between dimensions `{left}` and `{right}`: \
+        their base signatures differ"
+    )]
+    IncompatibleDimensions { left: Dimension, right: Dimension },
+
+    /// `left` and `right` have the same base signature but are different kinds:
+    /// they differ by a named dimensionless factor (e.g., `torque` vs `energy`,
+    /// `angular_velocity` vs `frequency`). Converting would silently add or drop
+    /// that factor, so it is refused.
+    #[error(
+        "dimensions `{left}` and `{right}` are only partially compatible: \
+        same base signature, different kinds"
+    )]
+    PartiallyCompatibleDimensions { left: Dimension, right: Dimension },
+
+    /// The underlying dimension algebra failed: exponent overflow,
+    /// cross-registry dimensions, and so on.
     /// See [`DimensionError`](inchworm_dimensions::DimensionError) for detail.
     #[error(transparent)]
     Dimension(#[from] inchworm_dimensions::DimensionError),

@@ -308,6 +308,20 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                     ..
                 },
             ) => offset == expected_offset,
+            (
+                UnitError::IncompatibleDimensions { left, right },
+                UnitError::IncompatibleDimensions {
+                    left: expected_left,
+                    right: expected_right,
+                },
+            ) => left == expected_left && right == expected_right,
+            (
+                UnitError::PartiallyCompatibleDimensions { left, right },
+                UnitError::PartiallyCompatibleDimensions {
+                    left: expected_left,
+                    right: expected_right,
+                },
+            ) => left == expected_left && right == expected_right,
             (UnitError::Dimension(a), UnitError::Dimension(b)) => dimension_errors_match(a, b),
             _ => false,
         }
