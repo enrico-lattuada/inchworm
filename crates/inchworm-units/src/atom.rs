@@ -34,8 +34,9 @@ impl Expansion {
     /// Returns [`UnitError::ScaleOutOfRange`] if the scale relative to the
     /// base units overflows or underflows.
     pub(crate) fn new(name: &str, definition: &DeltaUnit, scale: Scale) -> Result<Self, UnitError> {
-        let (def_scale, base) = definition.scale_and_base()?;
-        let total = def_scale
+        let base = definition.base()?;
+        let total = definition
+            .scale()?
             .checked_mul(scale)
             .ok_or_else(|| UnitError::ScaleOutOfRange { unit: name.into() })?;
         Ok(Self { scale: total, base })

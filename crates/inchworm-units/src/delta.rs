@@ -162,41 +162,56 @@ impl DeltaUnit {
     }
 }
 
-/// Expands one atom to base units: `1 atom = scale × base`.
-fn expand_atom(atom: &UnitAtom) -> (Scale, DeltaUnit) {
+/// The scale of one atom relative to base units (`1 atom = scale × base`).
+fn expand_atom_scale(atom: &UnitAtom) -> Scale {
     match &atom.kind {
-        AtomKind::Base => (Scale::ONE, DeltaUnit::from_atom(atom)),
-        AtomKind::Derived(expansion) => (expansion.scale(), expansion.base().clone()),
+        AtomKind::Base => Scale::ONE,
+        AtomKind::Derived(expansion) => expansion.scale(),
+    }
+}
+
+/// The base units of one atom (`1 atom = scale × base`).
+fn expand_atom_base(atom: &UnitAtom) -> DeltaUnit {
+    match &atom.kind {
+        AtomKind::Base => DeltaUnit::from_atom(atom),
+        AtomKind::Derived(expansion) => expansion.base().clone(),
     }
 }
 
 // ---- transformation ----
 impl DeltaUnit {
-    /// Expands every factor down to base units: `1 self = scale × base`.
+    /// Expands every factor's scale down to base units: `1 self = scale × base`.
     ///
-    /// Like [`Self::to_base()`], but keeps the validated [`Scale`].
+    /// # Errors
+    /// Returns [`UnitError::ScaleOutOfRange`] if the scale relative to the
+    /// base units overflows or underflows.
+    pub(crate) fn scale(&self) -> Result<Scale, UnitError> {
+        self.factors
+            .entries()
+            .iter()
+            .try_fold(Scale::ONE, |scale, (atom, exp)| {
+                expand_atom_scale(atom)
+                    .checked_pow(*exp)
+                    .and_then(|s| scale.checked_mul(s))
+            })
+            .ok_or_else(|| UnitError::ScaleOutOfRange {
+                unit: self.to_string(),
+            })
+    }
+
+    /// Expands every factor's base down to base units: `1 self = scale × base`.
     ///
     /// # Errors
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if combining exponents overflows.
-    /// Returns [`UnitError::ScaleOutOfRange`] if the scale relative to the
-    /// base units overflows or underflows.
-    pub(crate) fn scale_and_base(&self) -> Result<(Scale, Self), UnitError> {
-        let out_of_range = || UnitError::ScaleOutOfRange {
-            unit: self.to_string(),
-        };
-        let (mut scale, mut base) = (Scale::ONE, DeltaUnit::dimensionless());
-        for (atom, exp) in self.factors.entries() {
-            let (atom_scale, atom_base) = expand_atom(atom);
-            let atom_base = atom_base.pow(*exp)?;
-            scale = atom_scale
-                .checked_pow(*exp)
-                .and_then(|s| scale.checked_mul(s))
-                .ok_or_else(out_of_range)?;
-            base = base.try_mul(&atom_base)?;
-        }
-        Ok((scale, base))
+    pub(crate) fn base(&self) -> Result<DeltaUnit, UnitError> {
+        self.factors
+            .entries()
+            .iter()
+            .try_fold(DeltaUnit::dimensionless(), |base, (atom, exp)| {
+                base.try_mul(&expand_atom_base(atom).pow(*exp)?)
+            })
     }
 
     /// Expands every factor down to base units: `1 self = scale × base`.
@@ -208,8 +223,7 @@ impl DeltaUnit {
     /// Returns [`UnitError::ScaleOutOfRange`] if the scale relative to the
     /// base units overflows or underflows.
     pub fn to_base(&self) -> Result<(f64, Self), UnitError> {
-        self.scale_and_base()
-            .map(|(scale, base)| (scale.value(), base))
+        Ok((self.scale()?.value(), self.base()?))
     }
 }
 
@@ -225,7 +239,7 @@ mod tests {
     use crate::{
         UnitRegistryId,
         scale::Scale,
-        test_utils::{errors_match, make_atom, make_derived_atom},
+        test_utils::{assert_scale_close, errors_match, make_atom, make_derived_atom},
     };
     use inchworm_dimensions::DimRegistry;
 
@@ -456,9 +470,48 @@ mod tests {
         ))
     }
 
-    mod to_base {
-        use crate::test_utils::assert_scale_close;
+    mod scale {
+        use super::*;
 
+        #[test]
+        fn base_unit_has_scale_one() {
+            let m = mks().m;
+            assert_eq!(m.scale().unwrap(), Scale::ONE);
+        }
+
+        #[test]
+        fn multiplies_factor_scales() {
+            let Mks {
+                m, s, registry_id, ..
+            } = mks();
+            let km = derive(registry_id, "km", &m, 1e3);
+            let h = derive(registry_id, "h", &s, 3600.0);
+            let km_per_hour = km.try_div(&h).unwrap();
+            assert_scale_close(km_per_hour.scale().unwrap().value(), 1e3 / 3600.0);
+        }
+
+        #[test]
+        fn raises_factor_scale_to_exponent() {
+            let Mks { m, registry_id, .. } = mks();
+            let km = derive(registry_id, "km", &m, 1e3);
+            let km2 = km.pow(Exp::int(2)).unwrap();
+            assert_scale_close(km2.scale().unwrap().value(), 1e6);
+        }
+
+        #[test]
+        fn rejects_out_of_range_product() {
+            let Mks { m, registry_id, .. } = mks();
+            let huge = derive(registry_id, "huge", &m, 1e200);
+            let squared = huge.pow(Exp::int(2)).unwrap();
+            let actual = squared.scale().unwrap_err();
+            let expected = UnitError::ScaleOutOfRange {
+                unit: squared.to_string(),
+            };
+            assert!(errors_match(&actual, &expected));
+        }
+    }
+
+    mod to_base {
         use super::*;
 
         #[test]
