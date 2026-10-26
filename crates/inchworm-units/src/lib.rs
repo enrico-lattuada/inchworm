@@ -7,12 +7,14 @@
 //! - **point** (affine) units, a delta unit plus an offset (`degC`, `degF`).
 //!
 //! Delta units compose into [`DeltaUnit`] values; [`Unit`] wraps either kind.
+//! A [`Converter`] turns readings in one unit into readings in another.
 //! Values never need their registry after creation: [`DeltaUnit::to_base`]
 //! expands any unit to base units on its own.
 #![forbid(unsafe_code)]
 
 mod atom;
 mod atom_ids;
+mod converter;
 mod delta;
 mod error;
 mod form;
@@ -26,6 +28,7 @@ mod test_utils;
 mod unit;
 
 pub use atom_ids::{UnitId, UnitRegistryId};
+pub use converter::Converter;
 pub use delta::DeltaUnit;
 pub use error::UnitError;
 pub use form::UnitForm;
