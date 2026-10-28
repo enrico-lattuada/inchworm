@@ -8,8 +8,10 @@ use inchworm_dimensions::{Dimension, Exp};
 use std::fmt;
 
 use crate::{
-    UnitError, UnitForm, UnitRegistryId,
+    Converter, UnitError, UnitForm, UnitRegistryId,
     atom::{AtomKind, UnitAtom},
+    atom_ids::check_same_registry,
+    converter::{Endpoint, converter_between},
     scale::Scale,
 };
 
@@ -101,7 +103,7 @@ impl DeltaUnit {
     /// if combining exponents overflows.
     /// Returns [`UnitError::CrossRegistry`] if `self` and `rhs` were built by different unit registries.
     pub fn try_mul(&self, rhs: &Self) -> Result<Self, UnitError> {
-        self.validate_cross_unit_registry_id(rhs)?;
+        check_same_registry(self.registry_id(), rhs.registry_id())?;
         Ok(Self {
             factors: self.factors.mul(&rhs.factors)?,
             dimension: self.dimension().try_mul(rhs.dimension())?,
@@ -147,18 +149,6 @@ impl DeltaUnit {
             factors: self.factors.pow(e)?,
             dimension: self.dimension().pow(e)?,
         })
-    }
-
-    fn validate_cross_unit_registry_id(&self, rhs: &Self) -> Result<(), UnitError> {
-        if let (Some(lhs_id), Some(rhs_id)) = (self.registry_id(), rhs.registry_id())
-            && lhs_id != rhs_id
-        {
-            return Err(UnitError::CrossRegistry {
-                left: lhs_id,
-                right: rhs_id,
-            });
-        }
-        Ok(())
     }
 }
 
@@ -224,6 +214,28 @@ impl DeltaUnit {
     /// base units overflows or underflows.
     pub fn to_base(&self) -> Result<(f64, Self), UnitError> {
         Ok((self.scale()?.value(), self.base()?))
+    }
+}
+
+// ---- conversion ----
+impl DeltaUnit {
+    /// Builds a reusable [`Converter`] from readings in `self` to readings in `target`.
+    ///
+    /// Delta units convert by scale only (`km/h → m/s`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::CrossRegistry`] if `self` and `target` come from different registries.
+    /// Returns [`UnitError::IncompatibleDimensions`] if their base signatures differ
+    /// (`m → s`).
+    /// Returns [`UnitError::PartiallyCompatibleDimensions`] if they share a base signature
+    /// but are different kinds (`N·m` as torque → `J`).
+    /// Returns [`UnitError::ScaleOutOfRange`] if either unit's scale relative to the base
+    /// units overflows or underflows.
+    /// Returns [`UnitError::ConversionOutOfRange`] if the conversion factor or offset is
+    /// not representable.
+    pub fn converter_to(&self, target: &Self) -> Result<Converter, UnitError> {
+        converter_between(Endpoint::of_delta(self), Endpoint::of_delta(target))
     }
 }
 

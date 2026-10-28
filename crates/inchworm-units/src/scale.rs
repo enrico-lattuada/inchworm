@@ -25,12 +25,20 @@ impl Scale {
 
 // ---- algebra ----
 impl Scale {
-    /// Composes two scales.
+    /// Multiplies `self` by `rhs`; `None` if the product is out of range.
     pub(crate) fn checked_mul(self, rhs: Self) -> Option<Self> {
         Self::new(self.value() * rhs.value())
     }
 
-    /// Raises the scale to `e`.
+    /// Divides `self` by `rhs`; `None` if the quotient is out of range.
+    ///
+    /// A true division, not `self × rhs⁻¹`: `x / x` is exactly `1` in IEEE
+    /// arithmetic, so equal scales give an exact identity factor.
+    pub(crate) fn checked_div(self, rhs: Self) -> Option<Self> {
+        Self::new(self.value() / rhs.value())
+    }
+
+    /// Raises `self` to `e`; `None` if the power is out of range.
     pub(crate) fn checked_pow(self, e: Exp) -> Option<Self> {
         Self::new(self.value().powf(e.to_f64()))
     }
@@ -115,6 +123,30 @@ mod tests {
         #[test]
         fn rejects_underflow_to_subnormal() {
             assert!(Scale(1e-154).checked_mul(Scale(1e-155)).is_none())
+        }
+    }
+
+    mod checked_div {
+        use super::*;
+
+        #[test]
+        fn returns_quotient() {
+            assert_eq!(Scale(6.0).checked_div(Scale(3.0)), Some(Scale(2.0)));
+        }
+
+        #[test]
+        fn equal_scales_give_exactly_one() {
+            assert_eq!(Scale(3.0).checked_div(Scale(3.0)), Some(Scale::ONE));
+        }
+
+        #[test]
+        fn rejects_overflow() {
+            assert!(Scale(1e200).checked_div(Scale(1e-200)).is_none());
+        }
+
+        #[test]
+        fn rejects_underflow() {
+            assert!(Scale(1e-200).checked_div(Scale(1e200)).is_none());
         }
     }
 

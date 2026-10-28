@@ -1,5 +1,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::UnitError;
+
 /// Process-unique identity, assigned from a global counter at registration.
 ///
 /// Never reused: removing and re-adding a name yields a *new* unit, so
@@ -34,6 +36,28 @@ impl UnitRegistryId {
         );
         Self(id)
     }
+}
+
+/// Checks that two units come from the same registry.
+///
+/// `None` (the bare dimensionless `1`, which has no atoms) matches any registry.
+///
+/// # Errors
+///
+/// Returns [`UnitError::CrossRegistry`] if both ids are known and differ.
+pub(crate) fn check_same_registry(
+    left: Option<UnitRegistryId>,
+    right: Option<UnitRegistryId>,
+) -> Result<(), UnitError> {
+    if let (Some(left_id), Some(right_id)) = (left, right)
+        && left_id != right_id
+    {
+        return Err(UnitError::CrossRegistry {
+            left: left_id,
+            right: right_id,
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]

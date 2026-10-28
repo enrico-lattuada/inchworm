@@ -1,7 +1,10 @@
 use inchworm_dimensions::{Dimension, Exp};
 use std::fmt;
 
-use crate::{DeltaUnit, PointUnit, UnitError, UnitRegistryId};
+use crate::{
+    Converter, DeltaUnit, PointUnit, UnitError, UnitRegistryId,
+    converter::{Endpoint, converter_between},
+};
 
 /// A unit as it appears in an expression or on a quantity.
 ///
@@ -113,6 +116,39 @@ impl Unit {
             Self::Delta(delta) => delta.pow(e).map(Self::Delta),
             Self::Point(point) => Err(not_composable(point)),
         }
+    }
+}
+
+// ---- conversion ----
+impl Unit {
+    fn endpoint(&self) -> Endpoint<'_> {
+        match self {
+            Unit::Delta(delta) => Endpoint::of_delta(delta),
+            Unit::Point(point) => Endpoint::of_point(point),
+        }
+    }
+
+    /// Builds a reusable [`Converter`] from readings in `self` to readings in `target`.
+    ///
+    /// Delta units convert by scale only (`km/h → m/s`). Point units also shift the
+    /// origin (`degC → degF`), and a delta unit is treated as an absolute reading on
+    /// its own scale: `K → degC` maps `0` to `−273.15`. This also means that
+    /// `delta_degC → degC` maps `10` to `−263.15`: whether a value is a reading or a
+    /// difference is not visible to units, and is tracked by the quantity layer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::CrossRegistry`] if `self` and `target` come from different registries.
+    /// Returns [`UnitError::IncompatibleDimensions`] if their base signatures differ
+    /// (`m → s`).
+    /// Returns [`UnitError::PartiallyCompatibleDimensions`] if they share a base signature
+    /// but are different kinds (`N·m` as torque → `J`).
+    /// Returns [`UnitError::ScaleOutOfRange`] if either unit's scale relative to the base
+    /// units overflows or underflows.
+    /// Returns [`UnitError::ConversionOutOfRange`] if the conversion factor or offset is
+    /// not representable.
+    pub fn converter_to(&self, target: &Self) -> Result<Converter, UnitError> {
+        converter_between(self.endpoint(), target.endpoint())
     }
 }
 

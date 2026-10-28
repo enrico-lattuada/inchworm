@@ -124,6 +124,12 @@ pub enum UnitError {
     )]
     PartiallyCompatibleDimensions { left: Dimension, right: Dimension },
 
+    /// The conversion from `from` to `to` is not representable: the ratio of the
+    /// two units' scales overflows or underflows, or the offset between their
+    /// origins is not finite. Each unit is valid on its own; only the pair is out of range.
+    #[error("conversion from `{from}` to `{to}` overflows or underflows")]
+    ConversionOutOfRange { from: String, to: String },
+
     /// The underlying dimension algebra failed: exponent overflow,
     /// cross-registry dimensions, and so on.
     /// See [`DimensionError`](inchworm_dimensions::DimensionError) for detail.

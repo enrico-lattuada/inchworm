@@ -322,6 +322,13 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                     right: expected_right,
                 },
             ) => left == expected_left && right == expected_right,
+            (
+                UnitError::ConversionOutOfRange { from, to },
+                UnitError::ConversionOutOfRange {
+                    from: expected_from,
+                    to: expected_to,
+                },
+            ) => from == expected_from && to == expected_to,
             (UnitError::Dimension(a), UnitError::Dimension(b)) => dimension_errors_match(a, b),
             _ => false,
         }
