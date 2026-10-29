@@ -11,6 +11,9 @@ fn mks() -> UnitRegistry {
     let mass = dims.add_base("mass", None).unwrap();
     let time = dims.add_base("time", None).unwrap();
     let temperature = dims.add_base("temperature", None).unwrap();
+    let plane_angle = dims
+        .add_dimensionless_expr("plane_angle", "length / length")
+        .unwrap();
     let mut ureg = UnitRegistry::new("test-ureg", dims);
     ureg.add_prefix("kilo", "k", 1e3).unwrap();
     ureg.add_prefix("milli", "m", 1e-3).unwrap();
@@ -19,6 +22,11 @@ fn mks() -> UnitRegistry {
     let m = ureg.add_base("meter", "m", &length, true).unwrap();
     let s = ureg.add_base("second", "s", &time, true).unwrap();
     let kelvin = ureg.add_base("kelvin", "K", &temperature, true).unwrap();
+    let rad = ureg.add_base("radian", "rad", &plane_angle, true).unwrap();
+    let pi = std::f64::consts::PI;
+    ureg.add_derived("degree", "deg", &rad, pi / 180.0, false)
+        .unwrap();
+    ureg.add_derived("hour", "h", &s, 3600.0, false).unwrap();
     let m2 = m.pow(Exp::int(2)).unwrap();
     let s2 = s.pow(Exp::int(2)).unwrap();
     let joule_def = kg.try_mul(&m2).unwrap().try_div(&s2).unwrap();

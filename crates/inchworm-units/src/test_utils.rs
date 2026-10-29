@@ -86,6 +86,14 @@ pub(crate) fn assert_scale_close(actual: f64, expected: f64) {
 }
 
 #[track_caller]
+pub(crate) fn assert_close(actual: f64, expected: f64) {
+    let (atol, rtol) = (1e-12, 1e-12);
+    let is_close =
+        floats_match(actual, expected) || (actual - expected).abs() <= atol + rtol * expected.abs();
+    assert!(is_close, "{actual} is not close to {expected}")
+}
+
+#[track_caller]
 pub(crate) fn parse_delta(ureg: &UnitRegistry, expr: &str) -> DeltaUnit {
     match ureg.parse(expr) {
         Ok(Unit::Delta(delta)) => delta,
@@ -338,11 +346,12 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
 }
 
 /// A registry with:
-/// - dimensions `length`, `mass`, `time`, `temperature`;
+/// - dimensions `length`, `mass`, `time`, `temperature`, `plane_angle`;
 /// - prefixes `kilo`/`k`, `milli`/`m`, `centi`/`c`;
 /// - base units `kilogram`/`kg` (prefixed, with stem `gram`/`g`), `meter`/`m`,
-///   `second`/`s`, `kelvin`/`K`;
-/// - derived units `joule`/`J` (`kg·m²/s²`) and `delta_deg_Fahrenheit`/`delta_degF` (5/9 K);
+///   `second`/`s`, `kelvin`/`K`, `radian`/`rad`;
+/// - derived units `joule`/`J` (`kg·m²/s²`), `delta_deg_Fahrenheit`/`delta_degF` (5/9 K),
+///   `degree`/`deg` (π/180 rad), `hour`/`h` (3600 s);
 /// - point units `degree_Celsius`/`degC` (`K` + 273.15) and
 ///   `degree_Fahrenheit`/`degF` (`delta_degF` + 459.67).
 ///
@@ -353,6 +362,9 @@ pub(crate) fn mks_registry() -> UnitRegistry {
     let mass = dims.add_base("mass", None).unwrap();
     let time = dims.add_base("time", None).unwrap();
     let temperature = dims.add_base("temperature", None).unwrap();
+    let plane_angle = dims
+        .add_dimensionless_expr("plane_angle", "length / length")
+        .unwrap();
     let mut ureg = UnitRegistry::new("test-ureg", dims);
     ureg.add_prefix("kilo", "k", 1e3).unwrap();
     ureg.add_prefix("milli", "m", 1e-3).unwrap();
@@ -361,6 +373,11 @@ pub(crate) fn mks_registry() -> UnitRegistry {
     let m = ureg.add_base("meter", "m", &length, true).unwrap();
     let s = ureg.add_base("second", "s", &time, true).unwrap();
     let kelvin = ureg.add_base("kelvin", "K", &temperature, true).unwrap();
+    let rad = ureg.add_base("radian", "rad", &plane_angle, true).unwrap();
+    let pi = std::f64::consts::PI;
+    ureg.add_derived("degree", "deg", &rad, pi / 180.0, false)
+        .unwrap();
+    ureg.add_derived("hour", "h", &s, 3600.0, false).unwrap();
     let m2 = m.pow(Exp::int(2)).unwrap();
     let s2 = s.pow(Exp::int(2)).unwrap();
     let joule_def = kg.try_mul(&m2).unwrap().try_div(&s2).unwrap();

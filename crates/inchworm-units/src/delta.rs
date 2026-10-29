@@ -655,4 +655,17 @@ mod tests {
             assert_eq!(format!("{squared_m_over_s:#}"), format!("{factors:#}"));
         }
     }
+
+    mod converter_to {
+        use crate::test_utils::{mks_registry, parse_delta};
+
+        #[test]
+        fn converts_between_delta_units() {
+            let ureg = mks_registry();
+            let m = parse_delta(&ureg, "m");
+            let km = parse_delta(&ureg, "km");
+            let converter = km.converter_to(&m).unwrap();
+            assert_eq!(converter.apply(1.0), 1e3);
+        }
+    }
 }

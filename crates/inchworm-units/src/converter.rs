@@ -204,4 +204,209 @@ mod tests {
             assert!(converter.is_linear())
         }
     }
+
+    mod converter_between {
+        use super::*;
+        use crate::{
+            Unit, UnitRegistry,
+            test_utils::{assert_close, errors_match, mks_registry},
+        };
+        use inchworm_dimensions::DimRegistry;
+
+        #[test]
+        fn same_dimension_scales_linearly() {
+            let ureg = mks_registry();
+            let km = ureg.get("km").unwrap();
+            let m = ureg.get("m").unwrap();
+            let converter = km.converter_to(&m).unwrap();
+            assert_eq!(converter.apply(1.0), 1e3);
+            assert!(converter.is_linear());
+        }
+
+        #[test]
+        fn compound_angular_rate() {
+            let ureg = mks_registry();
+            let deg_per_h = ureg.parse("deg / h").unwrap();
+            let rad_per_s = ureg.parse("rad / s").unwrap();
+            let converter = deg_per_h.converter_to(&rad_per_s).unwrap();
+            let pi = std::f64::consts::PI;
+            assert_close(converter.apply(1.0), pi / 180.0 / 3600.0);
+        }
+
+        #[test]
+        fn celsius_to_kelvin() {
+            let ureg = mks_registry();
+            let deg_c = ureg.get("degC").unwrap();
+            let kelvin = ureg.get("K").unwrap();
+            let converter = deg_c.converter_to(&kelvin).unwrap();
+            assert_eq!(converter.apply(0.0), 273.15);
+        }
+
+        #[test]
+        fn kelvin_to_celsius() {
+            let ureg = mks_registry();
+            let kelvin = ureg.get("K").unwrap();
+            let deg_c = ureg.get("degC").unwrap();
+            let converter = kelvin.converter_to(&deg_c).unwrap();
+            assert_close(converter.apply(273.15), 0.0);
+        }
+
+        #[test]
+        fn fahrenheit_to_celsius() {
+            let ureg = mks_registry();
+            let deg_f = ureg.get("degF").unwrap();
+            let deg_c = ureg.get("degC").unwrap();
+            let converter = deg_f.converter_to(&deg_c).unwrap();
+            assert_close(converter.apply(32.0), 0.0);
+            assert_close(converter.apply(212.0), 100.0);
+        }
+
+        #[test]
+        fn round_trip_is_identity() {
+            let ureg = mks_registry();
+            let cases = [("degF", "degC"), ("deg / h", "rad / s")];
+            let values = [-40.0, 0.0, 32.0, 100.0];
+            for (left, right) in cases {
+                let a = ureg.parse(left).unwrap();
+                let b = ureg.parse(right).unwrap();
+                let there = a.converter_to(&b).unwrap();
+                let back = b.converter_to(&a).unwrap();
+                for x in values {
+                    assert_close(back.apply(there.apply(x)), x);
+                }
+            }
+        }
+
+        #[test]
+        fn same_point_unit_gives_identity() {
+            let ureg = mks_registry();
+            let deg_f = ureg.get("degF").unwrap();
+            let converter = deg_f.converter_to(&deg_f).unwrap();
+            assert!(converter.is_linear());
+            assert_eq!(converter.apply(32.0), 32.0);
+        }
+
+        #[test]
+        fn delta_to_delta_is_linear() {
+            let ureg = mks_registry();
+            let km_per_h = ureg.parse("km / h").unwrap();
+            let m_per_s = ureg.parse("m / s").unwrap();
+            let converter = km_per_h.converter_to(&m_per_s).unwrap();
+            assert!(converter.is_linear());
+            assert_close(converter.apply(3.6), 1.0);
+        }
+
+        #[test]
+        fn delta_unit_to_point_converts_as_reading() {
+            let ureg = mks_registry();
+            let delta_deg_f = ureg.get("delta_degF").unwrap();
+            let deg_f = ureg.get("degF").unwrap();
+            let converter = delta_deg_f.converter_to(&deg_f).unwrap();
+            assert!(!converter.is_linear());
+            // A delta-unit value is read as a reading from the delta's zero
+            // (absolute zero here), not as a difference; see Unit::converter_to
+            assert_eq!(converter.apply(10.0), 10.0 - 459.67);
+        }
+
+        #[test]
+        fn rejects_incompatible_dimensions() {
+            let ureg = mks_registry();
+            let m = ureg.get("m").unwrap();
+            let s = ureg.get("s").unwrap();
+            let actual = m.converter_to(&s).unwrap_err();
+            let expected = UnitError::IncompatibleDimensions {
+                left: m.dimension().clone(),
+                right: s.dimension().clone(),
+            };
+            assert!(errors_match(&actual, &expected));
+        }
+
+        #[test]
+        fn rejects_partially_compatible_dimensions() {
+            let ureg = mks_registry();
+            let joule_per_rad = ureg.parse("J / rad").unwrap();
+            let joule = ureg.get("J").unwrap();
+            let actual = joule_per_rad.converter_to(&joule).unwrap_err();
+            let expected = UnitError::PartiallyCompatibleDimensions {
+                left: joule_per_rad.dimension().clone(),
+                right: joule.dimension().clone(),
+            };
+            assert!(errors_match(&actual, &expected));
+        }
+
+        #[test]
+        fn rejects_units_from_another_registry() {
+            let ureg_1 = mks_registry();
+            let ureg_2 = mks_registry();
+            let m_1 = ureg_1.get("m").unwrap();
+            let m_2 = ureg_2.get("m").unwrap();
+            let actual = m_1.converter_to(&m_2).unwrap_err();
+            let expected = UnitError::CrossRegistry {
+                left: m_1.registry_id().unwrap(),
+                right: m_2.registry_id().unwrap(),
+            };
+            assert!(errors_match(&actual, &expected));
+        }
+
+        #[test]
+        fn rejects_dimensionless_units_from_another_registry() {
+            let mut ureg_1 = UnitRegistry::new("test-ureg-1", DimRegistry::new("test-reg-1"));
+            ureg_1
+                .add_derived("percent", "perc", &DeltaUnit::dimensionless(), 100.0, false)
+                .unwrap();
+            let mut ureg_2 = UnitRegistry::new("test-ureg-2", DimRegistry::new("test-reg-2"));
+            ureg_2
+                .add_derived("percent", "perc", &DeltaUnit::dimensionless(), 100.0, false)
+                .unwrap();
+            let perc_1 = ureg_1.get("perc").unwrap();
+            let perc_2 = ureg_2.get("perc").unwrap();
+            let actual = perc_1.converter_to(&perc_2).unwrap_err();
+            let expected = UnitError::CrossRegistry {
+                left: perc_1.registry_id().unwrap(),
+                right: perc_2.registry_id().unwrap(),
+            };
+            assert!(errors_match(&actual, &expected));
+        }
+
+        #[test]
+        fn accepts_bare_dimensionless_with_any_registry() {
+            let mut ureg = UnitRegistry::new("test-ureg", DimRegistry::new("test-reg"));
+            ureg.add_derived("percent", "perc", &DeltaUnit::dimensionless(), 100.0, false)
+                .unwrap();
+            let perc = ureg.get("perc").unwrap();
+            let converter = Unit::Delta(DeltaUnit::dimensionless()).converter_to(&perc);
+            assert!(converter.is_ok());
+        }
+
+        #[test]
+        fn propagates_scale_out_of_range() {
+            let mut ureg = mks_registry();
+            ureg.add_derived_expr("huge", "huge", "m", 1e200, false)
+                .unwrap();
+            let huge2 = ureg.parse("huge^2").unwrap();
+            let m2 = ureg.parse("m^2").unwrap();
+            let actual = huge2.converter_to(&m2).unwrap_err();
+            let expected = UnitError::ScaleOutOfRange {
+                unit: huge2.to_string(),
+            };
+            assert!(errors_match(&actual, &expected));
+        }
+
+        #[test]
+        fn rejects_conversion_out_of_range() {
+            let mut ureg = mks_registry();
+            let huge = ureg
+                .add_derived_expr("huge", "huge", "m", 1e200, false)
+                .unwrap();
+            let tiny = ureg
+                .add_derived_expr("tiny", "tiny", "m", 1e-200, false)
+                .unwrap();
+            let actual = huge.converter_to(&tiny).unwrap_err();
+            let expected = UnitError::ConversionOutOfRange {
+                from: huge.to_string(),
+                to: tiny.to_string(),
+            };
+            assert!(errors_match(&actual, &expected));
+        }
+    }
 }

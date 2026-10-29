@@ -1137,8 +1137,11 @@ mod tests {
             let Some(Unit::Delta(kelvin)) = ureg.get("K") else {
                 panic!("kelvin not in registry")
             };
-            assert_eq!(bases, HashSet::from([kg, m, s, kelvin]));
-            assert_eq!(ureg.base_units().count(), 4);
+            let Some(Unit::Delta(rad)) = ureg.get("rad") else {
+                panic!("rad not in registry")
+            };
+            assert_eq!(bases, HashSet::from([kg, m, s, kelvin, rad]));
+            assert_eq!(ureg.base_units().count(), 5);
         }
 
         #[test]
