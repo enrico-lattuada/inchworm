@@ -1233,6 +1233,26 @@ mod tests {
         }
 
         #[test]
+        fn parses_multibyte_prefix_and_stem() {
+            let mut ureg = mks_registry();
+            let Unit::Delta(m) = ureg.get("m").unwrap() else {
+                panic!("m not a delta unit")
+            };
+            ureg.add_prefix("micro", "µ", 1e-6).unwrap();
+            ureg.add_derived("angstrom", "Å", &m, 1e-10, true).unwrap();
+            assert_expands_to(&ureg, "µm", 1e-6, "m");
+            assert_expands_to(&ureg, "µÅ", 1e-16, "m");
+        }
+
+        #[test]
+        fn accepts_symbol_only_names() {
+            let mut ureg = mks_registry();
+            ureg.add_derived("percent", "%", &DeltaUnit::dimensionless(), 0.01, false)
+                .unwrap();
+            assert_eq!(ureg.parse("%").unwrap(), ureg.parse("percent").unwrap());
+        }
+
+        #[test]
         fn rejects_prefix_on_non_prefixable_unit() {
             let ureg = mks_registry();
             let cases = [

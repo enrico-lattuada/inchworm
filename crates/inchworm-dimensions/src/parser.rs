@@ -1,11 +1,13 @@
 //! Dimension-expression grammar: tokenizer + recursive-descent parser.
 //!
 //! ```text
-//! expr     := term { ("*" | "·" | "/") term }        # left-assoc; "/" binds like "*"
+//! expr     := term { ("*" | "·" | "×" | "/") term }   # left-assoc; "/" binds like "*"
 //! term     := factor [ "^" ["-"] ( "(" exponent ")" | INT ) ]
 //! factor   := IDENT | "1" | "(" expr ")"
 //! exponent := ["-"] INT [ "/" INT ]                   # 2, -1, 1/2, -3/2, only reachable inside parens
-//! IDENT    := [A-Za-z_][A-Za-z0-9_]*
+//! IDENT    := one or more chars that are not whitespace, control,
+//!             an operator, or RESERVED (including superscripts);
+//!             not starting with an ASCII digit
 //! ```
 
 use std::fmt;
@@ -15,6 +17,25 @@ use std::str::CharIndices;
 use crate::Exp;
 use crate::dimension::Dimension;
 use crate::error::DimensionError;
+
+/// Characters reserved for future syntax: excluded from identifiers by [`is_ident_char`].
+/// Reserving a character later breaks every name that uses it, so
+/// the set is fixed up front:
+/// - `.` `,`: decimal separators;
+/// - `+` `=`: exponent signs in numbers (`1e+3`), definitions;
+/// - `[` `]` `{` `}`: annotations (UCUM-style `{count}`);
+/// - `;` `:`: separators.
+const RESERVED_CHARS: [char; 10] = ['.', ',', '+', '=', '[', ']', '{', '}', ';', ':'];
+
+/// Superscript digits and minus (`²`, `⁻¹`): reserved for exponent syntax, so
+/// `length²` is an error rather than an unknown dimension, and can become
+/// `length^2` later without breaking any name.
+fn is_superscript(c: char) -> bool {
+    matches!(
+        c,
+        '⁰' | '¹' | '²' | '³' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' | '⁻'
+    )
+}
 
 /// Parse an expression against a name-resolver (the registry, or the TOML
 /// loader's in-progress symbol table). Errors carry byte offsets so
@@ -125,6 +146,56 @@ impl<'a> Lexer<'a> {
     }
 }
 
+/// The operator token `c` stands for, if any.
+fn operator_token(c: char) -> Option<Token> {
+    match c {
+        '*' | '·' | '×' => Some(Token::Star),
+        '-' => Some(Token::Minus),
+        '/' => Some(Token::Slash),
+        '^' => Some(Token::Caret),
+        '(' => Some(Token::LParen),
+        ')' => Some(Token::RParen),
+        _ => None,
+    }
+}
+
+/// Characters that are neither tokens nor part of an identifier.
+fn is_reserved(c: char) -> bool {
+    RESERVED_CHARS.contains(&c) || is_superscript(c)
+}
+
+/// Whether `c` can be part of an identifier (a dimension name or symbol) in
+/// dimension expressions.
+///
+/// Every character can, except:
+/// - whitespace and control characters;
+/// - operators: `*` `·` `×` `/` `^` `-` `(` `)`;
+/// - superscripts `⁰`-`⁹` and `⁻`, reserved for exponents;
+/// - `.` `,` `+` `=` `[` `]` `{` `}` `;` `:`, reserved for future syntax.
+///
+/// So letters in any script (`µ`, `Ω`, `Θ`) and symbols (`°`, `%`, `′`, `"`) are
+/// identifier characters. An identifier is a run of them that does not start
+/// with an ASCII digit, since a digit starts a number.
+///
+/// The excluded set is part of the stable API: excluding another character
+/// would break every name that uses it, so that only happens in a breaking release.
+/// Other grammars can call this function to accept exactly the same names.
+///
+/// # Examples
+///
+/// ```
+/// use inchworm_dimensions::is_ident_char;
+///
+/// assert!(is_ident_char('Θ'));
+/// assert!(is_ident_char('%'));
+/// assert!(!is_ident_char('·'));
+/// assert!(!is_ident_char('²'));
+/// assert!(!is_ident_char('.'));
+/// ```
+pub fn is_ident_char(c: char) -> bool {
+    !(c.is_whitespace() || c.is_control() || operator_token(c).is_some() || is_reserved(c))
+}
+
 impl<'a> Iterator for Lexer<'a> {
     type Item = Result<Spanned, DimensionError>;
 
@@ -150,29 +221,28 @@ impl<'a> Iterator for Lexer<'a> {
                     message: e.to_string(),
                 })),
             }
-        } else if c.is_ascii_alphanumeric() || c == '_' {
-            let consumed = self.consume_while(start, |c| c.is_ascii_alphanumeric() || c == '_');
-            let (token, offset) = (Token::Ident(consumed.into()), start);
-            Some(Ok(Spanned { token, offset }))
-        } else if let Some(token) = match c {
-            '*' | '·' => Some(Token::Star),
-            '-' => Some(Token::Minus),
-            '/' => Some(Token::Slash),
-            '^' => Some(Token::Caret),
-            '(' => Some(Token::LParen),
-            ')' => Some(Token::RParen),
-            _ => None,
-        } {
+        } else if let Some(token) = operator_token(c) {
             self.chars.next();
             let offset = start;
             Some(Ok(Spanned { token, offset }))
-        } else {
+        } else if c.is_control() {
             self.chars.next();
             Some(Err(DimensionError::Parse {
                 src: self.src.into(),
                 offset: start,
-                message: format!("unsupported char '{c}'"),
+                message: format!("unsupported control character {c:?}"),
             }))
+        } else if is_reserved(c) {
+            self.chars.next();
+            Some(Err(DimensionError::Parse {
+                src: self.src.into(),
+                offset: start,
+                message: format!("reserved character {c:?}"),
+            }))
+        } else {
+            let consumed = self.consume_while(start, is_ident_char);
+            let (token, offset) = (Token::Ident(consumed.into()), start);
+            Some(Ok(Spanned { token, offset }))
         }
     }
 }
@@ -361,8 +431,15 @@ mod tests {
         }
 
         #[test]
+        fn accepts_times_as_multiplication() {
+            let expr = "length × time";
+            let idents = extract_idents(expr).unwrap();
+            assert_eq!(idents, vec!["length", "time"]);
+        }
+
+        #[test]
         fn propagates_bad_char() {
-            let expr = "length @ length";
+            let expr = "length ; length";
             let err = extract_idents(expr).unwrap_err();
             let expected_err = DimensionError::Parse {
                 src: expr.into(),
@@ -392,6 +469,12 @@ mod tests {
         }
 
         #[test]
+        fn accepts_non_ascii_identifier() {
+            assert!(is_valid_ident("µmeter"));
+            assert!(is_valid_ident("Θ"));
+        }
+
+        #[test]
         fn rejects_multi_word_name() {
             assert!(!is_valid_ident("plane angle"));
         }
@@ -402,8 +485,11 @@ mod tests {
         }
 
         #[test]
-        fn rejects_unsupported_character() {
-            assert!(!is_valid_ident("µmeter"));
+        fn rejects_reserved_character() {
+            let cases = ["a.b", "a;b", "a²"];
+            for src in cases {
+                assert!(!is_valid_ident(src), "{src:?} is valid ident");
+            }
         }
 
         #[test]

@@ -5,7 +5,8 @@
 //! term     := factor [ ("^" ["-"] ("(" exponent ")" | INT)) | SUPERSCRIPT ]
 //! factor   := IDENT | "1" | "(" expr ")"
 //! exponent := ["-"] INT [ "/" INT ]
-//! IDENT    := [A-Za-z_][A-Za-z0-9_]*
+//! IDENT    := one or more chars accepted by inchworm_dimensions::is_ident_char that are not operators;
+//!             not starting with an ASCII digit
 //! ```
 
 use std::{
@@ -45,8 +46,7 @@ pub(crate) fn parse_unit_expr<'a>(
     src: &'a str,
     resolve: &'a dyn Fn(&str) -> Result<Unit, UnitError>,
 ) -> Result<Unit, UnitError> {
-    let chars = src.char_indices().peekable();
-    let lexer = Lexer { src, chars };
+    let lexer = Lexer::new(src);
     let tokens = lexer.peekable();
     let mut parser = Parser {
         tokens,
@@ -69,8 +69,7 @@ pub(crate) fn parse_unit_expr<'a>(
 }
 
 pub(crate) fn is_valid_ident(src: &str) -> bool {
-    let chars = src.char_indices().peekable();
-    let lexer = Lexer { src, chars };
+    let lexer = Lexer::new(src);
     let mut tokens = Vec::new();
     for item in lexer {
         match item {
@@ -105,6 +104,19 @@ enum Token {
     RParen,
 }
 
+/// The operator token `c` stands for, if any.
+fn operator_token(c: char) -> Option<Token> {
+    match c {
+        MUL_CHAR | PRETTY_MUL_CHAR | ALT_PRETTY_MUL_CHAR => Some(Token::Star),
+        MINUS_CHAR => Some(Token::Minus),
+        SLASH_CHAR => Some(Token::Slash),
+        CARET_CHAR => Some(Token::Caret),
+        LPAREN_CHAR => Some(Token::LParen),
+        RPAREN_CHAR => Some(Token::RParen),
+        _ => None,
+    }
+}
+
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -136,6 +148,13 @@ struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
+    fn new(src: &'a str) -> Self {
+        Self {
+            src,
+            chars: src.char_indices().peekable(),
+        }
+    }
+
     fn consume_while(&mut self, start: usize, pred: impl Fn(char) -> bool) -> &'a str {
         let mut end = start;
         while let Some(&(i, c)) = self.chars.peek() {
@@ -182,6 +201,12 @@ pub(crate) fn digit_to_superscript(c: char) -> Option<char> {
     }
 }
 
+/// Whether `c` can be part of an identifier: anything except whitespace,
+/// control characters, operators, superscripts, and reserved characters.
+fn is_ident_char(c: char) -> bool {
+    inchworm_dimensions::is_ident_char(c) && operator_token(c).is_none()
+}
+
 impl<'a> Iterator for Lexer<'a> {
     type Item = Result<Spanned, UnitError>;
 
@@ -212,10 +237,6 @@ impl<'a> Iterator for Lexer<'a> {
                     })),
                 }
             }
-        } else if c.is_ascii_alphanumeric() || c == '_' {
-            let consumed = self.consume_while(start, |c| c.is_ascii_alphanumeric() || c == '_');
-            let (token, offset) = (Token::Ident(consumed.into()), start);
-            Some(Ok(Spanned { token, offset }))
         } else if superscript_to_digit(c).is_some() {
             let consumed: String = self
                 .consume_while(start, |c| superscript_to_digit(c).is_some())
@@ -233,25 +254,28 @@ impl<'a> Iterator for Lexer<'a> {
                     message: e.to_string(),
                 })),
             }
-        } else if let Some(token) = match c {
-            MUL_CHAR | PRETTY_MUL_CHAR | ALT_PRETTY_MUL_CHAR => Some(Token::Star),
-            MINUS_CHAR => Some(Token::Minus),
-            SLASH_CHAR => Some(Token::Slash),
-            CARET_CHAR => Some(Token::Caret),
-            LPAREN_CHAR => Some(Token::LParen),
-            RPAREN_CHAR => Some(Token::RParen),
-            _ => None,
-        } {
+        } else if let Some(token) = operator_token(c) {
             self.chars.next();
             let offset = start;
             Some(Ok(Spanned { token, offset }))
-        } else {
+        } else if c.is_control() {
             self.chars.next();
             Some(Err(UnitError::Parse {
                 src: self.src.into(),
                 offset: start,
-                message: format!("unsupported char '{c}'"),
+                message: format!("unsupported control character {c:?}"),
             }))
+        } else if !inchworm_dimensions::is_ident_char(c) {
+            self.chars.next();
+            Some(Err(UnitError::Parse {
+                src: self.src.into(),
+                offset: start,
+                message: format!("reserved character {c:?}"),
+            }))
+        } else {
+            let consumed = self.consume_while(start, is_ident_char);
+            let (token, offset) = (Token::Ident(consumed.into()), start);
+            Some(Ok(Spanned { token, offset }))
         }
     }
 }
@@ -554,5 +578,114 @@ mod tests {
             assert_eq!(ureg.parse(&unit.to_string()).unwrap(), unit);
             assert_eq!(ureg.parse(&format!("{unit:#}")).unwrap(), unit);
         }
+    }
+
+    #[track_caller]
+    fn tokens(src: &str) -> Vec<Token> {
+        let lexer = Lexer::new(src);
+        lexer
+            .map(|item| item.map(|spanned| spanned.token))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn accepts_non_ascii_identifiers() {
+        let cases = ["µm", "Ω", "Θ", "°C", "′", "″", "%", "‰"];
+        for name in cases {
+            assert!(is_valid_ident(name), "{name:?} is not a valid ident")
+        }
+    }
+
+    #[test]
+    fn accepts_quote_symbols() {
+        assert!(is_valid_ident("'"));
+        assert!(is_valid_ident("\""));
+    }
+
+    #[test]
+    fn superscript_ends_identifier() {
+        assert_eq!(
+            tokens("Ω²"),
+            vec![Token::Ident("Ω".into()), Token::Superscript(2)],
+        );
+        assert_eq!(
+            tokens("m⁻¹"),
+            vec![Token::Ident("m".into()), Token::Superscript(-1)],
+        );
+    }
+
+    #[test]
+    fn operators_end_identifier() {
+        let cases = [
+            ("Ω*s", Token::Star),
+            ("Ω·s", Token::Star),
+            ("Ω×s", Token::Star),
+            ("Ω/s", Token::Slash),
+        ];
+        for (src, op) in cases {
+            assert_eq!(
+                tokens(src),
+                vec![Token::Ident("Ω".into()), op, Token::Ident("s".into())]
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_reserved_chars() {
+        let cases = ['.', ',', '+', '=', '[', ']', '{', '}', ';', ':'];
+        for r in cases {
+            let src = format!("m{r}s");
+            assert!(!is_valid_ident(&src), "{src} is a valid ident");
+        }
+    }
+
+    #[test]
+    fn reports_reserved_char() {
+        let ureg = mks_registry();
+        let UnitError::Parse {
+            offset, message, ..
+        } = ureg.parse("m;s").unwrap_err()
+        else {
+            panic!("not a parse error")
+        };
+        assert_eq!(offset, 1);
+        assert_eq!(message, "reserved character ';'");
+    }
+
+    #[test]
+    fn rejects_control_chars() {
+        let ureg = mks_registry();
+        let cases = [
+            ("m\u{7}", "unsupported control character '\\u{7}'"),
+            ("m\u{80}", "unsupported control character '\\u{80}'"),
+        ];
+        for (expr, expected_message) in cases {
+            let UnitError::Parse {
+                offset, message, ..
+            } = ureg.parse(expr).unwrap_err()
+            else {
+                panic!("not a parse error")
+            };
+            assert_eq!(offset, 1);
+            assert_eq!(message, expected_message);
+        }
+    }
+
+    #[test]
+    fn reports_byte_offsets_after_multibyte_chars() {
+        let mut ureg = mks_registry();
+        let Unit::Delta(m) = ureg.get("m").unwrap() else {
+            panic!("m not a delta unit")
+        };
+        ureg.add_derived("micrometre", "µm", &m, 1e-6, false)
+            .unwrap();
+        let actual = ureg.parse("µm / .").unwrap_err();
+        let expected = UnitError::Parse {
+            src: "µm / .".into(),
+            offset: 6,
+            message: "".into(),
+        };
+        assert!(errors_match(&actual, &expected));
     }
 }

@@ -448,6 +448,15 @@ mod tests {
         }
 
         #[test]
+        fn accepts_non_ascii_symbol() {
+            assert!(
+                DimRegistry::new("test-reg")
+                    .add_base("temperature", Some("Θ"))
+                    .is_ok()
+            );
+        }
+
+        #[test]
         fn rejects_duplicate_name() {
             let mut registry = DimRegistry::new("test_reg");
             registry.add_base("length", Some("L")).unwrap();
