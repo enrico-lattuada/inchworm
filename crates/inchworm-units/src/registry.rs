@@ -11,6 +11,7 @@ use inchworm_dimensions::{DimRegistry, Dimension, DimensionError, Exp};
 use crate::{
     DeltaUnit, PointUnit, Unit, UnitError, UnitId, UnitRegistryId,
     atom::{AtomData, AtomKind, Expansion, PointAtom, PointData, UnitAtom},
+    fold::lookup_key,
     parse::{parse_unit_expr, validate_ident},
     prefix::Prefix,
     scale::Scale,
@@ -134,9 +135,10 @@ impl UnitRegistry {
     }
 
     fn find_entry(&self, name_or_symbol: &str) -> Option<&Entry> {
-        self.entries.get(name_or_symbol).or_else(|| {
+        let key = lookup_key(name_or_symbol);
+        self.entries.get(key.as_ref()).or_else(|| {
             self.by_symbol
-                .get(name_or_symbol)
+                .get(key.as_ref())
                 .and_then(|canonical| self.entries.get(canonical))
         })
     }
@@ -160,11 +162,12 @@ impl UnitRegistry {
     }
 
     fn find_prefix(&self, name: &str) -> Result<&Prefix, UnitError> {
+        let key = lookup_key(name);
         self.prefixes
-            .get(name)
+            .get(key.as_ref())
             .or_else(|| {
                 self.prefix_by_symbol
-                    .get(name)
+                    .get(key.as_ref())
                     .and_then(|canonical| self.prefixes.get(canonical))
             })
             .ok_or_else(|| UnitError::UnknownPrefix {
@@ -179,8 +182,10 @@ impl UnitRegistry {
     /// Unchecked: stores the atom. Callers must validate the name,
     /// symbol and every other input first.
     fn insert_entry(&mut self, name: &str, symbol: &str, entry: Entry) {
-        self.by_symbol.insert(symbol.into(), name.into());
-        self.entries.insert(name.into(), entry);
+        let key = lookup_key(name);
+        self.by_symbol
+            .insert(lookup_key(symbol).into(), key.as_ref().into());
+        self.entries.insert(key.as_ref().into(), entry);
     }
 
     /// Unchecked: builds and stores the atom. Callers must validate the name,
@@ -257,13 +262,14 @@ impl UnitRegistry {
 // ---- validation ----
 impl UnitRegistry {
     fn is_unit_taken(&self, candidate: &str) -> bool {
-        self.entries.contains_key(candidate) || self.by_symbol.contains_key(candidate)
+        let key = lookup_key(candidate);
+        self.entries.contains_key(key.as_ref()) || self.by_symbol.contains_key(key.as_ref())
     }
 
     fn validate_unit(&self, name: &str, symbol: &str) -> Result<(), UnitError> {
         validate_ident(name)?;
         validate_ident(symbol)?;
-        if self.is_unit_taken(name) || self.prefixes.contains_key(name) {
+        if self.is_unit_taken(name) || self.prefixes.contains_key(lookup_key(name).as_ref()) {
             Err(UnitError::DuplicateName {
                 name: name.into(),
                 registry: self.name().into(),
@@ -335,7 +341,8 @@ impl UnitRegistry {
     }
 
     fn is_prefix_taken(&self, candidate: &str) -> bool {
-        self.prefixes.contains_key(candidate) || self.prefix_by_symbol.contains_key(candidate)
+        let key = lookup_key(candidate);
+        self.prefixes.contains_key(key.as_ref()) || self.prefix_by_symbol.contains_key(key.as_ref())
     }
 
     fn validate_prefix(&self, name: &str, symbol: &str) -> Result<(), UnitError> {
@@ -553,8 +560,10 @@ impl UnitRegistry {
             symbol: symbol.into(),
             factor: scale,
         };
-        self.prefixes.insert(name.into(), prefix);
-        self.prefix_by_symbol.insert(symbol.into(), name.into());
+        let key = lookup_key(name);
+        self.prefixes.insert(key.as_ref().into(), prefix);
+        self.prefix_by_symbol
+            .insert(lookup_key(symbol).into(), key.as_ref().into());
         Ok(())
     }
 }
@@ -702,6 +711,18 @@ mod tests {
         }
 
         #[test]
+        fn rejects_look_alike_duplicate_symbol() {
+            let mut ureg = UnitRegistry::new("test-ureg", DimRegistry::new("test-reg"));
+            ureg.add_prefix("micro", "\u{B5}", 1e-6).unwrap();
+            let actual = ureg.add_prefix("mu", "\u{3BC}", 1e-6).unwrap_err();
+            let expected = UnitError::DuplicateName {
+                name: "\u{3BC}".into(),
+                registry: "test-ureg".into(),
+            };
+            assert!(errors_match(&actual, &expected));
+        }
+
+        #[test]
         fn rejects_name_equal_to_a_unit_name() {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
@@ -774,6 +795,22 @@ mod tests {
             let actual = ureg.add_base("distance", "m", &length, true).unwrap_err();
             let expected = UnitError::DuplicateName {
                 name: "m".into(),
+                registry: "test-ureg".into(),
+            };
+            assert!(errors_match(&actual, &expected));
+        }
+
+        #[test]
+        fn rejects_look_alike_duplicate_symbol() {
+            let mut dims = DimRegistry::new("test-reg");
+            let resistance = dims.add_base("resistance", None).unwrap();
+            let mut ureg = UnitRegistry::new("test-ureg", dims);
+            ureg.add_base("ohm", "\u{3A9}", &resistance, true).unwrap();
+            let actual = ureg
+                .add_base("Ohm", "\u{2126}", &resistance, true)
+                .unwrap_err();
+            let expected = UnitError::DuplicateName {
+                name: "\u{2126}".into(),
                 registry: "test-ureg".into(),
             };
             assert!(errors_match(&actual, &expected));
@@ -1105,6 +1142,24 @@ mod tests {
         }
 
         #[test]
+        fn kelvin_sign_finds_kelvin() {
+            let ureg = mks_registry();
+            let kelvin = ureg.get("K");
+            assert!(kelvin.is_some());
+            assert_eq!(ureg.get("\u{212A}"), kelvin);
+        }
+
+        #[test]
+        fn display_keeps_symbol_as_written() {
+            let mut dims = DimRegistry::new("test-reg");
+            let resistance = dims.add_base("resistance", None).unwrap();
+            let mut ureg = UnitRegistry::new("test-ureg", dims);
+            ureg.add_base("ohm", "\u{2126}", &resistance, true).unwrap();
+            let ohm = ureg.get("\u{3A9}").unwrap();
+            assert_eq!(ohm.to_string(), "\u{2126}");
+        }
+
+        #[test]
         fn returns_point_units() {
             let ureg = mks_registry();
             assert!(matches!(ureg.get("degC"), Some(Unit::Point(_))));
@@ -1242,6 +1297,24 @@ mod tests {
             ureg.add_derived("angstrom", "Å", &m, 1e-10, true).unwrap();
             assert_expands_to(&ureg, "µm", 1e-6, "m");
             assert_expands_to(&ureg, "µÅ", 1e-16, "m");
+        }
+
+        #[test]
+        fn micro_sign_and_mu_find_the_same_prefix() {
+            let cases = ["\u{B5}", "\u{3BC}"];
+            for registered in cases {
+                let mut ureg = mks_registry();
+                ureg.add_prefix("micro", registered, 1e-6).unwrap();
+                let micro_sign = ureg.parse("\u{B5}m").unwrap();
+                let mu = ureg.parse("\u{3BC}m").unwrap();
+                assert_eq!(
+                    micro_sign,
+                    mu,
+                    "prefix registered as {}",
+                    registered.escape_unicode()
+                );
+                assert_expands_to(&ureg, "\u{B5}m", 1e-6, "m");
+            }
         }
 
         #[test]

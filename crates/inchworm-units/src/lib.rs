@@ -17,6 +17,7 @@ mod atom_ids;
 mod converter;
 mod delta;
 mod error;
+mod fold;
 mod form;
 mod parse;
 mod point;
