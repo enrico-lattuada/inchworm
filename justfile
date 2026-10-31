@@ -32,8 +32,19 @@ doc:
 deny:
     cargo deny check
 
-# Run fmt-check, clippy, deny, and test
-ci: fmt-check clippy-strict-ndf clippy-strict deny test
+# Check that the pinned toolchain equals the MSRV (workspace rust-version).
+toolchain-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pin=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
+    msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
+    if [ -z "$pin" ] || [ "$pin" != "$msrv" ]; then
+        echo "rust-toolchain.toml pins '$pin' but rust-version is '$msrv'" >&2
+        exit 1
+    fi
+
+# Run toolchain-check, fmt-check, clippy, deny, and test
+ci: toolchain-check fmt-check clippy-strict-ndf clippy-strict deny test
 
 # Save a benchmark baseline named NAME
 bench-save NAME:

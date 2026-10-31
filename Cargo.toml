@@ -5,6 +5,7 @@ members = ["crates/inchworm-dimensions", "crates/inchworm-units"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+# Must equal the channel in rust-toolchain.toml (checked by just toolchain-check).
 rust-version = "1.97.1"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/enrico-lattuada/inchworm"

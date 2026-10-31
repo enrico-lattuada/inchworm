@@ -1,3 +1,4 @@
 [toolchain]
+# The MSRV: must equal workspace.package.rust-version (checked by just toolchain-check).
 channel = "1.97.1"
 components = ["rust-analyzer", "rustfmt", "clippy"]

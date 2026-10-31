@@ -19,6 +19,10 @@ on:
   # trigger on request
   workflow_dispatch:
 
+  # trigger weekly, to catch new stable releases and advisories
+  schedule:
+    - cron: "0 6 * * 1"
+
 jobs:
   pre-commit:
     runs-on: ubuntu-latest
@@ -34,6 +38,12 @@ jobs:
       - name: 🔍 Run pre-commit checks on all files
         run: pre-commit run --all-files --verbose --color=always --show-diff-on-failure
 
+      - name: 📦 Install just
+        uses: extractions/setup-just@v3
+
+      - name: 🔗 Check pinned toolchain equals rust-version
+        run: just toolchain-check
+
   clippy:
     runs-on: ubuntu-latest
     strategy:
@@ -45,7 +55,7 @@ jobs:
       - name: 📦 Rust cache
         uses: Swatinem/rust-cache@v2.9.2
         with:
-          shared-key: rust-${{ matrix.features }}
+          shared-key: clippy-${{ matrix.features }}
 
       - name: 🔎 Run clippy
         run: cargo clippy --workspace --all-targets ${{ matrix.features }} -- -D warnings
@@ -59,17 +69,41 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         features: ["--all-features", "--no-default-features"]
+        os: ["ubuntu-latest", "macos-latest", "windows-latest"]
+      fail-fast: false
     steps:
       - uses: actions/checkout@v7
 
       - name: 📦 Rust cache
         uses: Swatinem/rust-cache@v2.9.2
         with:
-          shared-key: rust-${{ matrix.features }}
+          shared-key: test-${{ matrix.os }}-${{ matrix.features }}
+
+      - name: 🧪 Run tests
+        run: cargo test --workspace ${{ matrix.features }} --color always
+
+  test-stable:
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable
+    strategy:
+      matrix:
+        features: ["--all-features", "--no-default-features"]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 🦀 Install stable Rust
+        run: rustup toolchain install stable --profile minimal
+
+      - name: 📦 Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          shared-key: test-stable-${{ matrix.features }}
 
       - name: 🧪 Run tests
         run: cargo test --workspace ${{ matrix.features }} --color always
@@ -82,7 +116,7 @@ jobs:
       - name: 📦 Rust cache
         uses: Swatinem/rust-cache@v2.9.2
         with:
-          shared-key: rust---all-features
+          shared-key: docs
 
       - name: 📄 Build docs
         env:
