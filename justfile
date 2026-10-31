@@ -28,8 +28,12 @@ test:
 doc:
     cargo doc --workspace --open
 
-# Run fmt-check, clippy, and test
-ci: fmt-check clippy-strict-ndf clippy-strict test
+# Check dependencies' licenses, advisories, bans and sources.
+deny:
+    cargo deny check
+
+# Run fmt-check, clippy, deny, and test
+ci: fmt-check clippy-strict-ndf clippy-strict deny test
 
 # Save a benchmark baseline named NAME
 bench-save NAME:

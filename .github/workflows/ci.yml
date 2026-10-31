@@ -50,6 +50,14 @@ jobs:
       - name: 🔎 Run clippy
         run: cargo clippy --workspace --all-targets ${{ matrix.features }} -- -D warnings
 
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 🔎 Run cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+
   test:
     runs-on: ubuntu-latest
     strategy:
