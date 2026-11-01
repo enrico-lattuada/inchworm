@@ -691,37 +691,8 @@ mod tests {
 
     mod properties {
         use super::*;
-        use crate::UnitRegistry;
-        use crate::test_utils::parse_delta;
+        use crate::test_utils::{build, factors};
         use proptest::prelude::*;
-
-        /// Symbols from `mks_registry` to build random units from: base, derived,
-        /// and prefixed (`km`, interned on first use) units.
-        const SYMBOLS: &[&str] = &["m", "s", "kg", "K", "rad", "J", "deg", "h", "km"];
-
-        /// Small integer exponents, zero included, plus two fractional ones.
-        fn exponent() -> impl Strategy<Value = Exp> {
-            prop_oneof![
-                (-3i64..=3).prop_map(Exp::int),
-                Just(Exp::new(1, 2).unwrap()),
-                Just(Exp::new(-3, 2).unwrap()),
-            ]
-        }
-
-        /// Up to four `(symbol, exponent)` factors; symbols may repeat.
-        fn factors() -> impl Strategy<Value = Vec<(&'static str, Exp)>> {
-            prop::collection::vec((prop::sample::select(SYMBOLS), exponent()), 0..=4)
-        }
-
-        /// The product of `factors`, built in `ureg`.
-        fn build(ureg: &UnitRegistry, factors: &[(&str, Exp)]) -> DeltaUnit {
-            factors
-                .iter()
-                .fold(DeltaUnit::dimensionless(), |unit, &(symbol, exp)| {
-                    let factor = parse_delta(ureg, symbol).pow(exp).unwrap();
-                    unit.try_mul(&factor).unwrap()
-                })
-        }
 
         proptest! {
             #[test]

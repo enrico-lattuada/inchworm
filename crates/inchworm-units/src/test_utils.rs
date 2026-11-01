@@ -6,6 +6,8 @@ use crate::{
     scale::Scale,
 };
 
+use proptest::prelude::*;
+
 /// Build a `UnitAtom` with `name = symbol` and `prefixable: false`
 pub(crate) fn make_atom(
     registry_id: UnitRegistryId,
@@ -397,4 +399,32 @@ pub(crate) fn mks_registry() -> UnitRegistry {
     ureg.add_point("degree_Fahrenheit", "degF", &delta_deg_fahrenheit, 459.67)
         .unwrap();
     ureg
+}
+
+/// Symbols from `mks_registry` to build random units from: base, derived,
+/// and prefixed (`km`, interned on first use) units.
+const SYMBOLS: &[&str] = &["m", "s", "kg", "K", "rad", "J", "deg", "h", "km"];
+
+/// Small integer exponents, zero included, plus two fractional ones.
+pub(crate) fn exponent() -> impl Strategy<Value = Exp> {
+    prop_oneof![
+        (-3i64..=3).prop_map(Exp::int),
+        Just(Exp::new(1, 2).unwrap()),
+        Just(Exp::new(-3, 2).unwrap()),
+    ]
+}
+
+/// Up to four `(symbol, exponent)` factors; symbols may repeat.
+pub(crate) fn factors() -> impl Strategy<Value = Vec<(&'static str, Exp)>> {
+    prop::collection::vec((prop::sample::select(SYMBOLS), exponent()), 0..=4)
+}
+
+/// The product of `factors`, built in `ureg`.
+pub(crate) fn build(ureg: &UnitRegistry, factors: &[(&str, Exp)]) -> DeltaUnit {
+    factors
+        .iter()
+        .fold(DeltaUnit::dimensionless(), |unit, &(symbol, exp)| {
+            let factor = parse_delta(ureg, symbol).pow(exp).unwrap();
+            unit.try_mul(&factor).unwrap()
+        })
 }

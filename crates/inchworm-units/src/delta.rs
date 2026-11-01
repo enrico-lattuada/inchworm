@@ -668,4 +668,111 @@ mod tests {
             assert_eq!(converter.apply(1.0), 1e3);
         }
     }
+
+    mod properties {
+        use super::*;
+        use crate::test_utils::{build, exponent, factors, mks_registry};
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn mul_commutes(a in factors(), b in factors()) {
+                let ureg = mks_registry();
+                let unit_a = build(&ureg, &a);
+                let unit_b = build(&ureg, &b);
+                let left = unit_a.try_mul(&unit_b).unwrap();
+                let right = unit_b.try_mul(&unit_a).unwrap();
+                prop_assert_eq!(left, right);
+            }
+
+            #[test]
+            fn mul_associates(a in factors(), b in factors(), c in factors()) {
+                let ureg = mks_registry();
+                let unit_a = build(&ureg, &a);
+                let unit_b = build(&ureg, &b);
+                let unit_c = build(&ureg, &c);
+                let left = unit_a.try_mul(&unit_b).unwrap().try_mul(&unit_c).unwrap();
+                let right = unit_a.try_mul(&unit_b.try_mul(&unit_c).unwrap()).unwrap();
+                prop_assert_eq!(left, right);
+            }
+
+            #[test]
+            fn dimensionless_is_identity(a in factors()) {
+                let ureg = mks_registry();
+                let unit_a = build(&ureg, &a);
+                let left = unit_a.try_mul(&DeltaUnit::dimensionless()).unwrap();
+                prop_assert_eq!(left, unit_a);
+            }
+
+            #[test]
+            fn recip_is_involution(a in factors()) {
+                let ureg = mks_registry();
+                let unit_a = build(&ureg, &a);
+                let left = unit_a.recip().unwrap().recip().unwrap();
+                prop_assert_eq!(left, unit_a);
+            }
+
+            #[test]
+            fn mul_by_recip_is_dimensionless(a in factors()) {
+                let ureg = mks_registry();
+                let unit_a = build(&ureg, &a);
+                let one = DeltaUnit::dimensionless();
+                let left = unit_a.try_mul(&unit_a.recip().unwrap()).unwrap();
+                prop_assert_eq!(left, one);
+            }
+
+            #[test]
+            fn div_is_mul_by_recip(a in factors(), b in factors()) {
+                let ureg = mks_registry();
+                let unit_a = build(&ureg, &a);
+                let unit_b = build(&ureg, &b);
+                let left = unit_a.try_div(&unit_b).unwrap();
+                let right = unit_a.try_mul(&unit_b.recip().unwrap()).unwrap();
+                prop_assert_eq!(left, right);
+            }
+
+            #[test]
+            fn pow_composes(a in factors(), m in exponent(), n in exponent()) {
+                let ureg = mks_registry();
+                let unit_a = build(&ureg, &a);
+                let left = unit_a.pow(m).unwrap().pow(n).unwrap();
+                let right = unit_a.pow(m.checked_mul(n).unwrap()).unwrap();
+                prop_assert_eq!(left, right);
+            }
+
+            #[test]
+            fn pow_distributes_over_mul(a in factors(), b in factors(), n in exponent()) {
+                let ureg = mks_registry();
+                let unit_a = build(&ureg, &a);
+                let unit_b = build(&ureg, &b);
+                let left = unit_a.try_mul(&unit_b).unwrap().pow(n).unwrap();
+                let right = unit_a.pow(n).unwrap().try_mul(&unit_b.pow(n).unwrap()).unwrap();
+                prop_assert_eq!(left, right);
+            }
+
+            #[test]
+            fn dimension_is_homomorphic(a in factors(), b in factors()) {
+                let ureg = mks_registry();
+                let unit_a = build(&ureg, &a);
+                let unit_b = build(&ureg, &b);
+                let unit_ab = unit_a.try_mul(&unit_b).unwrap();
+                let dim_a = unit_a.dimension();
+                let dim_b = unit_b.dimension();
+                let left = unit_ab.dimension();
+                let right = &dim_a.try_mul(dim_b).unwrap();
+                prop_assert_eq!(left, right);
+            }
+
+            #[test]
+            fn scale_is_homomorphic(a in factors(), b in factors()) {
+                let ureg = mks_registry();
+                let a = build(&ureg, &a);
+                let b = build(&ureg, &b);
+                let (scale_ab, _) = a.try_mul(&b).unwrap().to_base().unwrap();
+                let (scale_a, _) = a.to_base().unwrap();
+                let (scale_b, _) = b.to_base().unwrap();
+                assert_scale_close(scale_ab, scale_a * scale_b);
+            }
+        }
+    }
 }
