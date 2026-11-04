@@ -409,4 +409,114 @@ mod tests {
             assert!(errors_match(&actual, &expected));
         }
     }
+
+    mod properties {
+        use crate::{
+            DeltaUnit, UnitRegistry,
+            test_utils::{assert_close, build, exponent, mks_registry},
+        };
+        use inchworm_dimensions::Exp;
+        use proptest::prelude::*;
+
+        /// Pairs of interchangeable symbols: same dimension, different scale.
+        const GROUPS: &[[&str; 2]] = &[
+            ["m", "km"],
+            ["s", "h"],
+            ["rad", "deg"],
+            ["K", "delta_degF"],
+            ["kg", "g"],
+        ];
+
+        /// The point units of `mks_registry`, converted pairwise.
+        const POINTS: &[&str] = &["K", "degC", "degF"];
+
+        /// A group, the member chosen for units `a`, `b`, and `c`, and a shared exponent.
+        type Factor = ([&'static str; 2], bool, bool, bool, Exp);
+
+        /// Up to four factors, each a group with a member choice for units `a`, `b`
+        /// and `c` and a shared exponent, so the three units are compatible by
+        /// construction.
+        fn compatible_factors() -> impl Strategy<Value = Vec<Factor>> {
+            prop::collection::vec(
+                (
+                    prop::sample::select(GROUPS),
+                    any::<bool>(),
+                    any::<bool>(),
+                    any::<bool>(),
+                    exponent(),
+                ),
+                0..=4,
+            )
+        }
+
+        /// One side of a compatible triple: each factor's group member chosen by
+        /// `pick`, with the factor's exponent.
+        fn side(
+            ureg: &UnitRegistry,
+            factors: &[Factor],
+            pick: impl Fn(&Factor) -> bool,
+        ) -> DeltaUnit {
+            let chosen: Vec<(&str, Exp)> = factors
+                .iter()
+                .map(|factor| (factor.0[pick(factor) as usize], factor.4))
+                .collect();
+            build(ureg, &chosen)
+        }
+
+        proptest! {
+            #[test]
+            fn round_trips(fs in compatible_factors(), x in -1e6..1e6f64) {
+                let ureg = mks_registry();
+                let a = side(&ureg, &fs, |f| f.1);
+                let b = side(&ureg, &fs, |f| f.2);
+                let there = a.converter_to(&b).unwrap();
+                let back = b.converter_to(&a).unwrap();
+                assert_close(back.apply(there.apply(x)), x);
+            }
+
+            #[test]
+            fn composes(fs in compatible_factors(), x in -1e6..1e6f64) {
+                let ureg = mks_registry();
+                let a = side(&ureg, &fs, |f| f.1);
+                let b = side(&ureg, &fs, |f| f.2);
+                let c = side(&ureg, &fs, |f| f.3);
+                let b_to_c = b.converter_to(&c).unwrap();
+                let a_to_b = a.converter_to(&b).unwrap();
+                let a_to_c = a.converter_to(&c).unwrap();
+                assert_close(b_to_c.apply(a_to_b.apply(x)), a_to_c.apply(x));
+            }
+
+            #[test]
+            fn identity_is_exact(fs in compatible_factors(), x in -1e6..1e6f64) {
+                let ureg = mks_registry();
+                let a = side(&ureg, &fs, |f| f.1);
+                let identity = a.converter_to(&a).unwrap();
+                prop_assert!(identity.is_linear());
+                prop_assert_eq!(identity.apply(x), x);
+            }
+
+            #[test]
+            fn agrees_with_to_base(fs in compatible_factors()) {
+                let ureg = mks_registry();
+                let a = side(&ureg, &fs, |f| f.1);
+                let (scale, base) = a.to_base().unwrap();
+                // exact: base's scale is a product of 1s, so the factor is scale / 1.0
+                prop_assert_eq!(a.converter_to(&base).unwrap().apply(1.0), scale);
+            }
+
+            #[test]
+            fn point_round_trips(
+                from in prop::sample::select(POINTS),
+                to in prop::sample::select(POINTS),
+                x in -1e6..1e6f64
+            ) {
+                let ureg = mks_registry();
+                let from_unit = ureg.get(from).unwrap();
+                let to_unit = ureg.get(to).unwrap();
+                let there = from_unit.converter_to(&to_unit).unwrap();
+                let back = to_unit.converter_to(&from_unit).unwrap();
+                assert_close(back.apply(there.apply(x)), x);
+            }
+        }
+    }
 }
