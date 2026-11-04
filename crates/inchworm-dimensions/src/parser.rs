@@ -91,7 +91,7 @@ pub(crate) fn is_valid_ident(src: &str) -> bool {
             Err(_) => return false,
         }
     }
-    matches!(tokens.as_slice(), [Token::Ident(_)])
+    matches!(tokens.as_slice(), [Token::Ident(ident)] if ident == src)
 }
 
 #[derive(Debug, PartialEq)]
@@ -505,6 +505,14 @@ mod tests {
         #[test]
         fn rejects_lone_operator() {
             assert!(!is_valid_ident("*"));
+        }
+
+        #[test]
+        fn rejects_surrounding_whitespace() {
+            let cases = [" m", "m ", "m\u{A0}"];
+            for src in cases {
+                assert!(!is_valid_ident(src), "{src:?} is valid ident");
+            }
         }
     }
 }

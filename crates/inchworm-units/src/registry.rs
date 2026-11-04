@@ -1420,4 +1420,52 @@ mod tests {
             ));
         }
     }
+
+    mod properties {
+        use super::*;
+        use crate::parse::is_valid_ident;
+        use crate::test_utils::exponent;
+        use proptest::prelude::*;
+
+        /// Candidate unit symbols: broad Unicode (no control, format, unassigned or
+        /// private-use characters), or a short mix of characters that are interesting
+        /// to the lexer, valid and invalid alike.
+        fn symbol() -> impl Strategy<Value = String> {
+            prop_oneof![
+                "\\PC{1,8}",
+                "[a-zA-Z0-9_.,;'\"%\u{B0}\u{B7}\u{D7}\u{B2}\u{207B}\u{B5}\u{3BC}\u{2126}\u{212A}\u{2103}]{1,6}",
+            ]
+        }
+
+        /// Parser inputs: arbitrary strings, or strings over the grammar's own
+        /// alphabet, which reach deeper into the parser than random Unicode.
+        fn input() -> impl Strategy<Value = String> {
+            prop_oneof![
+                any::<String>(),
+                "[mskgKJ()*/^\u{B7}\u{D7}\u{207B}\u{B2}\u{B3}0-9. \u{B5}-]{0,12}",
+            ]
+        }
+
+        proptest! {
+            #[test]
+            fn registered_symbol_round_trips(symbol in symbol(), e in exponent()) {
+                prop_assume!(is_valid_ident(&symbol));
+                let mut dims = DimRegistry::new("test-reg");
+                let dimension = dims.add_base("dimension", None).unwrap();
+                let mut ureg = UnitRegistry::new("test-ureg", dims);
+                let unit = ureg.add_base("unit", &symbol, &dimension, false).unwrap();
+                prop_assert_eq!(ureg.parse(&symbol).unwrap(), Unit::Delta(unit.clone()));
+                let powered = unit.pow(e).unwrap();
+                let plain = powered.to_string();
+                let pretty = format!("{powered:#}");
+                prop_assert_eq!(ureg.parse(&plain).unwrap(), Unit::Delta(powered.clone()));
+                prop_assert_eq!(ureg.parse(&pretty).unwrap(), Unit::Delta(powered));
+            }
+
+            #[test]
+            fn parse_never_panics(s in input()) {
+                let _ = mks_registry().parse(&s);
+            }
+        }
+    }
 }
