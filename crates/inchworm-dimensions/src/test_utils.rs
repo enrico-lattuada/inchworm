@@ -1,8 +1,10 @@
 use crate::{
-    DimId, DimRegistryId, Dimension, DimensionError, Exp,
+    DimId, DimRegistry, DimRegistryId, Dimension, DimensionError, Exp,
     atom::{AtomData, AtomKind, DimAtom},
 };
 use std::sync::Arc;
+
+use proptest::prelude::*;
 
 pub(crate) fn make_form_entry_in_registry(
     id: u64,
@@ -127,4 +129,73 @@ pub(crate) fn errors_match(actual: &DimensionError, expected: &DimensionError) -
     } else {
         false
     }
+}
+
+/// Names to build random dimensions from:
+/// base, named dimensionless, derived, and alias.
+const NAMES: &[&str] = &[
+    "length",
+    "mass",
+    "time",
+    "temperature",
+    "plane_angle",
+    "solid_angle",
+    "area",
+    "velocity",
+    "force",
+    "energy",
+    "power",
+    "frequency",
+    "torque",
+    "angle",
+];
+
+/// A registry with every name in [`NAMES`].
+pub(crate) fn property_registry() -> DimRegistry {
+    let mut reg = DimRegistry::new("test-reg");
+    for name in ["length", "mass", "time", "temperature"] {
+        reg.add_base(name, None).unwrap();
+    }
+    reg.add_dimensionless_expr("plane_angle", "length / length")
+        .unwrap();
+    reg.add_dimensionless_expr("solid_angle", "length^2 / length^2")
+        .unwrap();
+    reg.add_alias("angle", "plane_angle").unwrap();
+    let derived = [
+        ("area", "length^2"),
+        ("velocity", "length / time"),
+        ("force", "mass * length / time^2"),
+        ("energy", "force * length"),
+        ("power", "energy / time"),
+        ("frequency", "1 / time"),
+        ("torque", "energy / plane_angle"),
+    ];
+    for (name, definition) in derived {
+        reg.add_derived_expr(name, definition).unwrap();
+    }
+    reg
+}
+
+/// Small integer exponents, zero included, plus two fractional ones.
+pub(crate) fn exponent() -> impl Strategy<Value = Exp> {
+    prop_oneof![
+        (-3i64..=3).prop_map(Exp::int),
+        Just(Exp::new(1, 2).unwrap()),
+        Just(Exp::new(-3, 2).unwrap()),
+    ]
+}
+
+/// Up to four `(symbol, exponent)` factors; symbols may repeat.
+pub(crate) fn factors() -> impl Strategy<Value = Vec<(&'static str, Exp)>> {
+    prop::collection::vec((prop::sample::select(NAMES), exponent()), 0..=4)
+}
+
+/// The product of `factors`, built in `reg`.
+pub(crate) fn build(reg: &DimRegistry, factors: &[(&str, Exp)]) -> Dimension {
+    factors
+        .iter()
+        .fold(Dimension::dimensionless(), |dim, &(name, exp)| {
+            let factor = reg.get(name).unwrap().pow(exp).unwrap();
+            dim.try_mul(&factor).unwrap()
+        })
 }

@@ -986,4 +986,109 @@ mod tests {
             assert_eq!(Dimension::dimensionless().to_string(), "1");
         }
     }
+
+    mod properties {
+        use super::*;
+        use crate::test_utils::{build, exponent, factors, property_registry};
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn mul_commutes(a in factors(), b in factors()) {
+                let reg = property_registry();
+                let a = build(&reg, &a);
+                let b = build(&reg, &b);
+                let left = a.try_mul(&b).unwrap();
+                let right = b.try_mul(&a).unwrap();
+                assert_exactly_eq(&left, &right);
+            }
+
+            #[test]
+            fn mul_associates(a in factors(), b in factors(), c in factors()) {
+                let reg = property_registry();
+                let a = build(&reg, &a);
+                let b = build(&reg, &b);
+                let c = build(&reg, &c);
+                let left = a.try_mul(&b).unwrap().try_mul(&c).unwrap();
+                let right = a.try_mul(&b.try_mul(&c).unwrap()).unwrap();
+                assert_exactly_eq(&left, &right);
+            }
+
+            #[test]
+            fn recip_is_involution(a in factors()) {
+                let reg = property_registry();
+                let a = build(&reg, &a);
+                assert_exactly_eq(&a.recip().unwrap().recip().unwrap(), &a);
+            }
+
+            #[test]
+            fn mul_by_recip_is_dimensionless(a in factors()) {
+                let reg = property_registry();
+                let a = build(&reg, &a);
+                let product = a.try_mul(&a.recip().unwrap()).unwrap();
+                prop_assert!(product.is_dimensionless());
+            }
+
+            #[test]
+            fn pow_composes(a in factors(), m in exponent(), n in exponent()) {
+                let reg = property_registry();
+                let a = build(&reg, &a);
+                let left = a.pow(m).unwrap().pow(n).unwrap();
+                let right = a.pow(m.checked_mul(n).unwrap()).unwrap();
+                assert_exactly_eq(&left, &right);
+            }
+
+            #[test]
+            fn signature_is_homomorphic(a in factors(), b in factors()) {
+                let reg = property_registry();
+                let a = build(&reg, &a);
+                let b = build(&reg, &b);
+                let product = a.try_mul(&b).unwrap();
+                let right = a.signature().0.mul(&b.signature().0).unwrap();
+                prop_assert_eq!(&product.signature().0, &right);
+            }
+
+            #[test]
+            fn canonical_is_homomorphic(a in factors(), b in factors()) {
+                let reg = property_registry();
+                let a = build(&reg, &a);
+                let b = build(&reg, &b);
+                let product = a.try_mul(&b).unwrap();
+                let right = a.canonical_form().mul(b.canonical_form()).unwrap();
+                prop_assert_eq!(product.canonical_form(), &right);
+            }
+
+            #[test]
+            fn compatibility_is_symmetric(a in factors(), b in factors()) {
+                let reg = property_registry();
+                let a = build(&reg, &a);
+                let b = build(&reg, &b);
+                prop_assert_eq!(a.compatibility(&b), b.compatibility(&a));
+            }
+
+            #[test]
+            fn compatibility_follows_forms(a in factors(), b in factors()) {
+                let reg = property_registry();
+                let a = build(&reg, &a);
+                let b = build(&reg, &b);
+                let expected = if a.canonical_form() == b.canonical_form() {
+                    Compatibility::Full
+                } else if a.signature() == b.signature() {
+                    Compatibility::Partial
+                } else {
+                    Compatibility::Incompatible
+                };
+                prop_assert_eq!(a.compatibility(&b), expected);
+            }
+
+            #[test]
+            fn plane_angle_is_never_absorbed(a in factors()) {
+                let reg = property_registry();
+                let a = build(&reg, &a);
+                let plane_angle = reg.get("plane_angle").unwrap();
+                let with_angle = a.try_mul(&plane_angle).unwrap();
+                prop_assert_eq!(with_angle.compatibility(&a), Compatibility::Partial);
+            }
+        }
+    }
 }

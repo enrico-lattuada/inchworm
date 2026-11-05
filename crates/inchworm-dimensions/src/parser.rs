@@ -515,4 +515,33 @@ mod tests {
             }
         }
     }
+
+    mod properties {
+        use crate::test_utils::{assert_exactly_eq, build, factors, property_registry};
+        use proptest::prelude::*;
+
+        /// Parser inputs: arbitrary strings, or sequences of real names and
+        /// grammar tokens, which reach deeper into the parser than random Unicode.
+        fn input() -> impl Strategy<Value = String> {
+            prop_oneof![
+                any::<String>(),
+                "(length|time|velocity|angle|1|[*/^()\u{B7}\u{D7} -]|[0-9]){0,10}",
+            ]
+        }
+
+        proptest! {
+            #[test]
+            fn display_round_trips(factors in factors()) {
+                let reg = property_registry();
+                let dim = build(&reg, &factors);
+                assert_exactly_eq(&reg.parse(&dim.to_string()).unwrap(), &dim);
+            }
+
+            #[test]
+            fn parse_never_panics(s in input()) {
+                let reg = property_registry();
+                let _ = reg.parse(&s);
+            }
+        }
+    }
 }
