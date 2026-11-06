@@ -1,10 +1,11 @@
 //! Unit-expression grammar: tokenizer + recursive-descent parser.
 //!
 //! ```text
-//! expr     := term { ("*" | "·" | "×" | "/") term }
+//! expr     := term { ("*" | "·" | "×" | "/" | ADJ) term }
 //! term     := factor [ ("^" ["-"] ("(" exponent ")" | INT)) | SUPERSCRIPT ]
 //! factor   := IDENT | "1" | "(" expr ")"
 //! exponent := ["-"] INT [ "/" INT ]
+//! ADJ      := no operator: the next term follows directly, same precedence as "*"
 //! IDENT    := one or more chars accepted by inchworm_dimensions::is_ident_char that are not operators;
 //!             not starting with an ASCII digit
 //! ```
@@ -205,6 +206,14 @@ pub(crate) fn digit_to_superscript(c: char) -> Option<char> {
 /// control characters, operators, superscripts, and reserved characters.
 fn is_ident_char(c: char) -> bool {
     inchworm_dimensions::is_ident_char(c) && operator_token(c).is_none()
+}
+
+/// Whether token can begin a factor, so that it multiplies by adjacency.
+fn starts_factor(token: &Token) -> bool {
+    matches!(
+        token,
+        Token::Ident(_) | Token::Int(_) | Token::Float(_) | Token::LParen
+    )
 }
 
 impl<'a> Iterator for Lexer<'a> {
@@ -420,6 +429,11 @@ impl<'a> Parser<'a> {
             } else if self.consume_if(&Token::Slash)? {
                 let rhs = self.parse_term()?;
                 result = result.try_div(&rhs)?;
+            } else if let Some(Ok(Spanned { token, .. })) = self.tokens.peek()
+                && starts_factor(token)
+            {
+                let rhs = self.parse_term()?;
+                result = result.try_mul(&rhs)?;
             } else {
                 break;
             }
@@ -460,6 +474,60 @@ mod tests {
         assert_eq!(ureg.parse("kg*m").unwrap(), kg_m);
         assert_eq!(ureg.parse("kg·m").unwrap(), kg_m);
         assert_eq!(ureg.parse("kg×m").unwrap(), kg_m);
+    }
+
+    #[test]
+    fn adjacency_is_multiplication() {
+        let ureg = mks_registry();
+        assert_eq!(ureg.parse("kg m").unwrap(), ureg.parse("kg·m").unwrap());
+        assert_eq!(ureg.parse("m(s)").unwrap(), ureg.parse("m·s").unwrap());
+        assert_eq!(ureg.parse("m²s").unwrap(), ureg.parse("m²·s").unwrap());
+    }
+
+    #[test]
+    fn adjacency_groups_left_to_right() {
+        let ureg = mks_registry();
+        assert_eq!(
+            ureg.parse("J / kg K").unwrap(),
+            ureg.parse("J·K/kg").unwrap()
+        );
+    }
+
+    #[test]
+    fn adjacency_mixes_with_operator() {
+        let ureg = mks_registry();
+        assert_eq!(
+            ureg.parse("kg m / s").unwrap(),
+            ureg.parse("kg·m/s").unwrap()
+        );
+        assert_eq!(ureg.parse("m / s s").unwrap(), ureg.parse("m").unwrap());
+    }
+
+    #[test]
+    fn allows_unit_one_adjacent() {
+        let ureg = mks_registry();
+        assert_eq!(ureg.parse("1 m").unwrap(), ureg.parse("m").unwrap());
+    }
+
+    #[test]
+    fn rejects_adjacent_numeric_factor() {
+        let ureg = mks_registry();
+        let actual = ureg.parse("m 2").unwrap_err();
+        let expected = parse_error_at(2);
+        assert!(errors_match(&actual, &expected));
+    }
+
+    #[test]
+    fn point_unit_adjacent_is_not_composable() {
+        let ureg = mks_registry();
+        let cases = ["degC m", "m degC"];
+        let expected = UnitError::NotComposable {
+            name: "degree_Celsius".into(),
+        };
+        for expr in cases {
+            let actual = ureg.parse(expr).unwrap_err();
+            assert!(errors_match(&actual, &expected), "{expr}");
+        }
     }
 
     #[test]
@@ -709,6 +777,14 @@ mod tests {
                 let unit = Unit::Delta(build(&ureg, &factors));
                 prop_assert_eq!(&ureg.parse(&unit.to_string()).unwrap(), &unit);
                 prop_assert_eq!(&ureg.parse(&format!("{unit:#}")).unwrap(), &unit);
+            }
+
+            #[test]
+            fn adjacency_equals_star(factors in factors()) {
+                let ureg = mks_registry();
+                let unit = Unit::Delta(build(&ureg, &factors));
+                let adj_expr = unit.to_string().replace('*', " ");
+                prop_assert_eq!(&ureg.parse(&adj_expr).unwrap(), &unit);
             }
         }
     }
