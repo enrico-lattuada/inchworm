@@ -8,6 +8,7 @@
 //! ADJ      := no operator: the next term follows directly, same precedence as "*"
 //! IDENT    := one or more chars accepted by inchworm_dimensions::is_ident_char that are not operators;
 //!             not starting with an ASCII digit
+//! NUMBER   := DIGIT+ ["." DIGIT*] [("e" | "E") ["+" | "-"] DIGIT+]
 //! ```
 
 use std::{
@@ -169,6 +170,21 @@ impl<'a> Lexer<'a> {
     }
 }
 
+/// The byte length of a valid exponent part (`e3`, `E-12`, `e+2`) at the start of `rest`,
+/// or 0 if there is none.
+fn exponent_len(rest: &str) -> usize {
+    let Some(after_e) = rest.strip_prefix(['e', 'E']) else {
+        return 0;
+    };
+    let after_sign = after_e.strip_prefix(['+', '-']).unwrap_or(after_e);
+    let digits = after_sign.bytes().take_while(u8::is_ascii_digit).count();
+    if digits == 0 {
+        0
+    } else {
+        rest.len() - after_sign.len() + digits
+    }
+}
+
 fn superscript_to_digit(c: char) -> Option<char> {
     match c {
         '⁰' => Some('0'),
@@ -230,11 +246,17 @@ impl<'a> Iterator for Lexer<'a> {
         if c.is_ascii_digit() {
             let consumed =
                 self.consume_while(start, |c| c.is_ascii_digit() || c == DECIMAL_SEP_CHAR);
-            if let Ok(number) = consumed.parse::<i64>() {
+            let end = start + consumed.len();
+            let exp_len = exponent_len(&self.src[end..]);
+            for _ in 0..exp_len {
+                self.chars.next();
+            }
+            let literal = &self.src[start..end + exp_len];
+            if let Ok(number) = literal.parse::<i64>() {
                 let (token, offset) = (Token::Int(number), start);
                 Some(Ok(Spanned { token, offset }))
             } else {
-                match consumed.parse::<f64>() {
+                match literal.parse::<f64>() {
                     Ok(number) => {
                         let (token, offset) = (Token::Float(number), start);
                         Some(Ok(Spanned { token, offset }))
@@ -588,7 +610,7 @@ mod tests {
     #[test]
     fn rejects_numeric_factor() {
         let ureg = mks_registry();
-        let cases = [("2*m", 0), ("1.5*m", 0)];
+        let cases = [("2*m", 0), ("1.5*m", 0), ("1e3 m", 0), ("m*1e-3", 2)];
         for (expr, offset) in cases {
             let actual = ureg.parse(expr).unwrap_err();
             let expected = parse_error_at(offset);
@@ -658,6 +680,59 @@ mod tests {
             .map(|item| item.map(|spanned| spanned.token))
             .collect::<Result<Vec<_>, _>>()
             .unwrap()
+    }
+
+    #[test]
+    fn exponent_len_measures_exponent_part() {
+        let cases = [
+            ("e3m", 2),
+            ("E-12", 4),
+            ("e+2", 3),
+            ("em", 0),
+            ("e-m", 0),
+            ("e", 0),
+            ("", 0),
+            ("m", 0),
+        ];
+        for (rest, expected) in cases {
+            assert_eq!(exponent_len(rest), expected, "{rest:?}");
+        }
+    }
+
+    #[test]
+    fn lexes_scientific_notation() {
+        let cases = [
+            ("1e3", 1e3),
+            ("1.5e-3", 1.5e-3),
+            ("6.02214076E23", 6.022_140_76e23),
+            ("2e+2", 2e2),
+        ];
+        for (src, expected) in cases {
+            assert_eq!(tokens(src), [Token::Float(expected)], "{src}");
+        }
+    }
+
+    #[test]
+    fn e_without_digits_is_an_identifier() {
+        assert_eq!(tokens("2em"), [Token::Int(2), Token::Ident("em".into())]);
+        assert_eq!(tokens("2e"), [Token::Int(2), Token::Ident("e".into())]);
+        assert_eq!(
+            tokens("2e-m"),
+            [
+                Token::Int(2),
+                Token::Ident("e".into()),
+                Token::Minus,
+                Token::Ident("m".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn exponent_ends_number() {
+        assert_eq!(
+            tokens("2e3m"),
+            [Token::Float(2e3), Token::Ident("m".into())]
+        );
     }
 
     #[test]
