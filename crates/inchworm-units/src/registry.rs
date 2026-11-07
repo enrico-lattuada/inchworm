@@ -9,8 +9,9 @@ use std::{
 use inchworm_dimensions::{DimRegistry, Dimension, DimensionError, Exp};
 
 use crate::{
-    DeltaUnit, PointUnit, Unit, UnitError, UnitId, UnitRegistryId,
+    BaseDef, DeltaUnit, DerivedDef, PointDef, PointUnit, Unit, UnitError, UnitId, UnitRegistryId,
     atom::{AtomData, AtomKind, Expansion, PointAtom, PointData, UnitAtom},
+    def::Definition,
     fold::lookup_key,
     parse::{parse_unit_expr, validate_ident},
     prefix::Prefix,
@@ -57,7 +58,7 @@ type PrefixedCache = HashMap<(UnitId, Box<str>), UnitAtom>;
 ///
 /// ```
 /// use inchworm_dimensions::DimRegistry;
-/// use inchworm_units::UnitRegistry;
+/// use inchworm_units::{BaseDef, DerivedDef, UnitRegistry};
 ///
 /// let mut dims = DimRegistry::new("mechanics");
 /// let length = dims.add_base("length", Some("L")).unwrap();
@@ -65,9 +66,9 @@ type PrefixedCache = HashMap<(UnitId, Box<str>), UnitAtom>;
 /// let mut units = UnitRegistry::new("mks", dims);
 /// units.add_prefix("kilo", "k", 1e3).unwrap();
 ///
-/// let m = units.add_base("meter", "m", &length, true).unwrap();
-/// let kg = units.add_prefixed_base("kilo", "gram", "g", &mass).unwrap();
-/// let km = units.add_derived("kilometer", "km", &m, 1e3, false).unwrap();
+/// let m = units.add_base(BaseDef::new("meter", "m", &length).prefixable(true)).unwrap();
+/// let kg = units.add_base(BaseDef::new("gram", "g", &mass).prefixable(true).prefixed("kilo")).unwrap();
+/// let km = units.add_derived(DerivedDef::new("kilometer", "km", &m).scale(1e3)).unwrap();
 ///
 /// assert_eq!(units.base_units().count(), 2); // kg and m
 /// assert!(units.get("g").is_some());         // the stem is registered too
@@ -366,64 +367,53 @@ impl UnitRegistry {
 
 // ---- definition (mutation) ----
 impl UnitRegistry {
-    /// Adds a base unit: the reference unit of `dimension`, which every other unit of that
+    /// Adds a base unit: the reference unit of its dimension, which every other unit of that
     /// dimension is measured in.
     ///
-    /// `dimension` must be irreducible and must not have a base unit yet.
-    /// For a base unit with a prefix (`kg`, `cm`), use
-    /// [`add_prefixed_base`](Self::add_prefixed_base).
+    /// The dimension must be irreducible and must not have a base unit yet. With
+    /// [`BaseDef::prefixed`], the prefixed form (`kilogram`/`kg`) becomes the base and the named
+    /// unit (`gram`/`g`) is registered as its stem.
     ///
     /// # Errors
     ///
-    /// Returns [`UnitError::InvalidName`] if `name` or `symbol` is not an identifier.
-    /// Returns [`UnitError::DuplicateName`] if `name` or `symbol` is already a unit name or
-    /// symbol, or `name` is a prefix name.
+    /// Returns [`UnitError::InvalidName`] if the name or symbol, or for a prefixed base their
+    /// prefixed forms, is not an identifier.
+    /// Returns [`UnitError::DuplicateName`] if the name or symbol, or their prefixed forms, is
+    /// already a unit name or symbol, or the name is a prefix name.
+    /// Returns [`UnitError::UnknownPrefix`] if a prefixed base's prefix is not in the registry.
+    /// Returns [`UnitError::ScaleOutOfRange`] if a prefixed base's stem scale (the reciprocal of
+    /// the prefix factor) overflows or underflows.
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`DimensionError::CrossRegistry`](inchworm_dimensions::DimensionError::CrossRegistry)
-    /// if `dimension` comes from another dimension registry.
-    /// Returns [`UnitError::NotIrreducible`] if `dimension` is not irreducible
+    /// if the dimension comes from another dimension registry.
+    /// Returns [`UnitError::NotIrreducible`] if the dimension is not irreducible
     /// (i.e., it is a derived dimension or bare dimensionless `1`).
-    /// Returns [`UnitError::DuplicateBase`] if `dimension` was already assigned a base unit.
-    pub fn add_base(
-        &mut self,
-        name: &str,
-        symbol: &str,
-        dimension: &Dimension,
-        prefixable: bool,
-    ) -> Result<DeltaUnit, UnitError> {
-        self.validate_unit(name, symbol)?;
-        self.validate_base_dimension(name, dimension)?;
-        let atom = self.insert_base(name, symbol, dimension, prefixable);
-        let unit = DeltaUnit::from_atom(&atom);
-        Ok(unit)
+    /// Returns [`UnitError::DuplicateBase`] if the dimension was already assigned a base unit.
+    pub fn add_base(&mut self, def: BaseDef) -> Result<DeltaUnit, UnitError> {
+        match def.prefix() {
+            None => {
+                self.validate_unit(def.name(), def.symbol())?;
+                self.validate_base_dimension(def.name(), def.dimension())?;
+                let atom = self.insert_base(
+                    def.name(),
+                    def.symbol(),
+                    def.dimension(),
+                    def.is_prefixable(),
+                );
+                let unit = DeltaUnit::from_atom(&atom);
+                Ok(unit)
+            }
+            Some(prefix) => self.add_prefixed_base(prefix, &def),
+        }
     }
 
-    /// Adds a base unit whose name carries a prefix, such as `kilogram`/`kg`, and
-    /// registers its unprefixed stem as a derived unit (`gram := 1e-3 × kilogram`).
-    ///
-    /// The base is not prefixable (prefixes don't stack); the stem is.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`UnitError::UnknownPrefix`] if `prefix` is not found in the registry.
-    /// Returns [`UnitError::InvalidName`] if `stem_name`, `stem_symbol`, or their prefixed forms
-    /// (`kilogram`, `kg`) is not an identifier.
-    /// Returns [`UnitError::DuplicateName`] if `stem_name`, `stem_symbol`, or their prefixed forms
-    /// (`kilogram`, `kg`) are already defined.
-    /// Returns [`UnitError::Dimension`] wrapping
-    /// [`DimensionError::CrossRegistry`](inchworm_dimensions::DimensionError::CrossRegistry)
-    /// if `dimension` comes from another dimension registry.
-    /// Returns [`UnitError::NotIrreducible`] if `dimension` is not irreducible
-    /// (i.e., it is a derived dimension or bare dimensionless `1`).
-    /// Returns [`UnitError::DuplicateBase`] if `dimension` was already assigned a base unit.
-    pub fn add_prefixed_base(
-        &mut self,
-        prefix: &str,
-        stem_name: &str,
-        stem_symbol: &str,
-        dimension: &Dimension,
-    ) -> Result<DeltaUnit, UnitError> {
+    /// The prefixed path of [`add_base`](Self::add_base): registers `prefix` + the stem as the
+    /// base and the stem as a derived unit. Validates everything before inserting, so an error
+    /// leaves the registry unchanged.
+    fn add_prefixed_base(&mut self, prefix: &str, def: &BaseDef) -> Result<DeltaUnit, UnitError> {
         let prefix = self.find_prefix(prefix)?.clone();
+        let (stem_name, stem_symbol) = (def.name(), def.symbol());
+        let dimension = def.dimension();
         let name = format!("{}{stem_name}", prefix.name);
         let symbol = format!("{}{stem_symbol}", prefix.symbol);
         // Validate everything first, so an error leaves the registry unchanged.
@@ -442,7 +432,7 @@ impl UnitRegistry {
         let base = DeltaUnit::from_atom(&atom);
         let expansion = Expansion::new(stem_name, &base, scale)
             .expect("a base atom expands to itself, the reciprocal was validated above");
-        let stem = self.insert_derived(stem_name, stem_symbol, expansion, true);
+        let stem = self.insert_derived(stem_name, stem_symbol, expansion, def.is_prefixable());
         self.prefixed
             .get_mut()
             .unwrap_or_else(PoisonError::into_inner)
@@ -450,95 +440,66 @@ impl UnitRegistry {
         Ok(base)
     }
 
-    /// Adds a derived (delta) unit: `1 name = scale × definition`
+    /// Adds a derived (delta) unit: `1 unit = scale × definition`
     /// (`km := 1e3 × m`, `J := 1 × kg·m²/s²`). Its dimension is the definition's.
+    ///
+    /// A definition built with [`DerivedDef::from_expr`] is parsed here, against this registry.
     ///
     /// # Errors
     ///
-    /// Returns [`UnitError::InvalidName`] if `name` or `symbol` is not an identifier.
-    /// Returns [`UnitError::DuplicateName`] if `name` or `symbol` is already a unit name or
-    /// symbol, or `name` is a prefix name.
-    /// Returns [`UnitError::CrossRegistry`] if `definition` comes from another unit registry.
-    /// Returns [`UnitError::InvalidScale`] if `scale` is not positive, finite, and normal.
-    /// Returns [`UnitError::ScaleOutOfRange`] if the `definition`'s scale or its combination
-    /// with `scale` overflows or underflows.
+    /// Returns [`UnitError::InvalidName`] if the name or symbol is not an identifier.
+    /// Returns [`UnitError::DuplicateName`] if the name or symbol is already a unit name or
+    /// symbol, or the name is a prefix name.
+    /// Returns [`UnitError::Parse`] if the definition's expression cannot be parsed.
+    /// Returns [`UnitError::UnknownUnit`] if the expression names a unit unknown to the registry.
+    /// Returns [`UnitError::NotPrefixable`] if the expression puts a prefix on a non-prefixable unit.
+    /// Returns [`UnitError::NotComposable`] if the expression is or contains a point unit.
+    /// Returns [`UnitError::CrossRegistry`] if the definition comes from another unit registry.
+    /// Returns [`UnitError::InvalidScale`] if the scale is not positive, finite, and normal.
+    /// Returns [`UnitError::ScaleOutOfRange`] if the definition's scale, or its product with the
+    /// scale, overflows or underflows.
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
-    /// if expanding `definition` to base units overflows an exponent.
-    pub fn add_derived(
-        &mut self,
-        name: &str,
-        symbol: &str,
-        definition: &DeltaUnit,
-        scale: f64,
-        prefixable: bool,
-    ) -> Result<DeltaUnit, UnitError> {
-        self.validate_unit(name, symbol)?;
-        self.validate_registry(definition)?;
-        let scale = self.validate_scale(name, scale)?;
-        let expansion = Expansion::new(name, definition, scale)?;
-        let atom = self.insert_derived(name, symbol, expansion, prefixable);
+    /// if expanding the definition to base units overflows an exponent.
+    pub fn add_derived(&mut self, def: DerivedDef) -> Result<DeltaUnit, UnitError> {
+        self.validate_unit(def.name(), def.symbol())?;
+        let delta = match def.definition() {
+            Definition::Unit(u) => u.clone(),
+            Definition::Expr(expr) => {
+                let unit = self.parse(expr)?;
+                match unit {
+                    Unit::Delta(d) => d,
+                    Unit::Point(p) => {
+                        return Err(UnitError::NotComposable {
+                            name: p.name().into(),
+                        });
+                    }
+                }
+            }
+        };
+        self.validate_registry(&delta)?;
+        let scale = self.validate_scale(def.name(), def.scale_factor())?;
+        let expansion = Expansion::new(def.name(), &delta, scale)?;
+        let atom = self.insert_derived(def.name(), def.symbol(), expansion, def.is_prefixable());
         let derived = DeltaUnit::from_atom(&atom);
         Ok(derived)
     }
 
-    /// Adds a derived (delta) unit using `expr` for the definition.
-    /// Its dimension is the definition's.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`UnitError::InvalidName`] if `name` or `symbol` is not an identifier.
-    /// Returns [`UnitError::DuplicateName`] if `name` or `symbol` is already a unit name or
-    /// symbol, or `name` is a prefix name.
-    /// Returns [`UnitError::UnknownUnit`] if `expr` contains a unit unknown to the registry.
-    /// Returns [`UnitError::Parse`] if `expr` cannot be correctly parsed.
-    /// Returns [`UnitError::NotPrefixable`] if prefixes are added to non-prefixable units in `expr`.
-    /// Returns [`UnitError::NotComposable`] if `expr` contains point units.
-    /// Returns [`UnitError::InvalidScale`] if `scale` is not positive, finite, and normal.
-    /// Returns [`UnitError::ScaleOutOfRange`] if the `expr`'s scale or its combination
-    /// with `scale` overflows or underflows.
-    /// Returns [`UnitError::Dimension`] wrapping
-    /// [`ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
-    /// if expanding `expr` to base units overflows an exponent.
-    pub fn add_derived_expr(
-        &mut self,
-        name: &str,
-        symbol: &str,
-        expr: &str,
-        scale: f64,
-        prefixable: bool,
-    ) -> Result<DeltaUnit, UnitError> {
-        self.validate_unit(name, symbol)?;
-        let unit = self.parse(expr)?;
-        match unit {
-            Unit::Delta(delta) => self.add_derived(name, symbol, &delta, scale, prefixable),
-            Unit::Point(point) => Err(UnitError::NotComposable {
-                name: point.name().into(),
-            }),
-        }
-    }
-
-    /// Adds a point (affine) unit: a reading `x` in it is the `delta` value `x + offset`
+    /// Adds a point (affine) unit: a reading `x` in it is the delta value `x + offset`
     /// (`degC` is `K` with offset 273.15).
     ///
     /// # Errors
     ///
-    /// Returns [`UnitError::InvalidName`] if `name` or `symbol` is not an identifier.
-    /// Returns [`UnitError::DuplicateName`] if `name` or `symbol` is already a unit name or
-    /// symbol, or `name` is a prefix name.
-    /// Returns [`UnitError::CrossRegistry`] if `delta` comes from another unit registry.
-    /// Returns [`UnitError::NonFiniteOffset`] if `offset` is not finite.
-    pub fn add_point(
-        &mut self,
-        name: &str,
-        symbol: &str,
-        delta: &DeltaUnit,
-        offset: f64,
-    ) -> Result<PointUnit, UnitError> {
-        self.validate_unit(name, symbol)?;
-        self.validate_registry(delta)?;
-        self.validate_offset(name, offset)?;
-        let point = self.insert_point(name, symbol, delta, offset);
+    /// Returns [`UnitError::InvalidName`] if the name or symbol is not an identifier.
+    /// Returns [`UnitError::DuplicateName`] if the name or symbol is already a unit name or
+    /// symbol, or the name is a prefix name.
+    /// Returns [`UnitError::CrossRegistry`] if the delta unit comes from another unit registry.
+    /// Returns [`UnitError::NonFiniteOffset`] if the offset is not finite.
+    pub fn add_point(&mut self, def: PointDef) -> Result<PointUnit, UnitError> {
+        self.validate_unit(def.name(), def.symbol())?;
+        self.validate_registry(def.delta())?;
+        self.validate_offset(def.name(), def.offset())?;
+        let point = self.insert_point(def.name(), def.symbol(), def.delta(), def.offset());
         Ok(point)
     }
 
@@ -662,6 +623,7 @@ impl UnitRegistry {
 mod tests {
     use super::*;
     use crate::test_utils::{assert_expands_to, assert_scale_close, errors_match, mks_registry};
+    use crate::{BaseDef, DerivedDef, PointDef};
 
     #[test]
     fn registry_is_send_and_sync() {
@@ -727,7 +689,8 @@ mod tests {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            ureg.add_base("meter", "m", &length, true).unwrap();
+            ureg.add_base(BaseDef::new("meter", "m", &length).prefixable(true))
+                .unwrap();
             let actual = ureg.add_prefix("meter", "mt", 2.0).unwrap_err();
             let expected = UnitError::DuplicateName {
                 name: "meter".into(),
@@ -741,7 +704,8 @@ mod tests {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            ureg.add_base("meter", "m", &length, true).unwrap();
+            ureg.add_base(BaseDef::new("meter", "m", &length).prefixable(true))
+                .unwrap();
             assert!(ureg.add_prefix("milli", "m", 1e-3).is_ok());
         }
     }
@@ -754,7 +718,9 @@ mod tests {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            let meter = ureg.add_base("meter", "m", &length, true).unwrap();
+            let meter = ureg
+                .add_base(BaseDef::new("meter", "m", &length).prefixable(true))
+                .unwrap();
             assert_eq!(meter.dimension(), &length);
         }
 
@@ -763,8 +729,11 @@ mod tests {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            ureg.add_base("meter", "m", &length, true).unwrap();
-            let actual = ureg.add_base("meter", "M", &length, true).unwrap_err();
+            ureg.add_base(BaseDef::new("meter", "m", &length).prefixable(true))
+                .unwrap();
+            let actual = ureg
+                .add_base(BaseDef::new("meter", "M", &length).prefixable(true))
+                .unwrap_err();
             let expected = UnitError::DuplicateName {
                 name: "meter".into(),
                 registry: "test-ureg".into(),
@@ -778,7 +747,9 @@ mod tests {
             let length = dims.add_base("length", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             ureg.add_prefix("kilo", "k", 1e3).unwrap();
-            let actual = ureg.add_base("kilo", "kl", &length, true).unwrap_err();
+            let actual = ureg
+                .add_base(BaseDef::new("kilo", "kl", &length).prefixable(true))
+                .unwrap_err();
             let expected = UnitError::DuplicateName {
                 name: "kilo".into(),
                 registry: "test-ureg".into(),
@@ -791,8 +762,11 @@ mod tests {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            ureg.add_base("meter", "m", &length, true).unwrap();
-            let actual = ureg.add_base("distance", "m", &length, true).unwrap_err();
+            ureg.add_base(BaseDef::new("meter", "m", &length).prefixable(true))
+                .unwrap();
+            let actual = ureg
+                .add_base(BaseDef::new("distance", "m", &length).prefixable(true))
+                .unwrap_err();
             let expected = UnitError::DuplicateName {
                 name: "m".into(),
                 registry: "test-ureg".into(),
@@ -805,9 +779,10 @@ mod tests {
             let mut dims = DimRegistry::new("test-reg");
             let resistance = dims.add_base("resistance", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            ureg.add_base("ohm", "\u{3A9}", &resistance, true).unwrap();
+            ureg.add_base(BaseDef::new("ohm", "\u{3A9}", &resistance).prefixable(true))
+                .unwrap();
             let actual = ureg
-                .add_base("Ohm", "\u{2126}", &resistance, true)
+                .add_base(BaseDef::new("Ohm", "\u{2126}", &resistance).prefixable(true))
                 .unwrap_err();
             let expected = UnitError::DuplicateName {
                 name: "\u{2126}".into(),
@@ -821,8 +796,11 @@ mod tests {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            ureg.add_base("meter", "m", &length, true).unwrap();
-            let actual = ureg.add_base("m", "M", &length, true).unwrap_err();
+            ureg.add_base(BaseDef::new("meter", "m", &length).prefixable(true))
+                .unwrap();
+            let actual = ureg
+                .add_base(BaseDef::new("m", "M", &length).prefixable(true))
+                .unwrap_err();
             let expected = UnitError::DuplicateName {
                 name: "m".into(),
                 registry: "test-ureg".into(),
@@ -836,7 +814,7 @@ mod tests {
             let length = dims.add_base("length", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             ureg.add_prefix("milli", "m", 1e-3).unwrap();
-            let meter = ureg.add_base("meter", "m", &length, true);
+            let meter = ureg.add_base(BaseDef::new("meter", "m", &length).prefixable(true));
             assert!(meter.is_ok());
         }
 
@@ -848,7 +826,7 @@ mod tests {
             let mut another_dims = DimRegistry::new("test-reg-2");
             let another_length = another_dims.add_base("length", None).unwrap();
             let actual = ureg
-                .add_base("meter", "m", &another_length, true)
+                .add_base(BaseDef::new("meter", "m", &another_length).prefixable(true))
                 .unwrap_err();
             let expected = UnitError::Dimension(DimensionError::CrossRegistry {
                 left: dims_id,
@@ -865,7 +843,7 @@ mod tests {
             let velocity = length.try_div(&time).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             let actual = ureg
-                .add_base("miles_per_hour", "mph", &velocity, false)
+                .add_base(BaseDef::new("miles_per_hour", "mph", &velocity))
                 .unwrap_err();
             let expected = UnitError::NotIrreducible {
                 name: "miles_per_hour".into(),
@@ -879,8 +857,11 @@ mod tests {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            ureg.add_base("meter", "m", &length, true).unwrap();
-            let actual = ureg.add_base("foot", "ft", &length, true).unwrap_err();
+            ureg.add_base(BaseDef::new("meter", "m", &length).prefixable(true))
+                .unwrap();
+            let actual = ureg
+                .add_base(BaseDef::new("foot", "ft", &length).prefixable(true))
+                .unwrap_err();
             let expected = UnitError::DuplicateBase {
                 name: "foot".into(),
                 existing: "meter".into(),
@@ -896,8 +877,11 @@ mod tests {
             dims.add_alias("distance", "length").unwrap();
             let distance = dims.get("distance").unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            ureg.add_base("meter", "m", &length, true).unwrap();
-            let actual = ureg.add_base("foot", "ft", &distance, true).unwrap_err();
+            ureg.add_base(BaseDef::new("meter", "m", &length).prefixable(true))
+                .unwrap();
+            let actual = ureg
+                .add_base(BaseDef::new("foot", "ft", &distance).prefixable(true))
+                .unwrap_err();
             let expected = UnitError::DuplicateBase {
                 name: "foot".into(),
                 existing: "meter".into(),
@@ -916,7 +900,13 @@ mod tests {
             let mass = dims.add_base("mass", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             ureg.add_prefix("kilo", "k", 1e3).unwrap();
-            let kg = ureg.add_prefixed_base("k", "gram", "g", &mass).unwrap();
+            let kg = ureg
+                .add_base(
+                    BaseDef::new("gram", "g", &mass)
+                        .prefixable(true)
+                        .prefixed("k"),
+                )
+                .unwrap();
             let Some(Unit::Delta(g)) = ureg.get("g") else {
                 panic!("g is not a DeltaUnit")
             };
@@ -932,7 +922,11 @@ mod tests {
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             ureg.add_prefix("centi", "c", 1e-2).unwrap();
             let cm = ureg
-                .add_prefixed_base("centi", "meter", "m", &length)
+                .add_base(
+                    BaseDef::new("meter", "m", &length)
+                        .prefixable(true)
+                        .prefixed("centi"),
+                )
                 .unwrap();
             let Some(Unit::Delta(m)) = ureg.get("m") else {
                 panic!("m is not a DeltaUnit")
@@ -948,7 +942,11 @@ mod tests {
             let length = dims.add_base("length", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             let actual = ureg
-                .add_prefixed_base("2", "meter", "m", &length)
+                .add_base(
+                    BaseDef::new("meter", "m", &length)
+                        .prefixable(true)
+                        .prefixed("2"),
+                )
                 .unwrap_err();
             let expected = UnitError::UnknownPrefix {
                 name: "2".into(),
@@ -964,7 +962,11 @@ mod tests {
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             ureg.add_prefix("huge", "H", 1e308).unwrap();
             let actual = ureg
-                .add_prefixed_base("huge", "meter", "m", &length)
+                .add_base(
+                    BaseDef::new("meter", "m", &length)
+                        .prefixable(true)
+                        .prefixed("huge"),
+                )
                 .unwrap_err();
             let expected = UnitError::ScaleOutOfRange {
                 unit: "meter".into(),
@@ -981,9 +983,15 @@ mod tests {
             let mass = dims.add_base("mass", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             ureg.add_prefix("kilo", "k", 1e3).unwrap();
-            let g = ureg.add_base("gram", "g", &mass, true).unwrap();
+            let g = ureg
+                .add_base(BaseDef::new("gram", "g", &mass).prefixable(true))
+                .unwrap();
             let actual = ureg
-                .add_prefixed_base("kilo", "gram", "g", &mass)
+                .add_base(
+                    BaseDef::new("gram", "g", &mass)
+                        .prefixable(true)
+                        .prefixed("kilo"),
+                )
                 .unwrap_err();
             let expected = UnitError::DuplicateName {
                 name: "gram".into(),
@@ -994,6 +1002,36 @@ mod tests {
             assert_eq!(ureg.base_unit(&mass), Some(g));
             // `kilogram` only resolves as the prefixed form of gram.
             assert_expands_to(&ureg, "kilogram", 1e3, "g");
+        }
+
+        #[test]
+        fn prefixed_stem_follows_prefixable() {
+            fn registry(prefixable: bool) -> UnitRegistry {
+                let mut dims = DimRegistry::new("test-reg");
+                let mass = dims.add_base("mass", None).unwrap();
+                let mut ureg = UnitRegistry::new("test-ureg", dims);
+                ureg.add_prefix("kilo", "k", 1e3).unwrap();
+                ureg.add_prefix("milli", "m", 1e-3).unwrap();
+                ureg.add_base(
+                    BaseDef::new("gram", "g", &mass)
+                        .prefixable(prefixable)
+                        .prefixed("kilo"),
+                )
+                .unwrap();
+                ureg
+            }
+
+            assert_expands_to(&registry(true), "mg", 1e-6, "kg");
+
+            let ureg = registry(false);
+            let actual = ureg.parse("mg").unwrap_err();
+            let expected = UnitError::NotPrefixable {
+                name: "gram".into(),
+                registry: "test-ureg".into(),
+            };
+            assert!(errors_match(&actual, &expected), "{actual:?}");
+            // The base itself is registered directly, so it still resolves.
+            assert_expands_to(&ureg, "kg", 1.0, "kg");
         }
     }
 
@@ -1006,7 +1044,9 @@ mod tests {
             let Some(Unit::Delta(m)) = ureg.get("m") else {
                 panic!("m is not in the mks registry")
             };
-            let km = ureg.add_derived("kilometer", "km", &m, 1e3, false).unwrap();
+            let km = ureg
+                .add_derived(DerivedDef::new("kilometer", "km", &m).scale(1e3))
+                .unwrap();
             let (scale, base) = km.to_base().unwrap();
             assert_scale_close(scale, 1e3);
             assert_eq!(base, m);
@@ -1017,7 +1057,9 @@ mod tests {
             let dims = DimRegistry::new("test-reg");
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             let percent = ureg
-                .add_derived("percent", "pct", &DeltaUnit::dimensionless(), 0.01, false)
+                .add_derived(
+                    DerivedDef::new("percent", "pct", &DeltaUnit::dimensionless()).scale(0.01),
+                )
                 .unwrap();
             let (scale, base) = percent.to_base().unwrap();
             assert_scale_close(scale, 0.01);
@@ -1031,7 +1073,9 @@ mod tests {
             let cases = [0.0, -1.0, f64::NAN, f64::INFINITY, f64::MIN_POSITIVE / 2.0];
             for scale in cases {
                 let actual = ureg
-                    .add_derived("invalid", "na", &DeltaUnit::dimensionless(), scale, false)
+                    .add_derived(
+                        DerivedDef::new("invalid", "na", &DeltaUnit::dimensionless()).scale(scale),
+                    )
                     .unwrap_err();
                 let expected = UnitError::InvalidScale {
                     name: "invalid".into(),
@@ -1047,12 +1091,14 @@ mod tests {
             let mut dims = DimRegistry::new("test-reg");
             let length = dims.add_base("length", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            let meter = ureg.add_base("meter", "m", &length, true).unwrap();
+            let meter = ureg
+                .add_base(BaseDef::new("meter", "m", &length).prefixable(true))
+                .unwrap();
             let huge = ureg
-                .add_derived("huge", "huge", &meter, 1e200, false)
+                .add_derived(DerivedDef::new("huge", "huge", &meter).scale(1e200))
                 .unwrap();
             let actual = ureg
-                .add_derived("huger", "huger", &huge, 1e200, false)
+                .add_derived(DerivedDef::new("huger", "huger", &huge).scale(1e200))
                 .unwrap_err();
             let expected = UnitError::ScaleOutOfRange {
                 unit: "huger".into(),
@@ -1069,7 +1115,7 @@ mod tests {
                 panic!("m is not in the mks registry")
             };
             let actual = ureg
-                .add_derived("distance", "dist", &m, 1.0, false)
+                .add_derived(DerivedDef::new("distance", "dist", &m))
                 .unwrap_err();
             let expected = UnitError::CrossRegistry {
                 left: ureg.id(),
@@ -1088,7 +1134,9 @@ mod tests {
             let Some(Unit::Delta(kelvin)) = ureg.get("K") else {
                 panic!("K is not in the mks registry")
             };
-            let celsius = ureg.add_point("my_celsius", "Ce", &kelvin, 273.15).unwrap();
+            let celsius = ureg
+                .add_point(PointDef::new("my_celsius", "Ce", &kelvin, 273.15))
+                .unwrap();
             assert_eq!(celsius.name(), "my_celsius");
             assert_eq!(celsius.symbol(), "Ce");
             assert_eq!(celsius.delta(), &kelvin);
@@ -1103,7 +1151,12 @@ mod tests {
             let cases = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
             for offset in cases {
                 let actual = ureg
-                    .add_point("invalid", "na", &DeltaUnit::dimensionless(), offset)
+                    .add_point(PointDef::new(
+                        "invalid",
+                        "na",
+                        &DeltaUnit::dimensionless(),
+                        offset,
+                    ))
                     .unwrap_err();
                 let expected = UnitError::NonFiniteOffset {
                     name: "invalid".into(),
@@ -1121,7 +1174,9 @@ mod tests {
             let Some(Unit::Delta(m)) = other.get("m") else {
                 panic!("m is not in the mks registry")
             };
-            let actual = ureg.add_point("distance", "dist", &m, 0.0).unwrap_err();
+            let actual = ureg
+                .add_point(PointDef::new("distance", "dist", &m, 0.0))
+                .unwrap_err();
             let expected = UnitError::CrossRegistry {
                 left: ureg.id(),
                 right: other.id(),
@@ -1154,7 +1209,8 @@ mod tests {
             let mut dims = DimRegistry::new("test-reg");
             let resistance = dims.add_base("resistance", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            ureg.add_base("ohm", "\u{2126}", &resistance, true).unwrap();
+            ureg.add_base(BaseDef::new("ohm", "\u{2126}", &resistance).prefixable(true))
+                .unwrap();
             let ohm = ureg.get("\u{3A9}").unwrap();
             assert_eq!(ohm.to_string(), "\u{2126}");
         }
@@ -1207,7 +1263,9 @@ mod tests {
             dims.add_alias("distance", "length").unwrap();
             let distance = dims.get("distance").unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
-            let m = ureg.add_base("meter", "m", &length, true).unwrap();
+            let m = ureg
+                .add_base(BaseDef::new("meter", "m", &length).prefixable(true))
+                .unwrap();
             assert_eq!(ureg.base_unit(&length), Some(m.clone()));
             assert_eq!(ureg.base_unit(&distance), Some(m.clone()));
             assert!(ureg.base_unit(&time).is_none());
@@ -1255,8 +1313,11 @@ mod tests {
             let time = dims.add_base("time", None).unwrap();
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             ureg.add_prefix("milli", "m", 1e-3).unwrap();
-            let min = ureg.add_base("minute", "min", &time, true).unwrap();
-            ureg.add_base("inch", "in", &length, true).unwrap();
+            let min = ureg
+                .add_base(BaseDef::new("minute", "min", &time).prefixable(true))
+                .unwrap();
+            ureg.add_base(BaseDef::new("inch", "in", &length).prefixable(true))
+                .unwrap();
             assert_eq!(ureg.parse("min").unwrap(), Unit::Delta(min));
         }
 
@@ -1268,8 +1329,10 @@ mod tests {
             let mut ureg = UnitRegistry::new("test-ureg", dims);
             ureg.add_prefix("deci", "d", 0.1).unwrap();
             ureg.add_prefix("deca", "da", 10.0).unwrap();
-            ureg.add_base("meter", "m", &length, true).unwrap();
-            ureg.add_base("am", "am", &time, true).unwrap();
+            ureg.add_base(BaseDef::new("meter", "m", &length).prefixable(true))
+                .unwrap();
+            ureg.add_base(BaseDef::new("am", "am", &time).prefixable(true))
+                .unwrap();
             assert_expands_to(&ureg, "dam", 10.0, "m");
         }
 
@@ -1282,8 +1345,9 @@ mod tests {
             ureg.add_prefix("deci", "d", 0.1).unwrap();
             ureg.add_prefix("deca", "da", 10.0).unwrap();
             // we make meter non prefixable
-            ureg.add_base("meter", "m", &length, false).unwrap();
-            ureg.add_base("am", "am", &time, true).unwrap();
+            ureg.add_base(BaseDef::new("meter", "m", &length)).unwrap();
+            ureg.add_base(BaseDef::new("am", "am", &time).prefixable(true))
+                .unwrap();
             assert_expands_to(&ureg, "dam", 0.1, "am");
         }
 
@@ -1294,7 +1358,12 @@ mod tests {
                 panic!("m not a delta unit")
             };
             ureg.add_prefix("micro", "µ", 1e-6).unwrap();
-            ureg.add_derived("angstrom", "Å", &m, 1e-10, true).unwrap();
+            ureg.add_derived(
+                DerivedDef::new("angstrom", "Å", &m)
+                    .scale(1e-10)
+                    .prefixable(true),
+            )
+            .unwrap();
             assert_expands_to(&ureg, "µm", 1e-6, "m");
             assert_expands_to(&ureg, "µÅ", 1e-16, "m");
         }
@@ -1320,8 +1389,10 @@ mod tests {
         #[test]
         fn accepts_symbol_only_names() {
             let mut ureg = mks_registry();
-            ureg.add_derived("percent", "%", &DeltaUnit::dimensionless(), 0.01, false)
-                .unwrap();
+            ureg.add_derived(
+                DerivedDef::new("percent", "%", &DeltaUnit::dimensionless()).scale(0.01),
+            )
+            .unwrap();
             assert_eq!(ureg.parse("%").unwrap(), ureg.parse("percent").unwrap());
         }
 
@@ -1364,7 +1435,12 @@ mod tests {
             let Some(Unit::Delta(m)) = ureg.get("m") else {
                 panic!("meter is not a delta unit");
             };
-            ureg.add_derived("giant", "gnt", &m, 1e300, true).unwrap();
+            ureg.add_derived(
+                DerivedDef::new("giant", "gnt", &m)
+                    .scale(1e300)
+                    .prefixable(true),
+            )
+            .unwrap();
             let actual = ureg.parse("Qgnt").unwrap_err();
             let expected = UnitError::ScaleOutOfRange {
                 unit: "quettagiant".into(),
@@ -1372,15 +1448,11 @@ mod tests {
             assert!(errors_match(&actual, &expected));
             assert!(ureg.parse("gnt").is_ok());
         }
-    }
-
-    mod add_derived_expr {
-        use super::*;
 
         #[test]
         fn defines_from_expression() {
             let mut ureg = mks_registry();
-            ureg.add_derived_expr("newton", "N", "kg*m/s^2", 1.0, true)
+            ureg.add_derived(DerivedDef::from_expr("newton", "N", "kg*m/s^2").prefixable(true))
                 .unwrap();
             assert_expands_to(&ureg, "N", 1.0, "kg*m/s^2");
         }
@@ -1388,7 +1460,7 @@ mod tests {
         #[test]
         fn accepts_prefixed_units() {
             let mut ureg = mks_registry();
-            ureg.add_derived_expr("x", "X", "kJ/kg", 1.0, false)
+            ureg.add_derived(DerivedDef::from_expr("x", "X", "kJ/kg"))
                 .unwrap();
             assert_expands_to(&ureg, "X", 1e3, "m^2/s^2");
         }
@@ -1397,7 +1469,7 @@ mod tests {
         fn rejects_point_definition() {
             let mut ureg = mks_registry();
             let actual = ureg
-                .add_derived_expr("x", "X", "degC", 1.0, true)
+                .add_derived(DerivedDef::from_expr("x", "X", "degC").prefixable(true))
                 .unwrap_err();
             let expected = UnitError::NotComposable {
                 name: "degree_Celsius".into(),
@@ -1409,12 +1481,12 @@ mod tests {
         fn propagates_parse_and_unknown_unit_errors() {
             let mut ureg = mks_registry();
             assert!(matches!(
-                ureg.add_derived_expr("x", "X", "m*", 1.0, true)
+                ureg.add_derived(DerivedDef::from_expr("x", "X", "m*").prefixable(true))
                     .unwrap_err(),
                 UnitError::Parse { .. }
             ));
             assert!(matches!(
-                ureg.add_derived_expr("x", "X", "parsec", 1.0, true)
+                ureg.add_derived(DerivedDef::from_expr("x", "X", "parsec").prefixable(true))
                     .unwrap_err(),
                 UnitError::UnknownUnit { .. }
             ));
@@ -1453,7 +1525,7 @@ mod tests {
                 let mut dims = DimRegistry::new("test-reg");
                 let dimension = dims.add_base("dimension", None).unwrap();
                 let mut ureg = UnitRegistry::new("test-ureg", dims);
-                let unit = ureg.add_base("unit", &symbol, &dimension, false).unwrap();
+                let unit = ureg.add_base(BaseDef::new("unit", &symbol, &dimension)).unwrap();
                 prop_assert_eq!(ureg.parse(&symbol).unwrap(), Unit::Delta(unit.clone()));
                 let powered = unit.pow(e).unwrap();
                 let plain = powered.to_string();

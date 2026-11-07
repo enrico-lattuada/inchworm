@@ -28,14 +28,14 @@ use crate::{
 ///
 /// ```
 /// use inchworm_dimensions::DimRegistry;
-/// use inchworm_units::{DeltaUnit, UnitRegistry};
+/// use inchworm_units::{BaseDef, DeltaUnit, UnitRegistry};
 ///
 /// let mut dims = DimRegistry::new("mechanics");
 /// let length = dims.add_base("length", Some("L")).unwrap();
 /// let time = dims.add_base("time", Some("T")).unwrap();
 /// let mut units = UnitRegistry::new("si", dims);
-/// let m = units.add_base("meter", "m", &length, true).unwrap();
-/// let s = units.add_base("second", "s", &time, true).unwrap();
+/// let m = units.add_base(BaseDef::new("meter", "m", &length).prefixable(true)).unwrap();
+/// let s = units.add_base(BaseDef::new("second", "s", &time).prefixable(true)).unwrap();
 ///
 /// let speed = m.try_div(&s).unwrap();
 /// assert_eq!(speed.to_string(), "m/s");
@@ -524,6 +524,8 @@ mod tests {
     }
 
     mod to_base {
+        use crate::BaseDef;
+
         use super::*;
 
         #[test]
@@ -622,7 +624,9 @@ mod tests {
                 let mut dim_reg = DimRegistry::new("test-reg");
                 let length = dim_reg.add_base("length", None).unwrap();
                 let mut unit_reg = UnitRegistry::new("test-ureg", dim_reg);
-                unit_reg.add_base("m", "m", &length, true).unwrap()
+                unit_reg
+                    .add_base(BaseDef::new("m", "m", &length).prefixable(true))
+                    .unwrap()
             };
             let (scale, base) = m.to_base().unwrap();
             assert_scale_close(scale, 1.0);

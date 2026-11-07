@@ -445,7 +445,10 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{errors_match, mks_registry, parse_error_at};
+    use crate::{
+        DerivedDef,
+        test_utils::{errors_match, mks_registry, parse_error_at},
+    };
 
     #[test]
     fn name_and_symbol_agree() {
@@ -754,7 +757,7 @@ mod tests {
         let Unit::Delta(m) = ureg.get("m").unwrap() else {
             panic!("m not a delta unit")
         };
-        ureg.add_derived("micrometre", "µm", &m, 1e-6, false)
+        ureg.add_derived(DerivedDef::new("micrometre", "µm", &m).scale(1e-6))
             .unwrap();
         let actual = ureg.parse("µm / .").unwrap_err();
         let expected = UnitError::Parse {

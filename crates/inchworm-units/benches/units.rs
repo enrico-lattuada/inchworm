@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use inchworm_dimensions::{DimRegistry, Exp};
-use inchworm_units::{Unit, UnitRegistry};
+use inchworm_units::{BaseDef, DerivedDef, PointDef, Unit, UnitRegistry};
 
 /// Same contents as the crate's `mks_registry` test fixture, built from the public API.
 fn mks() -> UnitRegistry {
@@ -18,33 +18,49 @@ fn mks() -> UnitRegistry {
     ureg.add_prefix("kilo", "k", 1e3).unwrap();
     ureg.add_prefix("milli", "m", 1e-3).unwrap();
     ureg.add_prefix("centi", "c", 1e-2).unwrap();
-    let kg = ureg.add_prefixed_base("kilo", "gram", "g", &mass).unwrap();
-    let m = ureg.add_base("meter", "m", &length, true).unwrap();
-    let s = ureg.add_base("second", "s", &time, true).unwrap();
-    let kelvin = ureg.add_base("kelvin", "K", &temperature, true).unwrap();
-    let rad = ureg.add_base("radian", "rad", &plane_angle, true).unwrap();
-    let pi = std::f64::consts::PI;
-    ureg.add_derived("degree", "deg", &rad, pi / 180.0, false)
+    let kg = ureg
+        .add_base(
+            BaseDef::new("gram", "g", &mass)
+                .prefixable(true)
+                .prefixed("kilo"),
+        )
         .unwrap();
-    ureg.add_derived("hour", "h", &s, 3600.0, false).unwrap();
+    let m = ureg
+        .add_base(BaseDef::new("meter", "m", &length).prefixable(true))
+        .unwrap();
+    let s = ureg
+        .add_base(BaseDef::new("second", "s", &time).prefixable(true))
+        .unwrap();
+    let kelvin = ureg
+        .add_base(BaseDef::new("kelvin", "K", &temperature).prefixable(true))
+        .unwrap();
+    let rad = ureg
+        .add_base(BaseDef::new("radian", "rad", &plane_angle).prefixable(true))
+        .unwrap();
+    let pi = std::f64::consts::PI;
+    ureg.add_derived(DerivedDef::new("degree", "deg", &rad).scale(pi / 180.0))
+        .unwrap();
+    ureg.add_derived(DerivedDef::new("hour", "h", &s).scale(3600.0))
+        .unwrap();
     let m2 = m.pow(Exp::int(2)).unwrap();
     let s2 = s.pow(Exp::int(2)).unwrap();
     let joule_def = kg.try_mul(&m2).unwrap().try_div(&s2).unwrap();
-    ureg.add_derived("joule", "J", &joule_def, 1.0, true)
+    ureg.add_derived(DerivedDef::new("joule", "J", &joule_def).prefixable(true))
         .unwrap();
     let delta_deg_fahrenheit = ureg
         .add_derived(
-            "delta_deg_Fahrenheit",
-            "delta_degF",
-            &kelvin,
-            5.0 / 9.0,
-            false,
+            DerivedDef::new("delta_deg_Fahrenheit", "delta_degF", &kelvin).scale(5.0 / 9.0),
         )
         .unwrap();
-    ureg.add_point("degree_Celsius", "degC", &kelvin, 273.15)
+    ureg.add_point(PointDef::new("degree_Celsius", "degC", &kelvin, 273.15))
         .unwrap();
-    ureg.add_point("degree_Fahrenheit", "degF", &delta_deg_fahrenheit, 459.67)
-        .unwrap();
+    ureg.add_point(PointDef::new(
+        "degree_Fahrenheit",
+        "degF",
+        &delta_deg_fahrenheit,
+        459.67,
+    ))
+    .unwrap();
     ureg
 }
 

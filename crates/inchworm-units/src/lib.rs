@@ -15,6 +15,7 @@
 mod atom;
 mod atom_ids;
 mod converter;
+mod def;
 mod delta;
 mod error;
 mod fold;
@@ -30,6 +31,7 @@ mod unit;
 
 pub use atom_ids::{UnitId, UnitRegistryId};
 pub use converter::Converter;
+pub use def::{BaseDef, DerivedDef, PointDef};
 pub use delta::DeltaUnit;
 pub use error::UnitError;
 pub use form::UnitForm;

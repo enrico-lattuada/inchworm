@@ -208,7 +208,7 @@ mod tests {
     mod converter_between {
         use super::*;
         use crate::{
-            Unit, UnitRegistry,
+            DerivedDef, Unit, UnitRegistry,
             test_utils::{assert_close, errors_match, mks_registry},
         };
         use inchworm_dimensions::DimRegistry;
@@ -352,11 +352,15 @@ mod tests {
         fn rejects_dimensionless_units_from_another_registry() {
             let mut ureg_1 = UnitRegistry::new("test-ureg-1", DimRegistry::new("test-reg-1"));
             ureg_1
-                .add_derived("percent", "perc", &DeltaUnit::dimensionless(), 100.0, false)
+                .add_derived(
+                    DerivedDef::new("percent", "perc", &DeltaUnit::dimensionless()).scale(100.0),
+                )
                 .unwrap();
             let mut ureg_2 = UnitRegistry::new("test-ureg-2", DimRegistry::new("test-reg-2"));
             ureg_2
-                .add_derived("percent", "perc", &DeltaUnit::dimensionless(), 100.0, false)
+                .add_derived(
+                    DerivedDef::new("percent", "perc", &DeltaUnit::dimensionless()).scale(100.0),
+                )
                 .unwrap();
             let perc_1 = ureg_1.get("perc").unwrap();
             let perc_2 = ureg_2.get("perc").unwrap();
@@ -371,8 +375,10 @@ mod tests {
         #[test]
         fn accepts_bare_dimensionless_with_any_registry() {
             let mut ureg = UnitRegistry::new("test-ureg", DimRegistry::new("test-reg"));
-            ureg.add_derived("percent", "perc", &DeltaUnit::dimensionless(), 100.0, false)
-                .unwrap();
+            ureg.add_derived(
+                DerivedDef::new("percent", "perc", &DeltaUnit::dimensionless()).scale(100.0),
+            )
+            .unwrap();
             let perc = ureg.get("perc").unwrap();
             let converter = Unit::Delta(DeltaUnit::dimensionless()).converter_to(&perc);
             assert!(converter.is_ok());
@@ -381,7 +387,7 @@ mod tests {
         #[test]
         fn propagates_scale_out_of_range() {
             let mut ureg = mks_registry();
-            ureg.add_derived_expr("huge", "huge", "m", 1e200, false)
+            ureg.add_derived(DerivedDef::from_expr("huge", "huge", "m").scale(1e200))
                 .unwrap();
             let huge2 = ureg.parse("huge^2").unwrap();
             let m2 = ureg.parse("m^2").unwrap();
@@ -396,10 +402,10 @@ mod tests {
         fn rejects_conversion_out_of_range() {
             let mut ureg = mks_registry();
             let huge = ureg
-                .add_derived_expr("huge", "huge", "m", 1e200, false)
+                .add_derived(DerivedDef::from_expr("huge", "huge", "m").scale(1e200))
                 .unwrap();
             let tiny = ureg
-                .add_derived_expr("tiny", "tiny", "m", 1e-200, false)
+                .add_derived(DerivedDef::from_expr("tiny", "tiny", "m").scale(1e-200))
                 .unwrap();
             let actual = huge.converter_to(&tiny).unwrap_err();
             let expected = UnitError::ConversionOutOfRange {
