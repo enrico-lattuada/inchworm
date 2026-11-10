@@ -3,7 +3,7 @@
 //! ```text
 //! expr     := term { ("*" | "·" | "×" | "/" | ADJ) term }
 //! term     := factor [ ("^" ["-"] ("(" exponent ")" | INT)) | SUPERSCRIPT ]
-//! factor   := IDENT | "1" | "(" expr ")"
+//! factor   := IDENT | NUMBER | "(" expr ")"       (NUMBER other than 1 only in definitions)
 //! exponent := ["-"] INT [ "/" INT ]
 //! ADJ      := no operator: the next term follows directly, same precedence as "*"
 //! IDENT    := one or more chars accepted by inchworm_dimensions::is_ident_char that are not operators;
@@ -42,22 +42,82 @@ pub(crate) const DECIMAL_SEP_CHAR: char = '.';
 /// Unit of coherent 1 char
 pub(crate) const UNITARY_IDENT_CHAR: char = '1';
 
-/// Parse an expression against a name-resolver (the registry).
+/// A unit expression with a numeric factor, as written in a definition: `3600 s` is `3600 × s`.
+/// Outside definitions the factor is always `1`.
+#[derive(Debug)]
+pub(crate) struct UnitExpression {
+    factor: f64,
+    unit: Unit,
+}
+
+impl UnitExpression {
+    /// The number `n` as an expression: factor `n`, dimensionless unit.
+    fn from_number(n: f64) -> Self {
+        Self {
+            factor: n,
+            unit: Unit::Delta(DeltaUnit::dimensionless()),
+        }
+    }
+
+    /// The unit `unit` as an expression: factor `1`.
+    fn from_unit(unit: Unit) -> Self {
+        Self { factor: 1.0, unit }
+    }
+
+    /// The product: factors multiply, units combine with [`Unit::try_mul`].
+    fn try_mul(self, rhs: &Self) -> Result<Self, UnitError> {
+        let factor = self.factor * rhs.factor;
+        let unit = self.unit.try_mul(&rhs.unit)?;
+        Ok(Self { factor, unit })
+    }
+
+    /// The quotient: factors divide, units combine with [`Unit::try_div`].
+    fn try_div(self, rhs: &Self) -> Result<Self, UnitError> {
+        let factor = self.factor / rhs.factor;
+        let unit = self.unit.try_div(&rhs.unit)?;
+        Ok(Self { factor, unit })
+    }
+
+    /// Raises both the factor and the unit to `exp`: `(2 m)^2` is `4 m²`.
+    fn pow(self, exp: Exp) -> Result<Self, UnitError> {
+        let factor = self.factor.powf(exp.to_f64());
+        let unit = self.unit.pow(exp)?;
+        Ok(Self { factor, unit })
+    }
+
+    /// The factor and the unit.
+    pub(crate) fn into_parts(self) -> (f64, Unit) {
+        (self.factor, self.unit)
+    }
+}
+
+/// Which numbers the parser accepts as factors.
+#[derive(Debug, PartialEq)]
+enum Mode {
+    /// Unit expressions (`parse`): only `1`.
+    Unit,
+    /// Definition expressions: any number.
+    Definition,
+}
+
+/// Parses `src` against a name resolver (the registry), accepting the numbers `mode` allows.
 /// Errors carry byte offsets so diagnostics can point into the source.
-pub(crate) fn parse_unit_expr<'a>(
+fn parse<'a>(
     src: &'a str,
     resolve: &'a dyn Fn(&str) -> Result<Unit, UnitError>,
-) -> Result<Unit, UnitError> {
+    mode: Mode,
+) -> Result<UnitExpression, UnitError> {
     let lexer = Lexer::new(src);
     let tokens = lexer.peekable();
     let mut parser = Parser {
         tokens,
         src,
         resolve,
+        mode,
     };
-    let unit = parser.parse_expr()?;
+    let expr = parser.parse_expr()?;
     match parser.advance()? {
-        None => Ok(unit),
+        None => Ok(expr),
         Some(spanned) => {
             let token = spanned.token;
             let message = format!("expected end of input, found trailing {token}");
@@ -68,6 +128,24 @@ pub(crate) fn parse_unit_expr<'a>(
             })
         }
     }
+}
+
+/// Parses a unit expression: the only number allowed is `1`, reported at its offset otherwise.
+pub(crate) fn parse_unit_expr<'a>(
+    src: &'a str,
+    resolve: &'a dyn Fn(&str) -> Result<Unit, UnitError>,
+) -> Result<Unit, UnitError> {
+    let (factor, unit) = parse(src, resolve, Mode::Unit)?.into_parts();
+    debug_assert_eq!(factor, 1.0);
+    Ok(unit)
+}
+
+/// Parses a definition expression: any positive number is a factor (`3600 s`, `1/12 ft`).
+pub(crate) fn parse_definition<'a>(
+    src: &'a str,
+    resolve: &'a dyn Fn(&str) -> Result<Unit, UnitError>,
+) -> Result<UnitExpression, UnitError> {
+    parse(src, resolve, Mode::Definition)
 }
 
 pub(crate) fn is_valid_ident(src: &str) -> bool {
@@ -315,6 +393,7 @@ struct Parser<'a> {
     tokens: Peekable<Lexer<'a>>,
     src: &'a str,
     resolve: &'a dyn Fn(&str) -> Result<Unit, UnitError>,
+    mode: Mode,
 }
 
 impl<'a> Parser<'a> {
@@ -376,20 +455,30 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_factor(&mut self) -> Result<Unit, UnitError> {
-        let spanned = self.advance()?.ok_or_else(|| UnitError::Parse {
-            src: self.src.into(),
-            offset: self.src.len(),
-            message: "expected a unit, `1`, or `(`, found end of input".into(),
+    fn parse_factor(&mut self) -> Result<UnitExpression, UnitError> {
+        let spanned = self.advance()?.ok_or_else(|| {
+            let message = match self.mode {
+                Mode::Unit => "expected a unit, `1`, or `(`, found end of input",
+                Mode::Definition => "expected a unit, a number, or `(`, found end of input",
+            };
+            UnitError::Parse {
+                src: self.src.into(),
+                offset: self.src.len(),
+                message: message.into(),
+            }
         })?;
         match spanned.token {
-            Token::Int(1) => Ok(Unit::Delta(DeltaUnit::dimensionless())),
-            Token::Ident(name) => (self.resolve)(&name),
+            Token::Int(1) => Ok(UnitExpression::from_number(1.0)),
+            Token::Ident(name) => Ok(UnitExpression::from_unit((self.resolve)(&name)?)),
             Token::LParen => {
                 let inner = self.parse_expr()?;
                 self.expect_rparen()?;
                 Ok(inner)
             }
+            Token::Int(n) if self.mode == Mode::Definition => {
+                Ok(UnitExpression::from_number(n as f64))
+            }
+            Token::Float(n) if self.mode == Mode::Definition => Ok(UnitExpression::from_number(n)),
             Token::Int(_) | Token::Float(_) => {
                 let message = "numeric factors are not allowed in unit expressions";
                 Err(UnitError::Parse {
@@ -399,7 +488,10 @@ impl<'a> Parser<'a> {
                 })
             }
             token => {
-                let message = format!("expected a unit, `1`, or `(`, found {token}");
+                let message = match self.mode {
+                    Mode::Unit => format!("expected a unit, `1`, or `(`, found {token}"),
+                    Mode::Definition => format!("expected a unit, a number, or `(`, found {token}"),
+                };
                 Err(UnitError::Parse {
                     src: self.src.into(),
                     offset: spanned.offset,
@@ -409,7 +501,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_term(&mut self) -> Result<Unit, UnitError> {
+    fn parse_term(&mut self) -> Result<UnitExpression, UnitError> {
         let base = self.parse_factor()?;
         if let Some(Ok(Spanned {
             token: Token::Superscript(n),
@@ -442,7 +534,7 @@ impl<'a> Parser<'a> {
         base.pow(exp)
     }
 
-    fn parse_expr(&mut self) -> Result<Unit, UnitError> {
+    fn parse_expr(&mut self) -> Result<UnitExpression, UnitError> {
         let mut result = self.parse_term()?;
         loop {
             if self.consume_if(&Token::Star)? {
@@ -864,6 +956,76 @@ mod tests {
                 let adj_expr = unit.to_string().replace('*', " ");
                 prop_assert_eq!(&ureg.parse(&adj_expr).unwrap(), &unit);
             }
+        }
+    }
+
+    mod parse_definition {
+        use super::*;
+        use crate::{UnitRegistry, test_utils::assert_close};
+
+        fn assert_definition(
+            ureg: &UnitRegistry,
+            src: &str,
+            expected_factor: f64,
+            expected_unit: &str,
+        ) {
+            let (factor, unit) = ureg.parse_definition(src).unwrap().into_parts();
+            assert_close(factor, expected_factor);
+            assert_eq!(unit, ureg.parse(expected_unit).unwrap(), "{src}");
+        }
+
+        #[test]
+        fn accepts_numbers() {
+            let ureg = mks_registry();
+            let cases = [
+                ("3600 s", 3600.0, "s"),
+                ("4.184 J", 4.184, "J"),
+                ("1.5e-3 m", 1.5e-3, "m"),
+                ("1 m", 1.0, "m"),
+            ];
+            for (src, factor, unit) in cases {
+                assert_definition(&ureg, src, factor, unit);
+            }
+        }
+
+        #[test]
+        fn combines_factors() {
+            let ureg = mks_registry();
+            let cases = [
+                ("1/12 m", 1.0 / 12.0, "m"),
+                ("1 / 2 m", 0.5, "m"),
+                ("2 * 3 m", 6.0, "m"),
+                ("1000 m / 10 s", 100.0, "m*s"),
+                ("1000 m / (10 s)", 100.0, "m/s"),
+            ];
+            for (src, factor, unit) in cases {
+                assert_definition(&ureg, src, factor, unit);
+            }
+        }
+
+        #[test]
+        fn powers_raise_the_factor() {
+            let ureg = mks_registry();
+            let cases = [
+                ("10^3 m", 1e3, "m"),
+                ("10^-3 m", 1e-3, "m"),
+                ("(2 m)^2", 4.0, "m^2"),
+                ("(2 m)²", 4.0, "m^2"),
+                ("(4 m^2)^(1/2)", 2.0, "m"),
+            ];
+            for (src, factor, unit) in cases {
+                assert_definition(&ureg, src, factor, unit);
+            }
+        }
+
+        #[test]
+        fn rejects_point_with_number() {
+            let ureg = mks_registry();
+            let actual = ureg.parse_definition("2 degC").unwrap_err();
+            let expected = UnitError::NotComposable {
+                name: "degree_Celsius".into(),
+            };
+            assert!(errors_match(&actual, &expected), "{actual:?}");
         }
     }
 }

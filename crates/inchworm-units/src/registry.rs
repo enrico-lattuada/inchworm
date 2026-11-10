@@ -13,7 +13,7 @@ use crate::{
     atom::{AtomData, AtomKind, Expansion, PointAtom, PointData, UnitAtom},
     def::Definition,
     fold::lookup_key,
-    parse::{parse_unit_expr, validate_ident},
+    parse::{UnitExpression, parse_definition, parse_unit_expr, validate_ident},
     prefix::Prefix,
     scale::Scale,
 };
@@ -443,7 +443,8 @@ impl UnitRegistry {
     /// Adds a derived (delta) unit: `1 unit = scale × definition`
     /// (`km := 1e3 × m`, `J := 1 × kg·m²/s²`). Its dimension is the definition's.
     ///
-    /// A definition built with [`DerivedDef::from_expr`] is parsed here, against this registry.
+    /// A definition built with [`DerivedDef::from_expr`] is parsed here, against this registry;
+    /// its numbers are factors (`3600 s`, `1/12 ft`), multiplied into the scale.
     ///
     /// # Errors
     ///
@@ -455,7 +456,8 @@ impl UnitRegistry {
     /// Returns [`UnitError::NotPrefixable`] if the expression puts a prefix on a non-prefixable unit.
     /// Returns [`UnitError::NotComposable`] if the expression is or contains a point unit.
     /// Returns [`UnitError::CrossRegistry`] if the definition comes from another unit registry.
-    /// Returns [`UnitError::InvalidScale`] if the scale is not positive, finite, and normal.
+    /// Returns [`UnitError::InvalidScale`] if the scale, times the expression's numeric factor,
+    /// is not positive, finite, and normal (`0 m`, `1e400 m`).
     /// Returns [`UnitError::ScaleOutOfRange`] if the definition's scale, or its product with the
     /// scale, overflows or underflows.
     /// Returns [`UnitError::Dimension`] wrapping
@@ -463,22 +465,19 @@ impl UnitRegistry {
     /// if expanding the definition to base units overflows an exponent.
     pub fn add_derived(&mut self, def: DerivedDef) -> Result<DeltaUnit, UnitError> {
         self.validate_unit(def.name(), def.symbol())?;
-        let delta = match def.definition() {
-            Definition::Unit(u) => u.clone(),
-            Definition::Expr(expr) => {
-                let unit = self.parse(expr)?;
-                match unit {
-                    Unit::Delta(d) => d,
-                    Unit::Point(p) => {
-                        return Err(UnitError::NotComposable {
-                            name: p.name().into(),
-                        });
-                    }
+        let (factor, delta) = match def.definition() {
+            Definition::Unit(u) => (1.0, u.clone()),
+            Definition::Expr(expr) => match self.parse_definition(expr)?.into_parts() {
+                (factor, Unit::Delta(d)) => (factor, d),
+                (_, Unit::Point(p)) => {
+                    return Err(UnitError::NotComposable {
+                        name: p.name().into(),
+                    });
                 }
-            }
+            },
         };
         self.validate_registry(&delta)?;
-        let scale = self.validate_scale(def.name(), def.scale_factor())?;
+        let scale = self.validate_scale(def.name(), factor * def.scale_factor())?;
         let expansion = Expansion::new(def.name(), &delta, scale)?;
         let atom = self.insert_derived(def.name(), def.symbol(), expansion, def.is_prefixable());
         let derived = DeltaUnit::from_atom(&atom);
@@ -581,6 +580,11 @@ impl UnitRegistry {
     /// Returns [`UnitError::ScaleOutOfRange`] if the `expr`'s scale overflows or underflows.
     pub fn parse(&self, expr: &str) -> Result<Unit, UnitError> {
         parse_unit_expr(expr, &|name| self.resolve_ident(name))
+    }
+
+    /// Parses a definition expression, numeric factors allowed (`3600 s`).
+    pub(crate) fn parse_definition(&self, expr: &str) -> Result<UnitExpression, UnitError> {
+        parse_definition(expr, &|name| self.resolve_ident(name))
     }
 
     /// Resolves one identifier: an exact name or symbol first, then a prefix
@@ -1122,6 +1126,48 @@ mod tests {
                 right: other.id(),
             };
             assert!(errors_match(&actual, &expected));
+        }
+
+        #[test]
+        fn defines_from_numeric_expression() {
+            let mut ureg = mks_registry();
+            ureg.add_derived(DerivedDef::from_expr("minute", "min", "60 s"))
+                .unwrap();
+            assert_expands_to(&ureg, "min", 60.0, "s");
+        }
+
+        #[test]
+        fn expression_factor_multiplies_scale() {
+            let mut ureg = mks_registry();
+            ureg.add_derived(DerivedDef::from_expr("x", "X", "1000 m").scale(2.0))
+                .unwrap();
+            assert_expands_to(&ureg, "X", 2000.0, "m");
+        }
+
+        #[test]
+        fn rejects_zero_or_overflowing_factor() {
+            let mut ureg = mks_registry();
+            let cases = [
+                (DerivedDef::from_expr("x", "X", "0 m"), 0.0),
+                (DerivedDef::from_expr("x", "X", "1e400 m"), f64::INFINITY),
+                (
+                    DerivedDef::from_expr("x", "X", "1e200 * 1e200 m"),
+                    f64::INFINITY,
+                ),
+                (
+                    DerivedDef::from_expr("x", "X", "1e200 m").scale(1e200),
+                    f64::INFINITY,
+                ),
+            ];
+            for (def, scale) in cases {
+                let actual = ureg.add_derived(def).unwrap_err();
+                let expected = UnitError::InvalidScale {
+                    name: "x".into(),
+                    registry: "test-ureg".into(),
+                    scale,
+                };
+                assert!(errors_match(&actual, &expected), "{actual:?}");
+            }
         }
     }
 
