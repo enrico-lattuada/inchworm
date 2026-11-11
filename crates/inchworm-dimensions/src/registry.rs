@@ -291,7 +291,8 @@ impl DimRegistry {
     /// # Errors
     ///
     /// Returns [`DimensionError::RemovalBlocked`] if any *registered* definition still references
-    /// `name`. Aliases are never counted as dependents and never block removal.
+    /// `name`. Aliases are never counted as dependents and never block removal. Dependents' names
+    /// come in sorted order.
     pub fn remove(&mut self, name: &str) -> Result<Option<Dimension>, DimensionError> {
         if let Some(atom) = self.atoms.get(name)
             && Arc::strong_count(atom) > 1
@@ -312,6 +313,7 @@ impl DimRegistry {
                 }
             }
             if !dependents.is_empty() {
+                dependents.sort();
                 return Err(DimensionError::RemovalBlocked {
                     name: name.into(),
                     dependents,
@@ -878,7 +880,7 @@ mod tests {
             let err = registry.remove("length").unwrap_err();
             let expected_err = DimensionError::RemovalBlocked {
                 name: "length".into(),
-                dependents: vec!["velocity".into(), "acceleration".into()],
+                dependents: vec!["acceleration".into(), "velocity".into()],
             };
             assert!(errors_match(&err, &expected_err,));
             assert!(registry.get("length").is_some());
