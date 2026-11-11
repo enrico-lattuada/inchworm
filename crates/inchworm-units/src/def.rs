@@ -12,6 +12,7 @@ pub struct BaseDef {
     dimension: Dimension,
     prefixable: bool,
     prefix: Option<Box<str>>,
+    aliases: Vec<Box<str>>,
 }
 
 impl BaseDef {
@@ -24,6 +25,7 @@ impl BaseDef {
             dimension: dimension.clone(),
             prefixable: false,
             prefix: None,
+            aliases: Vec::new(),
         }
     }
 
@@ -36,14 +38,25 @@ impl BaseDef {
     /// Registers the prefixed form (`kilogram`/`kg` for prefix `kilo`) as the base unit, and the
     /// unit named in [`new`](Self::new) as its stem (`gram := 1e-3 × kilogram`).
     ///
-    /// [`prefixable`](Self::prefixable) applies to the stem; the base itself never takes
-    /// prefixes, since prefixes don't stack.
+    /// [`prefixable`](Self::prefixable) and [`alias`](Self::alias) apply to the stem; the base
+    /// itself never takes prefixes, since prefixes don't stack.
     #[must_use]
     pub fn prefixed(self, prefix: &str) -> Self {
         Self {
             prefix: Some(prefix.into()),
             ..self
         }
+    }
+
+    /// Adds `alias`: another identifier for this unit (`metre` for `meter`). It resolves like
+    /// the name, takes prefixes when the unit is [`prefixable`](Self::prefixable) (`kilometre`),
+    /// and is never displayed. Repeatable.
+    /// On a prefixed base, aliases belong to the unit named in [`new`](Self::new),
+    /// like [`prefixable`](Self::prefixable).
+    #[must_use]
+    pub fn alias(mut self, alias: &str) -> Self {
+        self.aliases.push(alias.into());
+        self
     }
 
     pub(crate) fn name(&self) -> &str {
@@ -65,6 +78,10 @@ impl BaseDef {
     pub(crate) fn prefix(&self) -> Option<&str> {
         self.prefix.as_deref()
     }
+
+    pub(crate) fn aliases(&self) -> &[Box<str>] {
+        &self.aliases
+    }
 }
 
 /// What a derived unit is defined as: a unit already built, or an expression parsed when added.
@@ -83,6 +100,7 @@ pub struct DerivedDef {
     definition: Definition,
     scale: f64,
     prefixable: bool,
+    aliases: Vec<Box<str>>,
 }
 
 impl DerivedDef {
@@ -95,6 +113,7 @@ impl DerivedDef {
             definition: Definition::Unit(definition.clone()),
             scale: 1.0,
             prefixable: false,
+            aliases: Vec::new(),
         }
     }
 
@@ -110,6 +129,7 @@ impl DerivedDef {
             definition: Definition::Expr(expr.to_string()),
             scale: 1.0,
             prefixable: false,
+            aliases: Vec::new(),
         }
     }
 
@@ -123,6 +143,15 @@ impl DerivedDef {
     #[must_use]
     pub fn prefixable(self, prefixable: bool) -> Self {
         Self { prefixable, ..self }
+    }
+
+    /// Adds `alias`: another identifier for this unit (`litre` for `liter`). It resolves like
+    /// the name, takes prefixes when the unit is [`prefixable`](Self::prefixable), and is never
+    /// displayed. Repeatable.
+    #[must_use]
+    pub fn alias(mut self, alias: &str) -> Self {
+        self.aliases.push(alias.into());
+        self
     }
 
     pub(crate) fn name(&self) -> &str {
@@ -144,6 +173,10 @@ impl DerivedDef {
     pub(crate) fn is_prefixable(&self) -> bool {
         self.prefixable
     }
+
+    pub(crate) fn aliases(&self) -> &[Box<str>] {
+        &self.aliases
+    }
 }
 
 /// The definition of a point (affine) unit, for
@@ -155,6 +188,7 @@ pub struct PointDef {
     symbol: Box<str>,
     delta: DeltaUnit,
     offset: f64,
+    aliases: Vec<Box<str>>,
 }
 
 impl PointDef {
@@ -167,7 +201,16 @@ impl PointDef {
             symbol: symbol.into(),
             delta: delta.clone(),
             offset,
+            aliases: Vec::new(),
         }
+    }
+
+    /// Adds `alias`: another identifier for this unit (`celsius` for `degree_Celsius`). It
+    /// resolves like the name and is never displayed. Repeatable.
+    #[must_use]
+    pub fn alias(mut self, alias: &str) -> Self {
+        self.aliases.push(alias.into());
+        self
     }
 
     pub(crate) fn name(&self) -> &str {
@@ -185,11 +228,27 @@ impl PointDef {
     pub(crate) fn offset(&self) -> f64 {
         self.offset
     }
+
+    pub(crate) fn aliases(&self) -> &[Box<str>] {
+        &self.aliases
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base_defaults() {
+        let dimension = Dimension::dimensionless();
+        let def = BaseDef::new("name", "sym", &dimension);
+        assert_eq!(def.name(), "name");
+        assert_eq!(def.symbol(), "sym");
+        assert_eq!(def.dimension(), &dimension);
+        assert!(!def.is_prefixable());
+        assert!(def.prefix().is_none());
+        assert!(def.aliases().is_empty());
+    }
 
     #[test]
     fn derived_defaults() {
@@ -201,20 +260,10 @@ mod tests {
             assert_eq!(def.symbol(), "sym");
             assert_eq!(def.scale_factor(), 1.0);
             assert!(!def.is_prefixable());
+            assert!(def.aliases().is_empty());
         }
         assert!(matches!(from_unit.definition(), Definition::Unit(u) if *u == unit));
         assert!(matches!(from_expr.definition(), Definition::Expr(e) if e == "m/s"));
-    }
-
-    #[test]
-    fn base_defaults() {
-        let dimension = Dimension::dimensionless();
-        let def = BaseDef::new("name", "sym", &dimension);
-        assert_eq!(def.name(), "name");
-        assert_eq!(def.symbol(), "sym");
-        assert_eq!(def.dimension(), &dimension);
-        assert!(!def.is_prefixable());
-        assert!(def.prefix().is_none());
     }
 
     #[test]
@@ -223,5 +272,25 @@ mod tests {
             .scale(2.0)
             .scale(3.0);
         assert_eq!(def.scale_factor(), 3.0);
+    }
+
+    #[test]
+    fn aliases_accumulate() {
+        let def = DerivedDef::new("name", "sym", &DeltaUnit::dimensionless())
+            .alias("a")
+            .alias("b");
+        let expected: [Box<str>; 2] = ["a".into(), "b".into()];
+        assert_eq!(def.aliases(), expected);
+    }
+
+    #[test]
+    fn point_defaults() {
+        let delta = DeltaUnit::dimensionless();
+        let def = PointDef::new("name", "sym", &delta, 1.5);
+        assert_eq!(def.name(), "name");
+        assert_eq!(def.symbol(), "sym");
+        assert_eq!(def.delta(), &delta);
+        assert_eq!(def.offset(), 1.5);
+        assert!(def.aliases().is_empty());
     }
 }

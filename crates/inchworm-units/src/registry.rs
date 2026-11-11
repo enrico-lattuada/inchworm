@@ -2,7 +2,7 @@
 //! and the only place unit invariants are checked.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
@@ -32,6 +32,22 @@ impl Entry {
         match self {
             Entry::Delta(atom) => &atom.name,
             Entry::Point(atom) => &atom.name,
+        }
+    }
+
+    /// The registered symbol of this entry's unit.
+    fn symbol(&self) -> &str {
+        match self {
+            Self::Delta(atom) => &atom.symbol,
+            Self::Point(atom) => &atom.symbol,
+        }
+    }
+
+    /// The aliases of this entry's unit.
+    fn aliases(&self) -> &[Box<str>] {
+        match self {
+            Self::Delta(atom) => &atom.aliases,
+            Self::Point(atom) => &atom.aliases,
         }
     }
 
@@ -81,7 +97,8 @@ pub struct UnitRegistry {
     version: Box<str>,
     dims: DimRegistry,
     entries: HashMap<Box<str>, Entry>,
-    by_symbol: HashMap<Box<str>, Box<str>>,
+    /// Every symbol and alias, mapped to its unit's name (both look-alike folded).
+    by_ident: HashMap<Box<str>, Box<str>>,
     bases: HashMap<Dimension, UnitAtom>,
     prefixes: HashMap<Box<str>, Prefix>,
     prefix_by_symbol: HashMap<Box<str>, Box<str>>,
@@ -104,7 +121,7 @@ impl UnitRegistry {
             version: version.into(),
             dims,
             entries: HashMap::new(),
-            by_symbol: HashMap::new(),
+            by_ident: HashMap::new(),
             bases: HashMap::new(),
             prefixes: HashMap::new(),
             prefix_by_symbol: HashMap::new(),
@@ -138,7 +155,7 @@ impl UnitRegistry {
     fn find_entry(&self, name_or_symbol: &str) -> Option<&Entry> {
         let key = lookup_key(name_or_symbol);
         self.entries.get(key.as_ref()).or_else(|| {
-            self.by_symbol
+            self.by_ident
                 .get(key.as_ref())
                 .and_then(|canonical| self.entries.get(canonical))
         })
@@ -181,11 +198,15 @@ impl UnitRegistry {
 // ---- insertion (mutation) ----
 impl UnitRegistry {
     /// Unchecked: stores the atom. Callers must validate the name,
-    /// symbol and every other input first.
-    fn insert_entry(&mut self, name: &str, symbol: &str, entry: Entry) {
-        let key = lookup_key(name);
-        self.by_symbol
-            .insert(lookup_key(symbol).into(), key.as_ref().into());
+    /// symbol, aliases, and every other input first.
+    fn insert_entry(&mut self, entry: Entry) {
+        let key = lookup_key(entry.name());
+        self.by_ident
+            .insert(lookup_key(entry.symbol()).into(), key.as_ref().into());
+        for alias in entry.aliases() {
+            self.by_ident
+                .insert(lookup_key(alias).into(), key.as_ref().into());
+        }
         self.entries.insert(key.as_ref().into(), entry);
     }
 
@@ -197,6 +218,7 @@ impl UnitRegistry {
         symbol: &str,
         dimension: &Dimension,
         prefixable: bool,
+        aliases: &[Box<str>],
     ) -> UnitAtom {
         let data = AtomData {
             id: UnitId::next(),
@@ -206,10 +228,11 @@ impl UnitRegistry {
             dimension: dimension.clone(),
             prefixable,
             kind: AtomKind::Base,
+            aliases: aliases.into(),
         };
         let atom = UnitAtom::new(data);
         self.bases.insert(dimension.clone(), atom.clone());
-        self.insert_entry(name, symbol, Entry::Delta(atom.clone()));
+        self.insert_entry(Entry::Delta(atom.clone()));
         atom
     }
 
@@ -221,6 +244,7 @@ impl UnitRegistry {
         symbol: &str,
         expansion: Expansion,
         prefixable: bool,
+        aliases: &[Box<str>],
     ) -> UnitAtom {
         let data = AtomData {
             id: UnitId::next(),
@@ -230,9 +254,10 @@ impl UnitRegistry {
             dimension: expansion.base().dimension().clone(),
             prefixable,
             kind: AtomKind::Derived(Box::new(expansion)),
+            aliases: aliases.into(),
         };
         let atom = UnitAtom::new(data);
-        self.insert_entry(name, symbol, Entry::Delta(atom.clone()));
+        self.insert_entry(Entry::Delta(atom.clone()));
         atom
     }
 
@@ -244,6 +269,7 @@ impl UnitRegistry {
         symbol: &str,
         delta: &DeltaUnit,
         offset: f64,
+        aliases: &[Box<str>],
     ) -> PointUnit {
         let data = PointData {
             id: UnitId::next(),
@@ -252,10 +278,11 @@ impl UnitRegistry {
             symbol: symbol.into(),
             delta: delta.clone(),
             offset,
+            aliases: aliases.into(),
         };
         let atom = PointAtom::new(data);
         let unit = PointUnit::from_atom(&atom);
-        self.insert_entry(name, symbol, Entry::Point(atom));
+        self.insert_entry(Entry::Point(atom));
         unit
     }
 }
@@ -264,25 +291,49 @@ impl UnitRegistry {
 impl UnitRegistry {
     fn is_unit_taken(&self, candidate: &str) -> bool {
         let key = lookup_key(candidate);
-        self.entries.contains_key(key.as_ref()) || self.by_symbol.contains_key(key.as_ref())
+        self.entries.contains_key(key.as_ref()) || self.by_ident.contains_key(key.as_ref())
     }
 
-    fn validate_unit(&self, name: &str, symbol: &str) -> Result<(), UnitError> {
+    fn is_prefix_name(&self, candidate: &str) -> bool {
+        self.prefixes.contains_key(lookup_key(candidate).as_ref())
+    }
+
+    fn validate_unit(
+        &self,
+        name: &str,
+        symbol: &str,
+        aliases: &[Box<str>],
+    ) -> Result<(), UnitError> {
         validate_ident(name)?;
         validate_ident(symbol)?;
-        if self.is_unit_taken(name) || self.prefixes.contains_key(lookup_key(name).as_ref()) {
-            Err(UnitError::DuplicateName {
-                name: name.into(),
-                registry: self.name().into(),
-            })
-        } else if self.is_unit_taken(symbol) {
-            Err(UnitError::DuplicateName {
-                name: symbol.into(),
-                registry: self.name().into(),
-            })
-        } else {
-            Ok(())
+        for alias in aliases {
+            validate_ident(alias)?;
         }
+
+        let duplicate = |taken: &str| UnitError::DuplicateName {
+            name: taken.into(),
+            registry: self.name().into(),
+        };
+
+        if self.is_unit_taken(name) || self.is_prefix_name(name) {
+            return Err(duplicate(name));
+        }
+        if self.is_unit_taken(symbol) {
+            return Err(duplicate(symbol));
+        }
+        for alias in aliases {
+            if self.is_unit_taken(alias) || self.is_prefix_name(alias) {
+                return Err(duplicate(alias));
+            }
+        }
+
+        let mut seen = HashSet::from([lookup_key(name), lookup_key(symbol)]);
+        for alias in aliases {
+            if !seen.insert(lookup_key(alias)) {
+                return Err(duplicate(alias));
+            }
+        }
+        Ok(())
     }
 
     fn validate_registry(&self, unit: &DeltaUnit) -> Result<(), UnitError> {
@@ -376,10 +427,12 @@ impl UnitRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`UnitError::InvalidName`] if the name or symbol, or for a prefixed base their
-    /// prefixed forms, is not an identifier.
-    /// Returns [`UnitError::DuplicateName`] if the name or symbol, or their prefixed forms, is
-    /// already a unit name or symbol, or the name is a prefix name.
+    /// Returns [`UnitError::InvalidName`] if the name, symbol, or an alias, or for a prefixed
+    /// base their prefixed name or symbol, is not an identifier.
+    /// Returns [`UnitError::DuplicateName`] if the name, symbol, an alias, or the prefixed name
+    /// or symbol is already a unit name, symbol, or alias; if the name or an alias is a prefix
+    /// name; if an alias repeats the name, symbol, or another alias; or if an alias of a
+    /// prefixed base's stem is the base's name or symbol.
     /// Returns [`UnitError::UnknownPrefix`] if a prefixed base's prefix is not in the registry.
     /// Returns [`UnitError::ScaleOutOfRange`] if a prefixed base's stem scale (the reciprocal of
     /// the prefix factor) overflows or underflows.
@@ -392,13 +445,14 @@ impl UnitRegistry {
     pub fn add_base(&mut self, def: BaseDef) -> Result<DeltaUnit, UnitError> {
         match def.prefix() {
             None => {
-                self.validate_unit(def.name(), def.symbol())?;
+                self.validate_unit(def.name(), def.symbol(), def.aliases())?;
                 self.validate_base_dimension(def.name(), def.dimension())?;
                 let atom = self.insert_base(
                     def.name(),
                     def.symbol(),
                     def.dimension(),
                     def.is_prefixable(),
+                    def.aliases(),
                 );
                 let unit = DeltaUnit::from_atom(&atom);
                 Ok(unit)
@@ -417,8 +471,19 @@ impl UnitRegistry {
         let name = format!("{}{stem_name}", prefix.name);
         let symbol = format!("{}{stem_symbol}", prefix.symbol);
         // Validate everything first, so an error leaves the registry unchanged.
-        self.validate_unit(&name, &symbol)?;
-        self.validate_unit(stem_name, stem_symbol)?;
+        self.validate_unit(&name, &symbol, &[])?;
+        self.validate_unit(stem_name, stem_symbol, def.aliases())?;
+        let base_keys = [lookup_key(&name), lookup_key(&symbol)];
+        if let Some(alias) = def
+            .aliases()
+            .iter()
+            .find(|alias| base_keys.contains(&lookup_key(alias)))
+        {
+            return Err(UnitError::DuplicateName {
+                name: alias.to_string(),
+                registry: self.name().into(),
+            });
+        }
         self.validate_base_dimension(&name, dimension)?;
         let scale =
             prefix
@@ -428,11 +493,17 @@ impl UnitRegistry {
                     unit: stem_name.to_string(),
                 })?;
 
-        let atom = self.insert_base(&name, &symbol, dimension, false);
+        let atom = self.insert_base(&name, &symbol, dimension, false, &[]);
         let base = DeltaUnit::from_atom(&atom);
         let expansion = Expansion::new(stem_name, &base, scale)
             .expect("a base atom expands to itself, the reciprocal was validated above");
-        let stem = self.insert_derived(stem_name, stem_symbol, expansion, def.is_prefixable());
+        let stem = self.insert_derived(
+            stem_name,
+            stem_symbol,
+            expansion,
+            def.is_prefixable(),
+            def.aliases(),
+        );
         self.prefixed
             .get_mut()
             .unwrap_or_else(PoisonError::into_inner)
@@ -448,9 +519,10 @@ impl UnitRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`UnitError::InvalidName`] if the name or symbol is not an identifier.
-    /// Returns [`UnitError::DuplicateName`] if the name or symbol is already a unit name or
-    /// symbol, or the name is a prefix name.
+    /// Returns [`UnitError::InvalidName`] if the name, symbol, or an alias is not an identifier.
+    /// Returns [`UnitError::DuplicateName`] if the name, symbol, or an alias is already a unit
+    /// name, symbol, or alias; if the name or an alias is a prefix name; or if an alias repeats
+    /// the name, symbol, or another alias.
     /// Returns [`UnitError::Parse`] if the definition's expression cannot be parsed.
     /// Returns [`UnitError::UnknownUnit`] if the expression names a unit unknown to the registry.
     /// Returns [`UnitError::NotPrefixable`] if the expression puts a prefix on a non-prefixable unit.
@@ -464,7 +536,7 @@ impl UnitRegistry {
     /// [`ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if expanding the definition to base units overflows an exponent.
     pub fn add_derived(&mut self, def: DerivedDef) -> Result<DeltaUnit, UnitError> {
-        self.validate_unit(def.name(), def.symbol())?;
+        self.validate_unit(def.name(), def.symbol(), def.aliases())?;
         let (factor, delta) = match def.definition() {
             Definition::Unit(u) => (1.0, u.clone()),
             Definition::Expr(expr) => match self.parse_definition(expr)?.into_parts() {
@@ -479,7 +551,13 @@ impl UnitRegistry {
         self.validate_registry(&delta)?;
         let scale = self.validate_scale(def.name(), factor * def.scale_factor())?;
         let expansion = Expansion::new(def.name(), &delta, scale)?;
-        let atom = self.insert_derived(def.name(), def.symbol(), expansion, def.is_prefixable());
+        let atom = self.insert_derived(
+            def.name(),
+            def.symbol(),
+            expansion,
+            def.is_prefixable(),
+            def.aliases(),
+        );
         let derived = DeltaUnit::from_atom(&atom);
         Ok(derived)
     }
@@ -489,16 +567,23 @@ impl UnitRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`UnitError::InvalidName`] if the name or symbol is not an identifier.
-    /// Returns [`UnitError::DuplicateName`] if the name or symbol is already a unit name or
-    /// symbol, or the name is a prefix name.
+    /// Returns [`UnitError::InvalidName`] if the name, symbol, or an alias is not an identifier.
+    /// Returns [`UnitError::DuplicateName`] if the name, symbol, or an alias is already a unit
+    /// name, symbol, or alias; if the name or an alias is a prefix name; or if an alias repeats
+    /// the name, symbol, or another alias.
     /// Returns [`UnitError::CrossRegistry`] if the delta unit comes from another unit registry.
     /// Returns [`UnitError::NonFiniteOffset`] if the offset is not finite.
     pub fn add_point(&mut self, def: PointDef) -> Result<PointUnit, UnitError> {
-        self.validate_unit(def.name(), def.symbol())?;
+        self.validate_unit(def.name(), def.symbol(), def.aliases())?;
         self.validate_registry(def.delta())?;
         self.validate_offset(def.name(), def.offset())?;
-        let point = self.insert_point(def.name(), def.symbol(), def.delta(), def.offset());
+        let point = self.insert_point(
+            def.name(),
+            def.symbol(),
+            def.delta(),
+            def.offset(),
+            def.aliases(),
+        );
         Ok(point)
     }
 
@@ -509,8 +594,8 @@ impl UnitRegistry {
     /// # Errors
     ///
     /// Returns [`UnitError::InvalidName`] if `name` or `symbol` is not an identifier.
-    /// Returns [`UnitError::DuplicateName`] if `name` is already a prefix or unit name or symbol,
-    /// or `symbol` is already a prefix name or symbol.
+    /// Returns [`UnitError::DuplicateName`] if `name` is already a prefix name or symbol or a
+    /// unit name, symbol, or alias, or `symbol` is already a prefix name or symbol.
     /// Returns [`UnitError::InvalidScale`] if `factor` is not positive, finite, and normal.
     pub fn add_prefix(&mut self, name: &str, symbol: &str, factor: f64) -> Result<(), UnitError> {
         self.validate_prefix(name, symbol)?;
@@ -561,6 +646,7 @@ impl UnitRegistry {
                     dimension: stem.dimension.clone(),
                     prefixable: false,
                     kind: AtomKind::Derived(Box::new(expansion)),
+                    aliases: Box::default(),
                 };
                 UnitAtom::new(data)
             })
@@ -1231,6 +1317,180 @@ mod tests {
         }
     }
 
+    mod aliases {
+        use super::*;
+
+        /// `meter`/`m` (alias `metre`), `kilogram`/`kg` from stem `gram`/`g` (alias `gramme`),
+        /// and `angstrom`/`Ang` (alias U+212B, the angstrom sign).
+        fn alias_registry() -> UnitRegistry {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mass = dims.add_base("mass", None).unwrap();
+            let mut ureg = UnitRegistry::new("test-ureg", dims);
+            ureg.add_prefix("kilo", "k", 1e3).unwrap();
+            let m = ureg
+                .add_base(
+                    BaseDef::new("meter", "m", &length)
+                        .prefixable(true)
+                        .alias("metre"),
+                )
+                .unwrap();
+            ureg.add_base(
+                BaseDef::new("gram", "g", &mass)
+                    .prefixable(true)
+                    .alias("gramme")
+                    .prefixed("kilo"),
+            )
+            .unwrap();
+            ureg.add_derived(
+                DerivedDef::new("angstrom", "Ang", &m)
+                    .scale(1e-10)
+                    .alias("\u{212B}"),
+            )
+            .unwrap();
+            ureg
+        }
+
+        #[test]
+        fn alias_resolves_to_the_unit() {
+            let ureg = alias_registry();
+            assert_eq!(ureg.get("metre"), ureg.get("meter"));
+        }
+
+        #[test]
+        fn alias_takes_prefixes() {
+            let ureg = alias_registry();
+            assert_eq!(ureg.parse("kilometre").unwrap(), ureg.parse("km").unwrap());
+        }
+
+        #[test]
+        fn prefixed_base_alias_belongs_to_stem() {
+            let ureg = alias_registry();
+            assert_expands_to(&ureg, "gramme", 1e-3, "kg");
+            assert_eq!(ureg.parse("kilogramme").unwrap(), ureg.parse("kg").unwrap());
+        }
+
+        #[test]
+        fn alias_is_folded() {
+            let ureg = alias_registry();
+            let angstrom = ureg.get("angstrom");
+            // Registered as U+212B (angstrom sign); typed as U+005C (Latin capital A with ring)
+            assert_eq!(ureg.get("\u{212B}"), angstrom);
+            assert_eq!(ureg.get("\u{C5}"), angstrom);
+        }
+
+        #[test]
+        fn display_never_uses_alias() {
+            let ureg = alias_registry();
+            assert_eq!(ureg.parse("metre").unwrap().to_string(), "m");
+            assert_eq!(ureg.parse("kilometre").unwrap().to_string(), "km");
+        }
+
+        /// A dimensionless unit `x`/`X` to hang aliases on.
+        fn x_def() -> DerivedDef {
+            DerivedDef::new("x", "X", &DeltaUnit::dimensionless())
+        }
+
+        fn duplicate(name: &str) -> UnitError {
+            UnitError::DuplicateName {
+                name: name.into(),
+                registry: "test-ureg".into(),
+            }
+        }
+
+        #[test]
+        fn rejects_invalid_alias() {
+            let mut ureg = alias_registry();
+            let actual = ureg.add_derived(x_def().alias("bad name")).unwrap_err();
+            let expected = UnitError::InvalidName {
+                name: "bad name".into(),
+            };
+            assert!(errors_match(&actual, &expected), "{actual:?}");
+        }
+
+        #[test]
+        fn rejects_taken_alias() {
+            let mut ureg = alias_registry();
+            let meter = ureg.get("m");
+            let cases = ["m", "meter", "metre"]; // a symbol, a name, an alias
+            for alias in cases {
+                let actual = ureg.add_derived(x_def().alias(alias)).unwrap_err();
+                assert!(
+                    errors_match(&actual, &duplicate(alias)),
+                    "{alias}: {actual:?}"
+                );
+            }
+            assert_eq!(ureg.get("m"), meter);
+        }
+
+        #[test]
+        fn rejects_prefix_name_alias() {
+            let mut ureg = alias_registry();
+            let actual = ureg.add_derived(x_def().alias("kilo")).unwrap_err();
+            assert!(errors_match(&actual, &duplicate("kilo")), "{actual:?}");
+        }
+
+        #[test]
+        fn rejects_alias_repeated_in_definition() {
+            let mut ureg = alias_registry();
+            let cases = [
+                (x_def().alias("y").alias("y"), "y"),
+                (x_def().alias("x"), "x"), // its own name
+                (x_def().alias("X"), "X"), // its own symbol
+            ];
+            for (def, alias) in cases {
+                let actual = ureg.add_derived(def).unwrap_err();
+                assert!(
+                    errors_match(&actual, &duplicate(alias)),
+                    "{alias}: {actual:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn rejects_folded_duplicate_alias() {
+            let mut ureg = alias_registry();
+            // Against the registry: the angstrom alias U+212B folds to U+00C5.
+            let actual = ureg.add_derived(x_def().alias("\u{C5}")).unwrap_err();
+            assert!(errors_match(&actual, &duplicate("\u{C5}")), "{actual:?}");
+            // Within the definition: micro sign U+00B5 and Greek mu U+03BC fold together.
+            let actual = ureg
+                .add_derived(x_def().alias("\u{B5}x").alias("\u{3BC}x"))
+                .unwrap_err();
+            assert!(errors_match(&actual, &duplicate("\u{3BC}x")), "{actual:?}");
+        }
+
+        #[test]
+        fn failed_alias_leaves_registry_unchanged() {
+            let mut ureg = alias_registry();
+            ureg.add_derived(x_def().alias("fine").alias("m"))
+                .unwrap_err();
+            for ident in ["x", "X", "fine"] {
+                assert!(ureg.get(ident).is_none(), "{ident}");
+            }
+        }
+
+        #[test]
+        fn rejects_stem_alias_naming_the_prefixed_base() {
+            let mut dims = DimRegistry::new("test-reg");
+            let mass = dims.add_base("mass", None).unwrap();
+            let mut ureg = UnitRegistry::new("test-ureg", dims);
+            ureg.add_prefix("kilo", "k", 1e3).unwrap();
+            for alias in ["kilogram", "kg"] {
+                let def = BaseDef::new("gram", "g", &mass)
+                    .alias(alias)
+                    .prefixed("kilo");
+                let actual = ureg.add_base(def).unwrap_err();
+                assert!(
+                    errors_match(&actual, &duplicate(alias)),
+                    "{alias}: {actual:?}"
+                );
+            }
+            assert!(ureg.base_unit(&mass).is_none());
+            assert!(ureg.get("gram").is_none());
+        }
+    }
+
     mod get {
         use super::*;
 
@@ -1276,7 +1536,6 @@ mod tests {
 
     mod base_units {
         use super::*;
-        use std::collections::HashSet;
 
         #[test]
         fn lists_every_base_once() {

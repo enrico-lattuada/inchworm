@@ -23,6 +23,7 @@ pub(crate) fn make_atom(
         dimension,
         prefixable: false,
         kind: AtomKind::Base,
+        aliases: Box::default(),
     };
     UnitAtom::new(data)
 }
@@ -42,6 +43,7 @@ pub(crate) fn make_derived_atom(
         dimension: definition.dimension().clone(),
         prefixable: false,
         kind: AtomKind::Derived(Box::new(Expansion::new(symbol, definition, scale).unwrap())),
+        aliases: Box::default(),
     };
     UnitAtom::new(data)
 }
@@ -60,6 +62,7 @@ pub(crate) fn make_point_atom(
         symbol: symbol.into(),
         delta: delta.clone(),
         offset,
+        aliases: Box::default(),
     };
     PointAtom::new(data)
 }

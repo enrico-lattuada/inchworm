@@ -78,6 +78,8 @@ pub(crate) struct AtomData {
     pub prefixable: bool,
     /// Whether this is a base unit or a derived one.
     pub kind: AtomKind,
+    /// Other identifiers that resolve to this unit; never displayed.
+    pub aliases: Box<[Box<str>]>,
 }
 
 impl PartialEq for AtomData {
@@ -120,6 +122,8 @@ pub(crate) struct PointData {
     pub delta: DeltaUnit,
     /// The `delta` value at this unit's zero.
     pub offset: f64,
+    /// Other identifiers that resolve to this unit; never displayed.
+    pub aliases: Box<[Box<str>]>,
 }
 
 impl PartialEq for PointData {
