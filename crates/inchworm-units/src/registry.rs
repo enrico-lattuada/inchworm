@@ -26,6 +26,22 @@ enum Entry {
     Point(PointAtom),
 }
 
+/// Whether `unit` has `atom` as a factor.
+fn has_factor(unit: &DeltaUnit, atom: &UnitAtom) -> bool {
+    unit.factors().entries().iter().any(|(a, _)| a == atom)
+}
+
+/// Whether `unit` has `atom` as a factor, or a factor that expands to it.
+fn refers_to(unit: &DeltaUnit, atom: &UnitAtom) -> bool {
+    unit.factors().entries().iter().any(|(factor, _)| {
+        factor == atom
+            || match &factor.kind {
+                AtomKind::Derived(e) => has_factor(e.base(), atom),
+                AtomKind::Base => false,
+            }
+    })
+}
+
 impl Entry {
     /// The registered name of this entry's unit.
     fn name(&self) -> &str {
@@ -56,6 +72,15 @@ impl Entry {
         match self {
             Entry::Delta(atom) => Unit::Delta(DeltaUnit::from_atom(atom)),
             Entry::Point(atom) => Unit::Point(PointUnit::from_atom(atom)),
+        }
+    }
+}
+
+impl Entry {
+    fn depends_on(&self, atom: &UnitAtom) -> bool {
+        match self {
+            Entry::Delta(own) => own != atom && refers_to(&DeltaUnit::from_atom(own), atom),
+            Entry::Point(point) => refers_to(&point.delta, atom),
         }
     }
 }
@@ -611,12 +636,70 @@ impl UnitRegistry {
             .insert(lookup_key(symbol).into(), key.as_ref().into());
         Ok(())
     }
+
+    /// The names of the registered units that depend on `atom`, sorted.
+    fn dependents(&self, atom: &UnitAtom) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .entries
+            .values()
+            .filter(|entry| entry.depends_on(atom))
+            .map(|entry| entry.name().to_string())
+            .collect();
+        names.sort_unstable();
+        names
+    }
+
+    /// Removes the unit registered as `ident` (its name, symbol, or an alias), together with its
+    /// symbol and aliases, and returns it. Returns `Ok(None)` if no unit is registered as
+    /// `ident`; a prefixed form (`km`) is not a registered unit.
+    ///
+    /// Unit values obtained earlier keep working. A unit added later under the same name is a
+    /// different unit: it compares unequal to the old one, and conversions between them fail.
+    ///
+    /// Unlike [`DimRegistry::remove`](inchworm_dimensions::DimRegistry::remove), an alias
+    /// names the whole unit: aliases are part of the unit's definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::RemovalBlocked`] if registered units depend on it: derived units
+    /// that expand to it, or point units measured on it. `dependents` lists their names, sorted.
+    pub fn remove(&mut self, ident: &str) -> Result<Option<Unit>, UnitError> {
+        let Some(entry) = self.find_entry(ident) else {
+            return Ok(None);
+        };
+        if let Entry::Delta(atom) = entry {
+            let dependents = self.dependents(atom);
+            if !dependents.is_empty() {
+                return Err(UnitError::RemovalBlocked {
+                    name: entry.name().to_string(),
+                    dependents,
+                });
+            }
+        }
+        let key: Box<str> = lookup_key(entry.name()).into();
+        let entry = self.entries.remove(&key).expect("found above");
+        self.by_ident.remove(lookup_key(entry.symbol()).as_ref());
+        for alias in entry.aliases() {
+            self.by_ident.remove(lookup_key(alias).as_ref());
+        }
+        if let Entry::Delta(atom) = &entry {
+            if matches!(atom.kind, AtomKind::Base) {
+                self.bases.remove(&atom.dimension);
+            }
+            self.prefixed
+                .get_mut()
+                .unwrap_or_else(PoisonError::into_inner)
+                .retain(|(stem, _), _| stem != &atom.id);
+        }
+        Ok(Some(entry.to_unit()))
+    }
 }
 
 // ---- prefix cache ----
 impl UnitRegistry {
-    // `prefixed` is a grow-only memo of interned atoms, so it is still consistent
-    // after a thread panics while holding it.
+    // `prefixed` is a memo of interned atoms. It grows under the lock and is pruned only by
+    // `remove`, under `&mut self`, so it is still consistent after a thread panics while
+    // holding the lock.
     fn prefixed_read(&self) -> RwLockReadGuard<'_, PrefixedCache> {
         self.prefixed.read().unwrap_or_else(PoisonError::into_inner)
     }
@@ -712,7 +795,9 @@ impl UnitRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{assert_expands_to, assert_scale_close, errors_match, mks_registry};
+    use crate::test_utils::{
+        assert_close, assert_expands_to, assert_scale_close, errors_match, mks_registry,
+    };
     use crate::{BaseDef, DerivedDef, PointDef};
 
     #[test]
@@ -1795,6 +1880,155 @@ mod tests {
                     .unwrap_err(),
                 UnitError::UnknownUnit { .. }
             ));
+        }
+    }
+
+    mod remove {
+        use super::*;
+
+        fn dependents_of(ureg: &UnitRegistry, name: &str) -> Vec<String> {
+            let Some(Entry::Delta(atom)) = ureg.find_entry(name) else {
+                panic!("{name} is not a registered delta unit");
+            };
+            ureg.dependents(atom)
+        }
+
+        #[test]
+        fn base_dependents_are_sorted() {
+            let ureg = mks_registry();
+            assert_eq!(
+                dependents_of(&ureg, "K"),
+                [
+                    "degree_Celsius",
+                    "degree_Fahrenheit",
+                    "delta_deg_Fahrenheit"
+                ]
+            );
+        }
+
+        #[test]
+        fn prefixed_base_has_its_stem_as_dependent() {
+            let ureg = mks_registry();
+            assert_eq!(dependents_of(&ureg, "kg"), ["gram", "joule"]);
+        }
+
+        #[test]
+        fn definition_atoms_are_not_dependents() {
+            let mut ureg = mks_registry();
+            ureg.add_derived(DerivedDef::from_expr("minute", "min", "60 s"))
+                .unwrap();
+            ureg.add_derived(DerivedDef::from_expr("hr", "hr", "60 min"))
+                .unwrap();
+            assert!(dependents_of(&ureg, "min").is_empty());
+        }
+
+        #[test]
+        fn point_on_prefixed_unit_depends_on_the_base() {
+            let mut ureg = mks_registry();
+            let Unit::Delta(km) = ureg.parse("km").unwrap() else {
+                panic!("km is not a registered delta");
+            };
+            ureg.add_point(PointDef::new("x", "X", &km, 0.0)).unwrap();
+            assert!(dependents_of(&ureg, "m").contains(&"x".to_string()));
+        }
+
+        #[test]
+        fn unused_base_has_no_dependents() {
+            let mut dims = DimRegistry::new("test-reg");
+            let length = dims.add_base("length", None).unwrap();
+            let mut ureg = UnitRegistry::new("test-ureg", dims);
+            ureg.add_base(BaseDef::new("meter", "m", &length)).unwrap();
+            assert!(dependents_of(&ureg, "m").is_empty());
+        }
+
+        #[test]
+        fn unknown_identifier_is_none() {
+            let mut ureg = mks_registry();
+            assert!(ureg.remove("parsec").is_ok_and(|r| r.is_none()));
+            assert!(ureg.remove("km").is_ok_and(|r| r.is_none()));
+            assert!(ureg.parse("km").is_ok());
+        }
+
+        #[test]
+        fn removes_unit_with_symbol_and_aliases() {
+            let mut ureg = mks_registry();
+            ureg.add_derived(DerivedDef::from_expr("liter", "L", "1e-3 m^3").alias("litre"))
+                .unwrap();
+            let liter = ureg.get("L");
+            assert!(liter.is_some());
+            let removed = ureg.remove("litre").unwrap();
+            assert_eq!(liter, removed);
+            assert!(ureg.get("liter").is_none());
+            assert!(ureg.get("L").is_none());
+            assert!(ureg.get("litre").is_none());
+        }
+
+        #[test]
+        fn blocked_by_dependents() {
+            let mut ureg = mks_registry();
+            let actual = ureg.remove("m").unwrap_err();
+            let expected = UnitError::RemovalBlocked {
+                name: "meter".into(),
+                dependents: vec!["joule".into()],
+            };
+            assert!(errors_match(&actual, &expected))
+        }
+
+        #[test]
+        fn removing_dependents_first_unblocks() {
+            let mut ureg = mks_registry();
+            ureg.remove("joule").unwrap();
+            ureg.remove("m").unwrap();
+            let length = ureg.dims().get("length").unwrap();
+            assert!(ureg.base_unit(&length).is_none());
+        }
+
+        #[test]
+        fn removing_stem_prunes_prefixed_seed() {
+            let mut ureg = mks_registry();
+            ureg.remove("g").unwrap();
+            assert!(ureg.get("g").is_none());
+            assert!(ureg.get("mg").is_none());
+            assert!(ureg.get("kg").is_some());
+        }
+
+        #[test]
+        fn removes_point_unit() {
+            let mut ureg = mks_registry();
+            let celsius = ureg.remove("degC").unwrap();
+            assert!(matches!(celsius, Some(Unit::Point(_))));
+            assert!(ureg.get("degC").is_none());
+        }
+
+        #[test]
+        fn readded_unit_is_a_different_unit() {
+            let mut ureg = mks_registry();
+            let liter = || DerivedDef::from_expr("liter", "L", "1e-3 m^3");
+            ureg.add_derived(liter()).unwrap();
+            let old = ureg.get("L").unwrap();
+            ureg.remove("L").unwrap();
+            ureg.add_derived(liter()).unwrap();
+            let new = ureg.get("L").unwrap();
+            assert_ne!(old, new);
+            let cubic_meter = ureg.parse("m^3").unwrap();
+            assert_close(old.converter_to(&cubic_meter).unwrap().apply(1.0), 1e-3);
+        }
+
+        #[test]
+        fn removing_stem_prunes_interned_prefixed_atoms() {
+            let mut ureg = mks_registry();
+            ureg.parse("kJ").unwrap(); // interns `(joule, kilo)`
+            let Some(Entry::Delta(joule)) = ureg.find_entry("J") else {
+                panic!("J is not a registered delta unit");
+            };
+            let joule_id = joule.id;
+            ureg.remove("J").unwrap();
+            assert!(
+                !ureg
+                    .prefixed_read()
+                    .keys()
+                    .any(|(stem, _)| *stem == joule_id)
+            );
         }
     }
 

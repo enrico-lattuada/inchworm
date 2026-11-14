@@ -343,6 +343,13 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                     to: expected_to,
                 },
             ) => from == expected_from && to == expected_to,
+            (
+                UnitError::RemovalBlocked { name, dependents },
+                UnitError::RemovalBlocked {
+                    name: expected_name,
+                    dependents: expected_dependents,
+                },
+            ) => name == expected_name && dependents == expected_dependents,
             (UnitError::Dimension(a), UnitError::Dimension(b)) => dimension_errors_match(a, b),
             _ => false,
         }

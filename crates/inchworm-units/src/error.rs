@@ -130,6 +130,14 @@ pub enum UnitError {
     #[error("conversion from `{from}` to `{to}` overflows or underflows")]
     ConversionOutOfRange { from: String, to: String },
 
+    /// `name` can't be removed because the registered units in `dependents` (sorted) still
+    /// expand to it or are measured on it.
+    #[error("cannot remove `{name}`: referenced by {dependents:?}")]
+    RemovalBlocked {
+        name: String,
+        dependents: Vec<String>,
+    },
+
     /// The underlying dimension algebra failed: exponent overflow,
     /// cross-registry dimensions, and so on.
     /// See [`DimensionError`](inchworm_dimensions::DimensionError) for detail.
