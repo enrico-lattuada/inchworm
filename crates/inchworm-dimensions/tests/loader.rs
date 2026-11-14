@@ -10,9 +10,8 @@ mod tests {
         let mut registry = DimRegistry::standard();
         let src = r#"schema = 1
 
-        [[derived]]
-        name = "foo"
-        definition = "energy / mass"
+        [derived]
+        foo = { definition = "energy / mass" }
         "#;
         registry.load_toml_str(src).unwrap();
         let foo = registry.get("foo").unwrap();
@@ -31,29 +30,17 @@ mod tests {
             name = "test-reg"
             version = "0.1.0"
 
-            [[base]]
-            name = "length"
-            symbol = "L"
+            [base]
+            length = { symbol = "L" }
+            time = { symbol = "T" }
 
-            [[base]]
-            name = "time"
-            symbol = "T"
+            [derived]
+            velocity = { definition = "length / time" }
+            angular_velocity = { definition = "angle / time" }
+            frequency = { definition = "1 / time" }
 
-            [[derived]]
-            name = "velocity"
-            definition = "length / time"
-
-            [[dimensionless]]
-            name = "angle"
-            definition = "length / length"
-
-            [[derived]]
-            name = "angular_velocity"
-            definition = "angle / time"
-
-            [[derived]]
-            name = "frequency"
-            definition = "1 / time"
+            [dimensionless]
+            angle = { definition = "length / length" }
             "#,
         )
         .unwrap();

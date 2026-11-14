@@ -1187,9 +1187,8 @@ mod tests {
             assert!(registry.get("base").is_none());
             let src = r#"schema = 1
 
-            [[base]]
-            name = "base"
-            symbol = "B"
+            [base]
+            base = { symbol = "B" }
             "#;
             registry.load_toml_str(src).unwrap();
             assert!(
@@ -1225,9 +1224,8 @@ mod tests {
             file.write_all(
                 br#"schema = 1
 
-                [[base]]
-                name = "base"
-                symbol = "B"
+                [base]
+                base = { symbol = "B" }
                 "#,
             )
             .unwrap();
@@ -1259,9 +1257,8 @@ mod tests {
             name = "test-registry"
             version = "0.1.0"
 
-            [[base]]
-            name = "base"
-            symbol = "B"
+            [base]
+            base = { symbol = "B" }
             "#;
             let registry = DimRegistry::from_toml_str(src).unwrap();
             assert_eq!(registry.name(), "test-registry");
@@ -1301,9 +1298,8 @@ mod tests {
                 name = "test-registry"
                 version = "0.1.0"
 
-                [[base]]
-                name = "base"
-                symbol = "B"
+                [base]
+                base = { symbol = "B" }
                 "#,
             )
             .unwrap();

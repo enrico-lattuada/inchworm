@@ -7,111 +7,41 @@ version = "1"
 
 # ---- base dimensions (ISQ) ----
 
-[[base]]
-name = "length"
-symbol = "L"
-
-[[base]]
-name = "mass"
-symbol = "M"
-
-[[base]]
-name = "time"
-symbol = "T"
-
-[[base]]
-name = "electric_current"
-symbol = "I"
-
-[[base]]
-name = "temperature"
-symbol = "Θ"
-
-[[base]]
-name = "amount_of_substance"
-symbol = "N"
-
-[[base]]
-name = "luminous_intensity"
-symbol = "J"
+[base]
+length = { symbol = "L" }
+mass = { symbol = "M" }
+time = { symbol = "T" }
+electric_current = { symbol = "I" }
+temperature = { symbol = "Θ" }
+amount_of_substance = { symbol = "N" }
+luminous_intensity = { symbol = "J" }
 
 # ---- angles: named derived dimensions with dimensionless signature ----
 # Auto-classified as irreducible dimensionless kinds: they are NEVER
 # silently collapsed to bare dimensionless.
 
-[[dimensionless]]
-name = "plane_angle"
-definition = "length / length"
-aliases = ["angle"]
+[dimensionless]
+plane_angle = { definition = "length / length", aliases = ["angle"] }
+solid_angle = { definition = "length^2 / length^2" }
+# ---- named dimensionless kinds ----
+strain = { definition = "length / length" }
 
-[[dimensionless]]
-name = "solid_angle"
-definition = "length^2 / length^2"
 
 # ---- named derived dimensions ----
 
-[[derived]]
-name = "area"
-definition = "length^2"
-
-[[derived]]
-name = "volume"
-definition = "length^3"
-
-[[derived]]
-name = "velocity"
-definition = "length / time"
-
-[[derived]]
-name = "acceleration"
-definition = "velocity / time"
-
-[[derived]]
-name = "force"
-definition = "mass * acceleration"
-
-[[derived]]
-name = "pressure"
-definition = "force / area"
-
-[[derived]]
-name = "energy"
-definition = "force * length"
-
-[[derived]]
-name = "power"
-definition = "energy / time"
-
-[[derived]]
-name = "frequency"
-definition = "1 / time"
-
-[[derived]]
-name = "electric_charge"
-definition = "electric_current * time"
-
-[[derived]]
-name = "voltage"
-definition = "power / electric_current"
-
-[[derived]]
-name = "angular_velocity"
-definition = "plane_angle / time"
-
-[[derived]]
-name = "angular_acceleration"
-definition = "plane_angle / time^2"
-
-[[derived]]
-name = "torque"
-definition = "energy / plane_angle"
-
-[[derived]]
-name = "luminous_flux"
-definition = "luminous_intensity * solid_angle"
-
-# ---- named dimensionless kinds ----
-
-[[dimensionless]]
-name = "strain"
-definition = "length / length"
+[derived]
+area = { definition = "length^2" }
+volume = { definition = "length^3" }
+velocity = { definition = "length / time" }
+acceleration = { definition = "velocity / time" }
+force = { definition = "mass * acceleration" }
+pressure = { definition = "force / area" }
+energy = { definition = "force * length" }
+power = { definition = "energy / time" }
+frequency = { definition = "1 / time" }
+electric_charge = { definition = "electric_current * time" }
+voltage = { definition = "power / electric_current" }
+angular_velocity = { definition = "plane_angle / time" }
+angular_acceleration = { definition = "plane_angle / time^2" }
+torque = { definition = "energy / plane_angle" }
+luminous_flux = { definition = "luminous_intensity * solid_angle" }

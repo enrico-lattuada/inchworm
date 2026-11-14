@@ -11,7 +11,7 @@
 //! Loading into a non-empty registry is additive — this is how "customize the
 //! standard registry from a file" works.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::{DimRegistry, DimensionError, graph::topological_order, parser::extract_idents};
 
@@ -19,6 +19,7 @@ pub(crate) const SUPPORTED_SCHEMA: u32 = 1;
 
 /// The deserialized shape of a definition TOML file/string.
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct DimFile {
     /// Format version; checked against [`SUPPORTED_SCHEMA`].
     pub schema: u32,
@@ -26,15 +27,15 @@ pub(crate) struct DimFile {
     /// [`load_registry`]; ignored when extending an existing one via
     /// [`extend_registry`].
     pub registry: Option<RegistryMeta>,
-    /// `[[base]]` entries.
+    /// `[base]` entries.
     #[serde(default)]
-    pub base: Vec<BaseEntry>,
-    /// `[[derived]]` entries.
+    pub base: BTreeMap<String, BaseEntry>,
+    /// `[derived]` entries.
     #[serde(default)]
-    pub derived: Vec<DerivedEntry>,
-    /// `[[dimensionless]]` entries.
+    pub derived: BTreeMap<String, DerivedEntry>,
+    /// `[dimensionless]` entries.
     #[serde(default)]
-    pub dimensionless: Vec<DimensionlessEntry>,
+    pub dimensionless: BTreeMap<String, DimensionlessEntry>,
 }
 
 /// The `[registry]` table: metadata for a freshly built registry.
@@ -44,31 +45,31 @@ pub(crate) struct RegistryMeta {
     pub version: String,
 }
 
-/// A `[[base]]` entry.
+/// A `[base]` entry.
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct BaseEntry {
-    pub name: String,
     #[serde(default)]
     pub symbol: Option<String>,
 }
 
-/// A `[[derived]]` entry.
+/// A `[derived]` entry.
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct DerivedEntry {
-    pub name: String,
     pub definition: String,
-    /// Alternate names registered for `name` via
+    /// Alternate names registered for this entry's name via
     /// [`DimRegistry::add_alias`](crate::DimRegistry::add_alias).
     #[serde(default)]
     pub aliases: Vec<String>,
 }
 
-/// A `[[dimensionless]]` entry.
+/// A `[dimensionless]` entry.
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct DimensionlessEntry {
-    pub name: String,
     pub definition: String,
-    /// Alternate names registered for `name` via
+    /// Alternate names registered for this entry's name via
     /// [`DimRegistry::add_alias`](crate::DimRegistry::add_alias).
     #[serde(default)]
     pub aliases: Vec<String>,
@@ -133,37 +134,23 @@ fn load_entries(registry: &mut DimRegistry, file: DimFile) -> Result<(), Dimensi
             file.schema
         )));
     }
+    let entries = file
+        .base
+        .into_iter()
+        .map(|(name, e)| (name, DefEntry::Base(e)))
+        .chain(
+            file.derived
+                .into_iter()
+                .map(|(name, e)| (name, DefEntry::Derived(e))),
+        )
+        .chain(
+            file.dimensionless
+                .into_iter()
+                .map(|(name, e)| (name, DefEntry::Dimensionless(e))),
+        );
     let mut def_entries = HashMap::new();
-    for base in file.base {
-        let name = base.name.clone();
-        if def_entries
-            .insert(name.clone(), DefEntry::Base(base))
-            .is_some()
-        {
-            return Err(DimensionError::DuplicateName {
-                name,
-                registry: registry.name().into(),
-            });
-        }
-    }
-    for derived in file.derived {
-        let name = derived.name.clone();
-        if def_entries
-            .insert(name.clone(), DefEntry::Derived(derived))
-            .is_some()
-        {
-            return Err(DimensionError::DuplicateName {
-                name,
-                registry: registry.name().into(),
-            });
-        }
-    }
-    for dimensionless in file.dimensionless {
-        let name = dimensionless.name.clone();
-        if def_entries
-            .insert(name.clone(), DefEntry::Dimensionless(dimensionless))
-            .is_some()
-        {
+    for (name, entry) in entries {
+        if def_entries.insert(name.clone(), entry).is_some() {
             return Err(DimensionError::DuplicateName {
                 name,
                 registry: registry.name().into(),
@@ -186,18 +173,18 @@ fn load_entries(registry: &mut DimRegistry, file: DimFile) -> Result<(), Dimensi
             .expect("name from topological sort must be a def_entries key")
         {
             DefEntry::Base(b) => {
-                registry.add_base(&b.name, b.symbol.as_deref())?;
+                registry.add_base(&name, b.symbol.as_deref())?;
             }
             DefEntry::Derived(d) => {
-                registry.add_derived_expr(&d.name, &d.definition)?;
+                registry.add_derived_expr(&name, &d.definition)?;
                 for alias in &d.aliases {
-                    registry.add_alias(alias, &d.name)?;
+                    registry.add_alias(alias, &name)?;
                 }
             }
             DefEntry::Dimensionless(d) => {
-                registry.add_dimensionless_expr(&d.name, &d.definition)?;
+                registry.add_dimensionless_expr(&name, &d.definition)?;
                 for alias in &d.aliases {
-                    registry.add_alias(alias, &d.name)?;
+                    registry.add_alias(alias, &name)?;
                 }
             }
         };
@@ -221,9 +208,8 @@ mod tests {
             name = "test-reg"
             version = "0.1.0"
 
-            [[base]]
-            name = "base"
-            symbol = "B"
+            [base]
+            base = { symbol = "B" }
             "#;
             let registry = load_registry(src).unwrap();
             assert_eq!(
@@ -250,17 +236,12 @@ mod tests {
             name = "test-reg"
             version = "0.0.0"
 
-            [[base]]
-            name = "a"
-            symbol = "A"
+            [base]
+            a = { symbol = "A" }
 
-            [[derived]]
-            name = "c"
-            definition = "b"
-
-            [[derived]]
-            name = "b"
-            definition = "a"
+            [derived]
+            c = { definition = "b" }
+            b = { definition = "a" }
             "#;
             let registry = load_registry(src).unwrap();
             assert!(
@@ -277,13 +258,11 @@ mod tests {
             name = "test-reg"
             version = "0.0.0"
 
-            [[base]]
-            name = "base"
-            symbol = "B"
+            [base]
+            base = { symbol = "B" }
 
-            [[dimensionless]]
-            name = "dimensionless"
-            definition = "base / base"
+            [dimensionless]
+            dimensionless = { definition = "base / base" }
             "#;
             let registry = load_registry(src).unwrap();
             assert!(
@@ -300,14 +279,11 @@ mod tests {
             name = "test-reg"
             version = "0.0.0"
 
-            [[base]]
-            name = "a"
-            symbol = "A"
+            [base]
+            a = { symbol = "A" }
 
-            [[derived]]
-            name = "b"
-            definition = "a"
-            aliases = ["c"]
+            [derived]
+            b = { definition = "a", aliases = ["c"] }
             "#;
             let registry = load_registry(src).unwrap();
             assert_exactly_eq(&registry.get("c").unwrap(), &registry.get("b").unwrap());
@@ -321,14 +297,11 @@ mod tests {
             name = "test-reg"
             version = "0.0.0"
 
-            [[base]]
-            name = "a"
-            symbol = "A"
+            [base]
+            a = { symbol = "A" }
 
-            [[dimensionless]]
-            name = "b"
-            definition = "a / a"
-            aliases = ["c"]
+            [dimensionless]
+            b = { definition = "a / a", aliases = ["c"] }
             "#;
             let registry = load_registry(src).unwrap();
             assert_exactly_eq(&registry.get("c").unwrap(), &registry.get("b").unwrap());
@@ -342,13 +315,11 @@ mod tests {
             name = "test-reg"
             version = "0.0.0"
 
-            [[base]]
-            name = "base"
-            symbol = "B"
+            [base]
+            base = { symbol = "B" }
 
-            [[dimensionless]]
-            name = "dimensionless"
-            definition = "base"
+            [dimensionless]
+            dimensionless = { definition = "base" }
             "#;
             let err = load_registry(src).unwrap_err();
             let expected_err = DimensionError::NotDimensionless {
@@ -366,13 +337,11 @@ mod tests {
             name = "test-reg"
             version = "0.0.0"
 
-            [[base]]
-            name = "base"
-            symbol = "B"
+            [base]
+            base = { symbol = "B" }
 
-            [[dimensionless]]
-            name = "base"
-            definition = "base"
+            [dimensionless]
+            base = { definition = "base" }
             "#;
             let err = load_registry(src).unwrap_err();
             let expected_err = DimensionError::DuplicateName {
@@ -386,9 +355,8 @@ mod tests {
         fn rejects_missing_registry_section() {
             let src = r#"schema = 1
 
-            [[base]]
-            name = "base"
-            symbol = "B"
+            [base]
+            base = { symbol = "B" }
             "#;
             let err = load_registry(src).unwrap_err();
             let expected_err = DimensionError::DefinitionFile(
@@ -405,13 +373,9 @@ mod tests {
             name = "test-reg"
             version = "0.0.0"
 
-            [[derived]]
-            name = "a"
-            definition = "b"
-
-            [[derived]]
-            name = "b"
-            definition = "a"
+            [derived]
+            a = { definition = "b" }
+            b = { definition = "a" }
             "#;
             let err = load_registry(src).unwrap_err();
             let expected_err = DimensionError::CyclicDefinition {
@@ -442,9 +406,8 @@ mod tests {
             name = "test-reg"
             version = "0.0.0"
 
-            [[derived]]
-            name = "b"
-            definition = "a"
+            [derived]
+            b = { definition = "a" }
             "#;
             let err = load_registry(src).unwrap_err();
             let expected_err = DimensionError::UnknownDimension {
@@ -462,14 +425,11 @@ mod tests {
             name = "test-reg"
             version = "0.0.0"
 
-            [[base]]
-            name = "a"
-            symbol = "A"
+            [base]
+            a = { symbol = "A" }
 
-            [[dimensionless]]
-            name = "b"
-            definition = "a / a"
-            aliases = ["a"]
+            [dimensionless]
+            b = { definition = "a / a", aliases = ["a"] }
             "#;
             let err = load_registry(src).unwrap_err();
             let expected_err = DimensionError::DuplicateName {
@@ -477,6 +437,41 @@ mod tests {
                 registry: "test-reg".into(),
             };
             assert!(errors_match(&err, &expected_err));
+        }
+
+        #[test]
+        fn rejects_unknown_field() {
+            let src = r#"schema = 1
+
+            [registry]
+            name = "test-reg"
+            version = "0.0.0"
+
+            [base]
+            length = { symbl = "L" }
+            "#;
+            assert!(matches!(
+                load_registry(src),
+                Err(DimensionError::DefinitionFile(_))
+            ));
+        }
+
+        #[test]
+        fn rejects_duplicate_key_within_section() {
+            let src = r#"schema = 1
+
+            [registry]
+            name = "test-reg"
+            version = "0.0.0"
+
+            [base]
+            length = { symbol = "L" }
+            length = { symbol = "M" }
+            "#;
+            assert!(matches!(
+                load_registry(src),
+                Err(DimensionError::DefinitionFile(_))
+            ));
         }
     }
 
@@ -494,9 +489,8 @@ mod tests {
             );
             let src = r#"schema = 1
 
-            [[derived]]
-            name = "b"
-            definition = "a"
+            [derived]
+            b = { definition = "a" }
             "#;
             extend_registry(&mut registry, src).unwrap();
             assert!(
@@ -517,9 +511,8 @@ mod tests {
             name = "test-reg-override"
             version = "1.0.12"
 
-            [[derived]]
-            name = "b"
-            definition = "a"
+            [derived]
+            b = { definition = "a" }
             "#;
             extend_registry(&mut registry, src).unwrap();
             assert_eq!(
@@ -545,9 +538,8 @@ mod tests {
             name = "test-reg-override"
             version = "0.0.0"
 
-            [[base]]
-            name = "a"
-            symbol = "B"
+            [base]
+            a = { symbol = "B" }
             "#;
             let err = extend_registry(&mut registry, src).unwrap_err();
             let expected_err = DimensionError::DuplicateName {
