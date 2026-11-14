@@ -2,23 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use inchworm_dimensions::{Compatibility, DimRegistry, Dimension};
+    use inchworm_dimensions::{Compatibility, DimRegistry};
     use std::io::Write;
-
-    #[test]
-    fn customizes_standard_registry_from_toml() {
-        let mut registry = DimRegistry::standard();
-        let src = r#"schema = 1
-
-        [derived]
-        foo = { definition = "energy / mass" }
-        "#;
-        registry.load_toml_str(src).unwrap();
-        let foo = registry.get("foo").unwrap();
-        let velocity = registry.get("velocity").unwrap();
-        // Test E = mc^2 -> foo / c^2 = E / mc^2 = 1
-        assert_eq!(&foo / (&velocity * &velocity), Dimension::dimensionless());
-    }
 
     #[test]
     fn loads_functional_registry_from_file() {

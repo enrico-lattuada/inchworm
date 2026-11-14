@@ -5,11 +5,7 @@
 //! (file order is irrelevant; forward references are allowed).
 //!
 //! Errors:
-//! Cycles → `CyclicDefinition`; duplicates (within the file or vs
-//! the registry) → `DuplicateName`.
-//!
-//! Loading into a non-empty registry is additive — this is how "customize the
-//! standard registry from a file" works.
+//! Cycles → `CyclicDefinition`; a name repeated across sections → `DuplicateName`.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -23,10 +19,8 @@ pub(crate) const SUPPORTED_SCHEMA: u32 = 1;
 pub(crate) struct DimFile {
     /// Format version; checked against [`SUPPORTED_SCHEMA`].
     pub schema: u32,
-    /// The `[registry]` table. Required when building a new registry via
-    /// [`load_registry`]; ignored when extending an existing one via
-    /// [`extend_registry`].
-    pub registry: Option<RegistryMeta>,
+    /// The `[registry]` table. Required when building a new registry via [`load_registry`].
+    pub registry: RegistryMeta,
     /// `[base]` entries.
     #[serde(default)]
     pub base: BTreeMap<String, BaseEntry>,
@@ -96,37 +90,13 @@ enum DefEntry {
 pub(crate) fn load_registry(src: &str) -> Result<DimRegistry, DimensionError> {
     let file: DimFile =
         toml::from_str(src).map_err(|e| DimensionError::DefinitionFile(e.to_string()))?;
-    let registry_meta = file.registry.as_ref().ok_or_else(|| {
-        DimensionError::DefinitionFile(
-            "missing [registry] section; a name is required to build a new registry".into(),
-        )
-    })?;
+    let registry_meta = &file.registry;
     let mut registry = DimRegistry::new_with_meta(&registry_meta.name, &registry_meta.version);
     load_entries(&mut registry, file)?;
     Ok(registry)
 }
 
-/// Extends the registry with the source definitions.
-///
-/// # Errors
-///
-/// Returns [`DimensionError::DefinitionFile`] if the TOML source cannot be deserialized correctly.
-/// Returns [`DimensionError::UnknownDimension`] if any dimension referenced by the source was never defined.
-/// Returns [`DimensionError::DuplicateName`] if duplicate names are found in the source.
-/// Returns [`DimensionError::CyclicDefinition`] if cyclic definitions are found in the source.
-/// Returns [`DimensionError::NotDimensionless`] if a declared dimensionless dimension is not in fact dimensionless.
-/// Returns [`DimensionError::Parse`] if the information in the source cannot be parsed.
-/// Returns [`DimensionError::ExponentOverflow`] if any exponents in the source definitions incur overflow.
-/// Returns [`DimensionError::ZeroDenominator`] if any exponents' denominators in the source definitions are zero.
-pub(crate) fn extend_registry(registry: &mut DimRegistry, src: &str) -> Result<(), DimensionError> {
-    let file: DimFile =
-        toml::from_str(src).map_err(|e| DimensionError::DefinitionFile(e.to_string()))?;
-    load_entries(registry, file)?;
-    Ok(())
-}
-
-/// Shared by [`load_registry`] and [`extend_registry`]: builds the dependency graph, sorts it,
-/// and adds entries to `registry`.
+/// Checks the schema, builds the dependency graph, sorts it, and adds the entries to `registry`.
 fn load_entries(registry: &mut DimRegistry, file: DimFile) -> Result<(), DimensionError> {
     if file.schema != SUPPORTED_SCHEMA {
         return Err(DimensionError::DefinitionFile(format!(
@@ -359,10 +329,7 @@ mod tests {
             base = { symbol = "B" }
             "#;
             let err = load_registry(src).unwrap_err();
-            let expected_err = DimensionError::DefinitionFile(
-                "missing [registry] section; a name is required to build a new registry".into(),
-            );
-            assert!(errors_match(&err, &expected_err));
+            assert!(matches!(&err, DimensionError::DefinitionFile(_)));
         }
 
         #[test]
@@ -472,81 +439,6 @@ mod tests {
                 load_registry(src),
                 Err(DimensionError::DefinitionFile(_))
             ));
-        }
-    }
-
-    mod extend_registry {
-        use super::*;
-        use crate::registry::DEFAULT_REGISTRY_VERSION;
-
-        #[test]
-        fn adds_entries_against_preexisting_names() {
-            let mut registry = DimRegistry::new("test-reg");
-            registry.add_base("a", Some("A")).unwrap();
-            assert!(
-                registry.get("b").is_none(),
-                "unregistered dimension should not be present in the registry"
-            );
-            let src = r#"schema = 1
-
-            [derived]
-            b = { definition = "a" }
-            "#;
-            extend_registry(&mut registry, src).unwrap();
-            assert!(
-                registry.get("b").is_some(),
-                "source defined dimension should be in the registry"
-            );
-        }
-
-        #[test]
-        fn ignores_registry_section() {
-            let mut registry = DimRegistry::new("test-reg");
-            registry.add_base("a", Some("A")).unwrap();
-            assert_eq!(registry.name(), "test-reg");
-            assert_eq!(registry.version(), DEFAULT_REGISTRY_VERSION);
-            let src = r#"schema = 1
-
-            [registry]
-            name = "test-reg-override"
-            version = "1.0.12"
-
-            [derived]
-            b = { definition = "a" }
-            "#;
-            extend_registry(&mut registry, src).unwrap();
-            assert_eq!(
-                registry.name(),
-                "test-reg",
-                "registry name must match before and after extension"
-            );
-            assert_eq!(
-                registry.version(),
-                DEFAULT_REGISTRY_VERSION,
-                "registry version must match before and after extension"
-            )
-        }
-
-        #[test]
-        fn rejects_duplicate_name_against_existing_registry() {
-            let mut registry = DimRegistry::new("test-reg");
-            registry.add_base("a", Some("A")).unwrap();
-            assert_eq!(registry.name(), "test-reg");
-            let src = r#"schema = 1
-
-            [registry]
-            name = "test-reg-override"
-            version = "0.0.0"
-
-            [base]
-            a = { symbol = "B" }
-            "#;
-            let err = extend_registry(&mut registry, src).unwrap_err();
-            let expected_err = DimensionError::DuplicateName {
-                name: "a".into(),
-                registry: "test-reg".into(),
-            };
-            assert!(errors_match(&err, &expected_err));
         }
     }
 }
