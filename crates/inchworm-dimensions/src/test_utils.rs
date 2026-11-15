@@ -99,13 +99,7 @@ pub(crate) fn errors_match(actual: &DimensionError, expected: &DimensionError) -
                 DimensionError::CyclicDefinition {
                     names: expected_names,
                 },
-            ) => {
-                let mut names = names.clone();
-                let mut expected_names = expected_names.clone();
-                names.sort();
-                expected_names.sort();
-                names == expected_names
-            }
+            ) => names == expected_names,
             (
                 DimensionError::NotDimensionless { name, signature },
                 DimensionError::NotDimensionless {

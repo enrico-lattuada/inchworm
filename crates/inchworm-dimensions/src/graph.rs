@@ -4,7 +4,7 @@
 //! Unresolved names are treated as already satisfied. Resolving that is deferred to whoever
 //! actually looks the name up later.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::DimensionError;
 
@@ -13,10 +13,14 @@ use crate::DimensionError;
 /// Each entry in the graph represents the dependencies of a name from its definition.
 /// Dependencies which are not a key in the graph are treated as already resolved.
 ///
+/// The order is deterministic: at each step, the alphabetically first name whose
+/// dependencies are met comes next.
+///
 /// # Errors
 ///
 /// Returns [`DimensionError::CyclicDefinition`] if cycles in the definitions are detected.
-/// The error will contain the names involved in the cycle, including those blocked by the cycle.
+/// The error will contain the names involved in the cycle, including those blocked by the cycle,
+/// alphabetically sorted.
 pub(crate) fn topological_order(
     graph: &HashMap<String, Vec<String>>,
 ) -> Result<Vec<String>, DimensionError> {
@@ -42,30 +46,31 @@ pub(crate) fn topological_order(
                 .insert(k.clone());
         }
     }
-    let mut queue: VecDeque<String> = in_degree_count
+    let mut queue: BTreeSet<String> = in_degree_count
         .iter()
         .filter(|(_, count)| **count == 0)
         .map(|(k, _)| k.clone())
         .collect();
     let mut output = Vec::new();
-    while let Some(name) = queue.pop_front() {
+    while let Some(name) = queue.pop_first() {
         output.push(name.clone());
         for dep in reverse_graph.get(&name).into_iter().flatten() {
             in_degree_count.entry(dep.clone()).and_modify(|count| {
                 *count -= 1;
                 if *count == 0 {
-                    queue.push_back(dep.clone());
+                    queue.insert(dep.clone());
                 }
             });
         }
     }
     // Anything left with a nonzero count means something it depends on never resolved
     if output.len() != graph.len() {
-        let cyclic_def_names: Vec<String> = in_degree_count
+        let mut cyclic_def_names: Vec<String> = in_degree_count
             .iter()
             .filter(|(_, count)| **count > 0)
             .map(|(name, _)| name.clone())
             .collect();
+        cyclic_def_names.sort_unstable();
         return Err(DimensionError::CyclicDefinition {
             names: cyclic_def_names,
         });
@@ -108,11 +113,7 @@ mod tests {
             graph.insert("B".into(), vec!["A".into()]);
             graph.insert("A".into(), Vec::new());
             let order = topological_order(&graph).unwrap();
-            let pos_a = order.iter().position(|name| name == "A").unwrap();
-            let pos_b = order.iter().position(|name| name == "B").unwrap();
-            let pos_c = order.iter().position(|name| name == "C").unwrap();
-            assert!(pos_a < pos_b, "`A` must come before `B` in the output");
-            assert!(pos_b < pos_c, "`B` must come before `C` in the output");
+            assert_eq!(order, ["A", "B", "C"]);
         }
 
         #[test]
@@ -123,16 +124,17 @@ mod tests {
             graph.insert("C".into(), vec!["A".into()]);
             graph.insert("D".into(), vec!["B".into(), "C".into()]);
             let order = topological_order(&graph).unwrap();
-            let num_a = order.iter().filter(|&name| name == "A").count();
-            let pos_a = order.iter().position(|name| name == "A").unwrap();
-            let pos_b = order.iter().position(|name| name == "B").unwrap();
-            let pos_c = order.iter().position(|name| name == "C").unwrap();
-            let pos_d = order.iter().position(|name| name == "D").unwrap();
-            assert!(num_a == 1, "there must be one `A` only in the output");
-            assert!(pos_a < pos_b, "`A` must come before `B` in the output");
-            assert!(pos_a < pos_c, "`A` must come before `C` in the output");
-            assert!(pos_b < pos_d, "`B` must come before `D` in the output");
-            assert!(pos_c < pos_d, "`C` must come before `D` in the output");
+            assert_eq!(order, ["A", "B", "C", "D"]);
+        }
+
+        #[test]
+        fn orders_ready_names_alphabetically() {
+            let mut graph: HashMap<String, Vec<String>> = HashMap::new();
+            graph.insert("c".into(), Vec::new());
+            graph.insert("a".into(), Vec::new());
+            graph.insert("b".into(), Vec::new());
+            let order = topological_order(&graph).unwrap();
+            assert_eq!(order, ["a", "b", "c"]);
         }
 
         #[test]
