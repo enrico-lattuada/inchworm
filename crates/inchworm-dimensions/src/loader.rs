@@ -14,7 +14,7 @@ use crate::{DimRegistry, DimensionError, graph::topological_order, parser::extra
 pub(crate) const SUPPORTED_SCHEMA: u32 = 1;
 
 /// The deserialized shape of a definition TOML file/string.
-#[derive(serde::Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DimFile {
     /// Format version; checked against [`SUPPORTED_SCHEMA`].
@@ -33,14 +33,14 @@ pub(crate) struct DimFile {
 }
 
 /// The `[registry]` table: metadata for a freshly built registry.
-#[derive(serde::Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 pub(crate) struct RegistryMeta {
     pub name: String,
     pub version: String,
 }
 
 /// A `[base]` entry.
-#[derive(serde::Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BaseEntry {
     #[serde(default)]
@@ -48,7 +48,7 @@ pub(crate) struct BaseEntry {
 }
 
 /// A `[derived]` entry.
-#[derive(serde::Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DerivedEntry {
     pub definition: String,
@@ -59,7 +59,7 @@ pub(crate) struct DerivedEntry {
 }
 
 /// A `[dimensionless]` entry.
-#[derive(serde::Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DimensionlessEntry {
     pub definition: String,
@@ -75,6 +75,19 @@ enum DefEntry {
     Dimensionless(DimensionlessEntry),
 }
 
+/// Deserializes `src` and checks its schema version.
+fn parse_file(src: &str) -> Result<DimFile, DimensionError> {
+    let file: DimFile =
+        toml::from_str(src).map_err(|e| DimensionError::DefinitionFile(e.to_string()))?;
+    if file.schema != SUPPORTED_SCHEMA {
+        return Err(DimensionError::DefinitionFile(format!(
+            "unsupported schema {}; this version of inchworm-dimensions only supports schema {SUPPORTED_SCHEMA}",
+            file.schema
+        )));
+    }
+    Ok(file)
+}
+
 /// Builds a new [`DimRegistry`] from the source.
 ///
 /// # Errors
@@ -88,22 +101,15 @@ enum DefEntry {
 /// Returns [`DimensionError::ExponentOverflow`] if any exponents in the source definitions incur overflow.
 /// Returns [`DimensionError::ZeroDenominator`] if any exponents' denominators in the source definitions are zero.
 pub(crate) fn load_registry(src: &str) -> Result<DimRegistry, DimensionError> {
-    let file: DimFile =
-        toml::from_str(src).map_err(|e| DimensionError::DefinitionFile(e.to_string()))?;
+    let file = parse_file(src)?;
     let registry_meta = &file.registry;
     let mut registry = DimRegistry::new_with_meta(&registry_meta.name, &registry_meta.version);
     load_entries(&mut registry, file)?;
     Ok(registry)
 }
 
-/// Checks the schema, builds the dependency graph, sorts it, and adds the entries to `registry`.
+/// Builds the dependency graph, sorts it, and adds the entries to `registry`.
 fn load_entries(registry: &mut DimRegistry, file: DimFile) -> Result<(), DimensionError> {
-    if file.schema != SUPPORTED_SCHEMA {
-        return Err(DimensionError::DefinitionFile(format!(
-            "unsupported schema {}; this version of inchworm-dimensions only supports schema {SUPPORTED_SCHEMA}",
-            file.schema
-        )));
-    }
     let entries = file
         .base
         .into_iter()
@@ -166,6 +172,84 @@ fn load_entries(registry: &mut DimRegistry, file: DimFile) -> Result<(), Dimensi
 mod tests {
     use super::*;
     use crate::test_utils::{assert_exactly_eq, errors_match};
+
+    mod parse_file {
+        use super::*;
+
+        #[test]
+        fn rejects_malformed_toml() {
+            let bad_toml = r#"schema = 1
+
+            [registry
+            name = "test-reg"
+            version = "0.0.0"
+            "#;
+            assert!(matches!(
+                parse_file(bad_toml),
+                Err(DimensionError::DefinitionFile(_))
+            ));
+        }
+
+        #[test]
+        fn rejects_missing_registry_section() {
+            let src = r#"schema = 1
+
+            [base]
+            base = { symbol = "B" }
+            "#;
+            let err = parse_file(src).unwrap_err();
+            assert!(matches!(&err, DimensionError::DefinitionFile(_)));
+        }
+
+        #[test]
+        fn rejects_unknown_field() {
+            let src = r#"schema = 1
+
+            [registry]
+            name = "test-reg"
+            version = "0.0.0"
+
+            [base]
+            length = { symbl = "L" }
+            "#;
+            assert!(matches!(
+                parse_file(src),
+                Err(DimensionError::DefinitionFile(_))
+            ));
+        }
+
+        #[test]
+        fn rejects_duplicate_key_within_section() {
+            let src = r#"schema = 1
+
+            [registry]
+            name = "test-reg"
+            version = "0.0.0"
+
+            [base]
+            length = { symbol = "L" }
+            length = { symbol = "M" }
+            "#;
+            assert!(matches!(
+                parse_file(src),
+                Err(DimensionError::DefinitionFile(_))
+            ));
+        }
+
+        #[test]
+        fn rejects_unsupported_schema() {
+            let src = r#"schema = 0
+
+            [registry]
+            name = "test-ureg"
+            version = "0.1.0"
+            "#;
+            let DimensionError::DefinitionFile(message) = parse_file(src).unwrap_err() else {
+                panic!("not a DefinitionFile error")
+            };
+            assert!(message.contains("unsupported schema 0"));
+        }
+    }
 
     mod load_registry {
         use super::*;
@@ -322,17 +406,6 @@ mod tests {
         }
 
         #[test]
-        fn rejects_missing_registry_section() {
-            let src = r#"schema = 1
-
-            [base]
-            base = { symbol = "B" }
-            "#;
-            let err = load_registry(src).unwrap_err();
-            assert!(matches!(&err, DimensionError::DefinitionFile(_)));
-        }
-
-        #[test]
         fn rejects_cyclic_definitions() {
             let src = r#"schema = 1
 
@@ -349,20 +422,6 @@ mod tests {
                 names: vec!["a".into(), "b".into()],
             };
             assert!(errors_match(&err, &expected_err));
-        }
-
-        #[test]
-        fn rejects_malformed_toml() {
-            let bad_toml = r#"schema = 1
-
-            [registry
-            name = "test-reg"
-            version = "0.0.0"
-            "#;
-            assert!(matches!(
-                load_registry(bad_toml),
-                Err(DimensionError::DefinitionFile(_))
-            ));
         }
 
         #[test]
@@ -404,41 +463,6 @@ mod tests {
                 registry: "test-reg".into(),
             };
             assert!(errors_match(&err, &expected_err));
-        }
-
-        #[test]
-        fn rejects_unknown_field() {
-            let src = r#"schema = 1
-
-            [registry]
-            name = "test-reg"
-            version = "0.0.0"
-
-            [base]
-            length = { symbl = "L" }
-            "#;
-            assert!(matches!(
-                load_registry(src),
-                Err(DimensionError::DefinitionFile(_))
-            ));
-        }
-
-        #[test]
-        fn rejects_duplicate_key_within_section() {
-            let src = r#"schema = 1
-
-            [registry]
-            name = "test-reg"
-            version = "0.0.0"
-
-            [base]
-            length = { symbol = "L" }
-            length = { symbol = "M" }
-            "#;
-            assert!(matches!(
-                load_registry(src),
-                Err(DimensionError::DefinitionFile(_))
-            ));
         }
     }
 }
