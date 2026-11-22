@@ -29,6 +29,8 @@ mod point;
 mod prefix;
 mod registry;
 mod scale;
+#[cfg(feature = "toml")]
+mod standard;
 #[cfg(test)]
 mod test_utils;
 mod unit;

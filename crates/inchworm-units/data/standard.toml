@@ -1,0 +1,131 @@
+schema = 1
+
+[registry]
+name = "standard"
+version = "1"
+
+# Sources:
+# - SI: BIPM, The International System of Units (SI Brochure), 9th edition (2019, v3.01 2024).
+# - US customary and imperial: NIST SP 811 (2008), Appendix B; the 1959 international
+#   yard and pound agreement (1 yd = 0.9144 m, 1 lb = 0.45359237 kg exactly).
+# - Measured constants: CODATA 2022. Every other value below is exact by definition.
+
+# ---- SI prefixes (SI Brochure, Table 7) ----
+
+[prefix]
+quetta = { symbol = "Q", factor = 1e30 }
+ronna = { symbol = "R", factor = 1e27 }
+yotta = { symbol = "Y", factor = 1e24 }
+zetta = { symbol = "Z", factor = 1e21 }
+exa = { symbol = "E", factor = 1e18 }
+peta = { symbol = "P", factor = 1e15 }
+tera = { symbol = "T", factor = 1e12 }
+giga = { symbol = "G", factor = 1e9 }
+mega = { symbol = "M", factor = 1e6 }
+kilo = { symbol = "k", factor = 1e3 }
+hecto = { symbol = "h", factor = 1e2 }
+deca = { symbol = "da", factor = 1e1 }
+deci = { symbol = "d", factor = 1e-1 }
+centi = { symbol = "c", factor = 1e-2 }
+milli = { symbol = "m", factor = 1e-3 }
+micro = { symbol = "μ", factor = 1e-6 }    # U+03BC; the micro sign U+00B5 folds to it
+nano = { symbol = "n", factor = 1e-9 }
+pico = { symbol = "p", factor = 1e-12 }
+femto = { symbol = "f", factor = 1e-15 }
+atto = { symbol = "a", factor = 1e-18 }
+zepto = { symbol = "z", factor = 1e-21 }
+yocto = { symbol = "y", factor = 1e-24 }
+ronto = { symbol = "r", factor = 1e-27 }
+quecto = { symbol = "q", factor = 1e-30 }
+
+# ---- SI base units (SI Brochure, Table 2), and the units of the two angle kinds ----
+
+[base]
+meter = { symbol = "m", dimension = "length", prefixable = true, aliases = ["metre"] }
+gram = { symbol = "g", dimension = "mass", prefixable = true, prefix = "kilo", aliases = ["gramme"] }
+second = { symbol = "s", dimension = "time", prefixable = true }
+ampere = { symbol = "A", dimension = "electric_current", prefixable = true }
+kelvin = { symbol = "K", dimension = "temperature", prefixable = true }
+mole = { symbol = "mol", dimension = "amount_of_substance", prefixable = true }
+candela = { symbol = "cd", dimension = "luminous_intensity", prefixable = true }
+radian = { symbol = "rad", dimension = "plane_angle", prefixable = true }
+steradian = { symbol = "sr", dimension = "solid_angle", prefixable = true }
+
+[derived]
+# ---- mathematical constants, as dimensionless units (like a percent) ----
+pi = { symbol = "π", definition = "3.1415926535897932384626433832795028841971693993751" }
+
+# ---- SI derived units with special names (SI Brochure, Table 4) ----
+hertz = { symbol = "Hz", definition = "1 / s", prefixable = true }
+newton = { symbol = "N", definition = "kg m / s^2", prefixable = true }
+pascal = { symbol = "Pa", definition = "N / m^2", prefixable = true }
+joule = { symbol = "J", definition = "N m", prefixable = true }
+watt = { symbol = "W", definition = "J / s", prefixable = true }
+coulomb = { symbol = "C", definition = "A s", prefixable = true }
+volt = { symbol = "V", definition = "W / A", prefixable = true }
+farad = { symbol = "F", definition = "C / V", prefixable = true }
+ohm = { symbol = "Ω", definition = "V / A", prefixable = true }    # U+03A9; the ohm sign U+2126 folds to it
+siemens = { symbol = "S", definition = "A / V", prefixable = true }
+weber = { symbol = "Wb", definition = "V s", prefixable = true }
+tesla = { symbol = "T", definition = "Wb / m^2", prefixable = true }
+henry = { symbol = "H", definition = "Wb / A", prefixable = true }
+lumen = { symbol = "lm", definition = "cd sr", prefixable = true }
+lux = { symbol = "lx", definition = "lm / m^2", prefixable = true }
+katal = { symbol = "kat", definition = "mol / s", prefixable = true }
+
+# ---- temperature differences (the readings are in [point]) ----
+degree_Rankine = { symbol = "°R", definition = "5/9 K", aliases = ["degR", "rankine"] }
+delta_degree_Celsius = { symbol = "delta_degC", definition = "K" }
+delta_degree_Fahrenheit = { symbol = "delta_degF", definition = "degR" }
+
+# ---- non-SI units accepted for use with the SI (SI Brochure, Table 8) ----
+minute = { symbol = "min", definition = "60 s" }
+hour = { symbol = "h", definition = "60 min" }
+day = { symbol = "d", definition = "24 h" }
+astronomical_unit = { symbol = "au", definition = "149597870700 m" }
+degree = { symbol = "°", definition = "π / 180 rad", aliases = ["deg"] }
+arcminute = { symbol = "′", definition = "deg / 60", aliases = ["arcmin"] }    # U+2032
+arcsecond = { symbol = "″", definition = "arcmin / 60", aliases = ["arcsec"] }    # U+2033
+hectare = { symbol = "ha", definition = "1e4 m^2" }
+liter = { symbol = "L", definition = "1e-3 m^3", prefixable = true, aliases = ["l", "litre", "ℓ"] }
+tonne = { symbol = "t", definition = "1000 kg", prefixable = true, aliases = ["metric_ton"] }
+atomic_mass_constant = { symbol = "m_u", definition = "1.66053906892e-27 kg" }    # CODATA 2022, measured
+dalton = { symbol = "Da", definition = "m_u", prefixable = true }
+unified_atomic_mass_unit = { symbol = "u", definition = "m_u" }
+electronvolt = { symbol = "eV", definition = "1.602176634e-19 J", prefixable = true }
+
+# ---- other common units ----
+turn = { symbol = "tr", definition = "2 π rad", aliases = ["rev", "revolution"] }
+angstrom = { symbol = "Å", definition = "1e-10 m" }    # U+00C5; the angstrom sign U+212B folds to it
+nautical_mile = { symbol = "nmi", definition = "1852 m" }
+knot = { symbol = "kn", definition = "nmi / h" }
+bar = { symbol = "bar", definition = "1e5 Pa", prefixable = true }
+standard_atmosphere = { symbol = "atm", definition = "101325 Pa" }
+torr = { symbol = "Torr", definition = "atm / 760" }
+calorie = { symbol = "cal", definition = "4.184 J", prefixable = true }    # thermochemical
+watt_hour = { symbol = "Wh", definition = "W h", prefixable = true }
+
+# ---- US customary and imperial (NIST SP 811, Appendix B) ----
+inch = { symbol = "in", definition = "0.0254 m" }
+foot = { symbol = "ft", definition = "0.3048 m" }
+yard = { symbol = "yd", definition = "0.9144 m" }
+mile = { symbol = "mi", definition = "1609.344 m" }
+acre = { symbol = "ac", definition = "43560 ft^2" }    # international acre
+gallon = { symbol = "gal", definition = "231 in^3" }    # US liquid gallon
+fluid_ounce = { symbol = "fl_oz", definition = "gal / 128" }    # US
+pound = { symbol = "lb", definition = "0.45359237 kg" }
+ounce = { symbol = "oz", definition = "lb / 16" }    # avoirdupois
+pound_force = { symbol = "lbf", definition = "9.80665 lb m / s^2" }    # standard gravity
+pound_per_square_inch = { symbol = "psi", definition = "lbf / in^2" }
+horsepower = { symbol = "hp", definition = "550 ft lbf / s" }    # mechanical
+
+# ---- CGS mechanical units ----
+dyne = { symbol = "dyn", definition = "1e-5 N" }
+erg = { symbol = "erg", definition = "1e-7 J" }
+poise = { symbol = "P", definition = "0.1 Pa s", prefixable = true }
+stokes = { symbol = "St", definition = "1e-4 m^2 / s", prefixable = true }
+galileo = { symbol = "Gal", definition = "0.01 m / s^2", prefixable = true, aliases = ["gal_cgs"] }
+
+[point]
+degree_Celsius = { symbol = "°C", delta = "K", offset = 273.15, aliases = ["degC", "celsius"] }
+degree_Fahrenheit = { symbol = "°F", delta = "degR", offset = 459.67, aliases = ["degF", "fahrenheit"] }
