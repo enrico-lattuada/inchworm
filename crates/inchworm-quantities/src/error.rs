@@ -14,6 +14,10 @@ pub enum QuantityError {
     #[error("cannot subtract a reading (`{right}`) from a difference (`{left}`)")]
     DifferenceMinusReading { left: String, right: String },
 
+    /// A reading in a point unit was multiplied or divided by a number.
+    #[error("cannot scale a reading (`{unit}`); convert it to a difference first")]
+    ScaledReading { unit: String },
+
     /// A unit operation failed: incompatible dimensions, a conversion out of range, ...
     /// See [`UnitError`](inchworm_units::UnitError) for detail.
     #[error(transparent)]

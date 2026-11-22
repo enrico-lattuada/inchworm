@@ -121,6 +121,82 @@ impl<M: Magnitude<Output = M> + std::ops::Sub<Output = M> + Clone> Quantity<M> {
     }
 }
 
+impl<M: std::ops::Mul<Output = M> + Clone> Quantity<M> {
+    /// Multiplies by `rhs`: magnitudes multiply and units multiply, without converting either
+    /// (`1 km * 500 m` is `500 km·m`). Use [`to`](Self::to) to express the result in another unit.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuantityError::Unit`] if the units cannot be multiplied: either is a reading in
+    /// a point unit (wrapping [`NotComposable`](inchworm_units::UnitError::NotComposable)),
+    /// they come from different registries, or an exponent overflows.
+    pub fn try_mul(&self, rhs: &Self) -> Result<Self, QuantityError> {
+        let unit = self.unit.try_mul(&rhs.unit)?;
+        Ok(Self::new(
+            self.magnitude().clone() * rhs.magnitude().clone(),
+            unit,
+        ))
+    }
+}
+
+impl<M: std::ops::Div<Output = M> + Clone> Quantity<M> {
+    /// Divides by `rhs`: magnitudes divide and units divide, without converting either
+    /// (`1 km / 500 m` is `0.002 km/m`, not the dimensionless `2`). Use [`to`](Self::to) to
+    /// express the result in another unit.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuantityError::Unit`] if the units cannot be divided, for the same reasons as
+    /// [`try_mul`](Self::try_mul).
+    pub fn try_div(&self, rhs: &Self) -> Result<Self, QuantityError> {
+        let unit = self.unit.try_div(&rhs.unit)?;
+        Ok(Self::new(
+            self.magnitude().clone() / rhs.magnitude().clone(),
+            unit,
+        ))
+    }
+}
+
+impl<M: std::ops::Mul<f64, Output = M> + Clone> Quantity<M> {
+    /// Multiplies the magnitude by `factor`, keeping the unit: `2 m * 3` is `6 m`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuantityError::ScaledReading`] if `self` is a reading in a point unit: scaling
+    /// `20 °C` would depend on where the scale's zero is.
+    pub fn try_mul_scalar(&self, factor: f64) -> Result<Self, QuantityError> {
+        match self.unit() {
+            Unit::Delta(_) => Ok(Self::new(
+                self.magnitude().clone() * factor,
+                self.unit.clone(),
+            )),
+            Unit::Point(point) => Err(QuantityError::ScaledReading {
+                unit: point.to_string(),
+            }),
+        }
+    }
+}
+
+impl<M: std::ops::Div<f64, Output = M> + Clone> Quantity<M> {
+    /// Divides the magnitude by `divisor`, keeping the unit: `6 m / 3` is `2 m`. Dividing by
+    /// zero follows the magnitude type (an infinite or NaN `f64`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuantityError::ScaledReading`] if `self` is a reading in a point unit.
+    pub fn try_div_scalar(&self, divisor: f64) -> Result<Self, QuantityError> {
+        match self.unit() {
+            Unit::Delta(_) => Ok(Self::new(
+                self.magnitude().clone() / divisor,
+                self.unit.clone(),
+            )),
+            Unit::Point(point) => Err(QuantityError::ScaledReading {
+                unit: point.to_string(),
+            }),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,6 +373,130 @@ mod tests {
             let err = lhs.try_sub(&rhs).unwrap_err();
             assert!(
                 matches!(err, QuantityError::DifferenceMinusReading { .. }),
+                "{err:?}"
+            );
+        }
+    }
+
+    mod try_mul {
+        use super::*;
+
+        #[test]
+        fn multiplies_magnitudes_and_units() {
+            let ureg = test_registry();
+            let lhs = Quantity::new(2.0, unit(&ureg, "m"));
+            let rhs = Quantity::new(3.0, unit(&ureg, "s"));
+            let prod = lhs.try_mul(&rhs).unwrap();
+            assert_close(*prod.magnitude(), 6.0);
+            assert_eq!(prod.unit(), &ureg.parse("m*s").unwrap());
+        }
+
+        #[test]
+        fn keeps_units_unconverted() {
+            let ureg = test_registry();
+            let lhs = Quantity::new(1.0, unit(&ureg, "km"));
+            let rhs = Quantity::new(500.0, unit(&ureg, "m"));
+            let prod = lhs.try_mul(&rhs).unwrap();
+            assert_close(*prod.magnitude(), 500.0);
+            assert_eq!(prod.unit(), &ureg.parse("km*m").unwrap());
+        }
+
+        #[test]
+        fn rejects_readings() {
+            let ureg = test_registry();
+            let reading = Quantity::new(20.0, unit(&ureg, "degC"));
+            let length = Quantity::new(2.0, unit(&ureg, "m"));
+            for (lhs, rhs) in [(&reading, &length), (&length, &reading)] {
+                let err = lhs.try_mul(rhs).unwrap_err();
+                assert!(
+                    matches!(err, QuantityError::Unit(UnitError::NotComposable { .. })),
+                    "{err:?}"
+                );
+            }
+        }
+    }
+
+    mod try_div {
+        use super::*;
+
+        #[test]
+        fn divides_magnitudes_and_units() {
+            let ureg = test_registry();
+            let lhs = Quantity::new(6.0, unit(&ureg, "m"));
+            let rhs = Quantity::new(3.0, unit(&ureg, "s"));
+            let ratio = lhs.try_div(&rhs).unwrap();
+            assert_close(*ratio.magnitude(), 2.0);
+            assert_eq!(ratio.unit(), &ureg.parse("m/s").unwrap());
+        }
+
+        #[test]
+        fn keeps_units_unconverted() {
+            let ureg = test_registry();
+            let lhs = Quantity::new(1.0, unit(&ureg, "km"));
+            let rhs = Quantity::new(500.0, unit(&ureg, "m"));
+            let ratio = lhs.try_div(&rhs).unwrap();
+            assert_close(*ratio.magnitude(), 0.002);
+            assert_eq!(ratio.unit(), &ureg.parse("km/m").unwrap());
+        }
+
+        #[test]
+        fn rejects_readings() {
+            let ureg = test_registry();
+            let reading = Quantity::new(20.0, unit(&ureg, "degC"));
+            let length = Quantity::new(2.0, unit(&ureg, "m"));
+            for (lhs, rhs) in [(&reading, &length), (&length, &reading)] {
+                let err = lhs.try_div(rhs).unwrap_err();
+                assert!(
+                    matches!(err, QuantityError::Unit(UnitError::NotComposable { .. })),
+                    "{err:?}"
+                );
+            }
+        }
+    }
+
+    mod try_mul_scalar {
+        use super::*;
+
+        #[test]
+        fn scales_magnitude() {
+            let ureg = test_registry();
+            let quantity = Quantity::new(2.0, unit(&ureg, "m"));
+            let scaled = quantity.try_mul_scalar(3.0).unwrap();
+            assert_close(*scaled.magnitude(), 6.0);
+            assert_eq!(scaled.unit(), &unit(&ureg, "m"));
+        }
+
+        #[test]
+        fn rejects_readings() {
+            let ureg = test_registry();
+            let quantity = Quantity::new(2.0, unit(&ureg, "degC"));
+            let err = quantity.try_mul_scalar(3.0).unwrap_err();
+            assert!(
+                matches!(err, QuantityError::ScaledReading { .. }),
+                "{err:?}"
+            );
+        }
+    }
+
+    mod try_div_scalar {
+        use super::*;
+
+        #[test]
+        fn scales_magnitude() {
+            let ureg = test_registry();
+            let quantity = Quantity::new(6.0, unit(&ureg, "m"));
+            let scaled = quantity.try_div_scalar(3.0).unwrap();
+            assert_close(*scaled.magnitude(), 2.0);
+            assert_eq!(scaled.unit(), &unit(&ureg, "m"));
+        }
+
+        #[test]
+        fn rejects_readings() {
+            let ureg = test_registry();
+            let quantity = Quantity::new(2.0, unit(&ureg, "degC"));
+            let err = quantity.try_div_scalar(3.0).unwrap_err();
+            assert!(
+                matches!(err, QuantityError::ScaledReading { .. }),
                 "{err:?}"
             );
         }
