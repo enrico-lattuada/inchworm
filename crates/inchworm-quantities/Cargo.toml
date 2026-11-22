@@ -1,0 +1,16 @@
+[package]
+name = "inchworm-quantities"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["toml"]
+toml = ["inchworm-units/toml"]
+
+[dependencies]
+inchworm-dimensions = { workspace = true }
+inchworm-units = { workspace = true }
+thiserror = { workspace = true }

@@ -316,6 +316,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "inchworm-quantities"
+version = "0.1.0"
+dependencies = [
+ "inchworm-dimensions",
+ "inchworm-units",
+ "thiserror",
+]
+
+[[package]]
 name = "inchworm-units"
 version = "0.1.0"
 dependencies = [
