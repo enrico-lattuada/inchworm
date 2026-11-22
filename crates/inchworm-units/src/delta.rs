@@ -168,6 +168,81 @@ fn expand_atom_base(atom: &UnitAtom) -> DeltaUnit {
     }
 }
 
+// ---- operators ----
+/// Multiplies two units, delegating to [`DeltaUnit::try_mul`].
+///
+/// # Panics
+///
+/// Panics on cross-registry mixing or exponent overflow, the same two cases
+/// [`DeltaUnit::try_mul`] returns as errors.
+impl std::ops::Mul for &DeltaUnit {
+    type Output = DeltaUnit;
+    fn mul(self, rhs: &DeltaUnit) -> Self::Output {
+        self.try_mul(rhs).expect("unit multiplication failed")
+    }
+}
+
+/// Delegates to the `&DeltaUnit * &DeltaUnit` impl; panics under the same conditions.
+impl std::ops::Mul for DeltaUnit {
+    type Output = DeltaUnit;
+    fn mul(self, rhs: DeltaUnit) -> Self::Output {
+        &self * &rhs
+    }
+}
+
+/// Delegates to the `&DeltaUnit * &DeltaUnit` impl; panics under the same conditions.
+impl std::ops::Mul<&DeltaUnit> for DeltaUnit {
+    type Output = DeltaUnit;
+    fn mul(self, rhs: &DeltaUnit) -> Self::Output {
+        &self * rhs
+    }
+}
+
+/// Delegates to the `&DeltaUnit * &DeltaUnit` impl; panics under the same conditions.
+impl std::ops::Mul<DeltaUnit> for &DeltaUnit {
+    type Output = DeltaUnit;
+    fn mul(self, rhs: DeltaUnit) -> Self::Output {
+        self * &rhs
+    }
+}
+
+/// Divides two units, delegating to [`DeltaUnit::try_div`].
+///
+/// # Panics
+///
+/// Panics on cross-registry mixing or exponent overflow, the same two cases
+/// [`DeltaUnit::try_div`] returns as errors.
+impl std::ops::Div for &DeltaUnit {
+    type Output = DeltaUnit;
+    fn div(self, rhs: &DeltaUnit) -> Self::Output {
+        self.try_div(rhs).expect("unit division failed")
+    }
+}
+
+/// Delegates to the `&DeltaUnit / &DeltaUnit` impl; panics under the same conditions.
+impl std::ops::Div for DeltaUnit {
+    type Output = DeltaUnit;
+    fn div(self, rhs: DeltaUnit) -> Self::Output {
+        &self / &rhs
+    }
+}
+
+/// Delegates to the `&DeltaUnit / &DeltaUnit` impl; panics under the same conditions.
+impl std::ops::Div<&DeltaUnit> for DeltaUnit {
+    type Output = DeltaUnit;
+    fn div(self, rhs: &DeltaUnit) -> Self::Output {
+        &self / rhs
+    }
+}
+
+/// Delegates to the `&DeltaUnit / &DeltaUnit` impl; panics under the same conditions.
+impl std::ops::Div<DeltaUnit> for &DeltaUnit {
+    type Output = DeltaUnit;
+    fn div(self, rhs: DeltaUnit) -> Self::Output {
+        self / &rhs
+    }
+}
+
 // ---- transformation ----
 impl DeltaUnit {
     /// Expands every factor's scale down to base units: `1 self = scale × base`.
@@ -326,6 +401,17 @@ mod tests {
         }
     }
 
+    /// `m` and `s`, from two different unit registries.
+    fn units_from_two_registries() -> (DeltaUnit, DeltaUnit) {
+        let mut dim_reg_a = DimRegistry::new("test-reg-a");
+        let length = dim_reg_a.add_base("length", None).unwrap();
+        let mut dim_reg_b = DimRegistry::new("test-reg-b");
+        let time = dim_reg_b.add_base("time", None).unwrap();
+        let m = DeltaUnit::from_atom(&make_atom(UnitRegistryId::next(), "m", length));
+        let s = DeltaUnit::from_atom(&make_atom(UnitRegistryId::next(), "s", time));
+        (m, s)
+    }
+
     mod try_mul {
         use super::*;
 
@@ -348,22 +434,39 @@ mod tests {
 
         #[test]
         fn err_on_cross_registry() {
-            let mut dim_reg_a = DimRegistry::new("test-reg-a");
-            let length = dim_reg_a.add_base("length", None).unwrap();
-            let mut dim_reg_b = DimRegistry::new("test-reg-b");
-            let time = dim_reg_b.add_base("time", None).unwrap();
-            let m_reg_id = UnitRegistryId::next();
-            let m_atom = make_atom(m_reg_id, "m", length.clone());
-            let s_reg_id = UnitRegistryId::next();
-            let s_atom = make_atom(s_reg_id, "s", time.clone());
-            let m = DeltaUnit::from_atom(&m_atom);
-            let s = DeltaUnit::from_atom(&s_atom);
+            let (m, s) = units_from_two_registries();
             let actual = m.try_mul(&s).unwrap_err();
             let expected = UnitError::CrossRegistry {
-                left: m_reg_id,
-                right: s_reg_id,
+                left: m.registry_id().unwrap(),
+                right: s.registry_id().unwrap(),
             };
             assert!(errors_match(&actual, &expected));
+        }
+    }
+
+    mod mul {
+        use super::*;
+
+        #[test]
+        fn matches_try_mul() {
+            let MAndS { m, s, .. } = m_and_s();
+            assert_eq!(&m * &s, m.try_mul(&s).unwrap());
+        }
+
+        #[test]
+        fn accepts_owned_and_borrowed_operands() {
+            let MAndS { m, s, .. } = m_and_s();
+            let expected = &m * &s;
+            assert_eq!(m.clone() * s.clone(), expected);
+            assert_eq!(m.clone() * &s, expected);
+            assert_eq!(&m * s.clone(), expected);
+        }
+
+        #[test]
+        #[should_panic(expected = "unit multiplication failed")]
+        fn panics_on_cross_registry() {
+            let (m, s) = units_from_two_registries();
+            let _ = &m * &s;
         }
     }
 
@@ -392,6 +495,32 @@ mod tests {
                 [(m_atom, Exp::int(1)), (s_atom, Exp::int(-1))]
             );
             assert_eq!(*m_over_s.dimension(), length.try_div(&time).unwrap());
+        }
+    }
+
+    mod div {
+        use super::*;
+
+        #[test]
+        fn matches_try_div() {
+            let MAndS { m, s, .. } = m_and_s();
+            assert_eq!(&m / &s, m.try_div(&s).unwrap());
+        }
+
+        #[test]
+        fn accepts_owned_and_borrowed_operands() {
+            let MAndS { m, s, .. } = m_and_s();
+            let expected = &m / &s;
+            assert_eq!(m.clone() / s.clone(), expected);
+            assert_eq!(m.clone() / &s, expected);
+            assert_eq!(&m / s.clone(), expected);
+        }
+
+        #[test]
+        #[should_panic(expected = "unit division failed")]
+        fn panics_on_cross_registry() {
+            let (m, s) = units_from_two_registries();
+            let _ = &m / &s;
         }
     }
 
