@@ -556,6 +556,19 @@ impl<'a> Parser<'a> {
     }
 }
 
+/// The identifiers in `src`, in order and with repeats. Stops at the first lexing error,
+/// since the real parse reports it.
+#[cfg(feature = "toml")]
+pub(crate) fn idents(src: &str) -> Vec<String> {
+    Lexer::new(src)
+        .map_while(Result::ok)
+        .filter_map(|s| match s.token {
+            Token::Ident(name) => Some(name),
+            _ => None,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1026,6 +1039,37 @@ mod tests {
                 name: "degree_Celsius".into(),
             };
             assert!(errors_match(&actual, &expected), "{actual:?}");
+        }
+    }
+
+    #[cfg(feature = "toml")]
+    mod idents {
+        use super::*;
+
+        #[test]
+        fn lists_identifiers_in_order() {
+            let cases = [
+                ("kg*m^2/s^2", vec!["kg", "m", "s"]),
+                ("60 min", vec!["min"]),
+            ];
+            for (src, expected) in cases {
+                assert_eq!(idents(src), expected, "{src}");
+            }
+        }
+
+        #[test]
+        fn keeps_repeats() {
+            assert_eq!(idents("m/m"), ["m", "m"]);
+        }
+
+        #[test]
+        fn skips_numbers_and_superscripts() {
+            assert_eq!(idents("m² 1e3 s⁻¹"), ["m", "s"]);
+        }
+
+        #[test]
+        fn stops_at_lex_error() {
+            assert_eq!(idents("m ; s"), ["m"]);
         }
     }
 }

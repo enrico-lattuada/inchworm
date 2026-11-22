@@ -350,6 +350,16 @@ pub(crate) fn errors_match(actual: &UnitError, expected: &UnitError) -> bool {
                     dependents: expected_dependents,
                 },
             ) => name == expected_name && dependents == expected_dependents,
+            (
+                UnitError::CyclicDefinition { names },
+                UnitError::CyclicDefinition {
+                    names: expected_names,
+                },
+            ) => names == expected_names,
+            #[cfg(feature = "toml")]
+            (UnitError::DefinitionFile(src), UnitError::DefinitionFile(expected_src)) => {
+                src == expected_src
+            }
             (UnitError::Dimension(a), UnitError::Dimension(b)) => dimension_errors_match(a, b),
             _ => false,
         }

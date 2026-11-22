@@ -18,6 +18,9 @@ use crate::{
     scale::Scale,
 };
 
+#[cfg(feature = "toml")]
+use crate::loader::load_registry;
+
 pub(crate) const DEFAULT_REGISTRY_VERSION: &str = "0";
 
 /// What a registered name refers to.
@@ -152,6 +155,46 @@ impl UnitRegistry {
             prefix_by_symbol: HashMap::new(),
             prefixed: RwLock::new(HashMap::new()),
         }
+    }
+
+    /// Creates a new [`UnitRegistry`] from the source definitions in TOML format.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::DefinitionFile`] if the source is not valid TOML, does not match the
+    /// schema, or has an unsupported schema version.
+    /// Returns [`UnitError::CyclicDefinition`] if definitions refer to each other in a cycle.
+    /// Returns [`UnitError::Dimension`] wrapping
+    /// [`UnknownDimension`](inchworm_dimensions::DimensionError::UnknownDimension) if a base
+    /// unit's dimension is not in `dims`.
+    /// Returns any error of [`add_prefix`](Self::add_prefix), [`add_base`](Self::add_base),
+    /// [`add_derived`](Self::add_derived), or [`add_point`](Self::add_point) for an entry,
+    /// such as [`UnitError::DuplicateName`] or [`UnitError::UnknownUnit`]; a point unit's
+    /// `delta` that is itself a point unit is [`UnitError::NotComposable`].
+    #[cfg(feature = "toml")]
+    pub fn from_toml_str(src: &str, dims: DimRegistry) -> Result<Self, UnitError> {
+        load_registry(src, dims)
+    }
+
+    /// Creates a new [`UnitRegistry`] with the source definitions from the TOML file at `path`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnitError::DefinitionFile`] if the source is not valid TOML, does not match the
+    /// schema, or has an unsupported schema version.
+    /// Returns [`UnitError::CyclicDefinition`] if definitions refer to each other in a cycle.
+    /// Returns [`UnitError::Dimension`] wrapping
+    /// [`UnknownDimension`](inchworm_dimensions::DimensionError::UnknownDimension) if a base
+    /// unit's dimension is not in `dims`.
+    /// Returns any error of [`add_prefix`](Self::add_prefix), [`add_base`](Self::add_base),
+    /// [`add_derived`](Self::add_derived), or [`add_point`](Self::add_point) for an entry,
+    /// such as [`UnitError::DuplicateName`] or [`UnitError::UnknownUnit`]; a point unit's
+    /// `delta` that is itself a point unit is [`UnitError::NotComposable`].
+    #[cfg(feature = "toml")]
+    pub fn from_toml_file(path: &std::path::Path, dims: DimRegistry) -> Result<Self, UnitError> {
+        let src = std::fs::read_to_string(path)
+            .map_err(|e| UnitError::DefinitionFile(format!("{}: {e}", path.display())))?;
+        load_registry(&src, dims)
     }
 }
 
@@ -2029,6 +2072,53 @@ mod tests {
                     .keys()
                     .any(|(stem, _)| *stem == joule_id)
             );
+        }
+    }
+
+    #[cfg(feature = "toml")]
+    mod from_toml_file {
+        use super::*;
+        use std::io::Write;
+
+        /// A dimension registry with `length`.
+        fn dims() -> DimRegistry {
+            let mut dims = DimRegistry::new("test-reg");
+            dims.add_base("length", None).unwrap();
+            dims
+        }
+
+        #[test]
+        fn builds_registry_from_existing_file() {
+            let mut file = tempfile::NamedTempFile::new().unwrap();
+            file.write_all(
+                br#"schema = 1
+
+                [registry]
+                name = "test-ureg"
+                version = "0.1.0"
+
+                [base]
+                meter = { symbol = "m", dimension = "length" }
+
+                [derived]
+                foot = { symbol = "ft", definition = "0.3048 m" }
+                "#,
+            )
+            .unwrap();
+            let ureg = UnitRegistry::from_toml_file(file.path(), dims()).unwrap();
+            assert_eq!(ureg.name(), "test-ureg");
+            assert_expands_to(&ureg, "ft", 0.3048, "m");
+        }
+
+        #[test]
+        fn reports_missing_file_with_its_path() {
+            let path = std::env::temp_dir().join("inchworm-nonexistent.toml");
+            let Err(UnitError::DefinitionFile(message)) =
+                UnitRegistry::from_toml_file(&path, dims())
+            else {
+                panic!("expected a DefinitionFile error");
+            };
+            assert!(message.contains(&path.display().to_string()), "{message}");
         }
     }
 

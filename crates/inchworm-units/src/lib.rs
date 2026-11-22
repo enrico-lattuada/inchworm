@@ -20,6 +20,10 @@ mod delta;
 mod error;
 mod fold;
 mod form;
+#[cfg(feature = "toml")]
+mod graph;
+#[cfg(feature = "toml")]
+mod loader;
 mod parse;
 mod point;
 mod prefix;

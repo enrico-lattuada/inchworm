@@ -138,6 +138,17 @@ pub enum UnitError {
         dependents: Vec<String>,
     },
 
+    /// A TOML definition file or string couldn't be read or deserialized;
+    /// the message describes what went wrong. Only constructed when the
+    /// `toml` feature is enabled.
+    #[cfg(feature = "toml")]
+    #[error("invalid definition file: {0}")]
+    DefinitionFile(String),
+
+    /// The definitions named in `names` (sorted) form a cycle, or depend on one.
+    #[error("cyclic definition(s) involving {names:?}")]
+    CyclicDefinition { names: Vec<String> },
+
     /// The underlying dimension algebra failed: exponent overflow,
     /// cross-registry dimensions, and so on.
     /// See [`DimensionError`](inchworm_dimensions::DimensionError) for detail.
