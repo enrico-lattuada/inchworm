@@ -388,7 +388,7 @@ impl DimRegistry {
     #[cfg(feature = "toml")]
     pub fn from_toml_file(path: &std::path::Path) -> Result<Self, DimensionError> {
         let src = std::fs::read_to_string(path)
-            .map_err(|e| DimensionError::DefinitionFile(e.to_string()))?;
+            .map_err(|e| DimensionError::DefinitionFile(format!("{}: {e}", path.display())))?;
         load_registry(&src)
     }
 }
