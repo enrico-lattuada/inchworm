@@ -98,6 +98,43 @@ type PrefixedCache = HashMap<(UnitId, Box<str>), UnitAtom>;
 /// registries cannot be mixed; the mismatch is detected via the [`UnitRegistryId`]
 /// carried by every atom.
 ///
+/// # Identifiers
+///
+/// Unit and prefix names, symbols, and aliases are identifiers: any run of characters
+/// other than whitespace, control characters, the operators `* · × / ^ - ( )`,
+/// superscript digits and signs, and the reserved characters `. , + = [ ] { } ; :`,
+/// not starting with an ASCII digit. So `µm`, `Ω`, `°C`, and `fl_oz` are all identifiers.
+///
+/// Six look-alike code points are folded to one form whenever an identifier is
+/// registered or looked up, following Unicode normalization:
+///
+/// | Typed | Read as |
+/// |---|---|
+/// | `µ` U+00B5 micro sign | `μ` U+03BC Greek small letter mu |
+/// | `Ω` U+2126 ohm sign | `Ω` U+03A9 Greek capital letter omega |
+/// | `Å` U+212B angstrom sign | `Å` U+00C5 Latin capital letter A with ring above |
+/// | `K` U+212A kelvin sign | `K` U+004B Latin capital letter K |
+/// | `℃` U+2103 degree Celsius | `°C` |
+/// | `℉` U+2109 degree Fahrenheit | `°F` |
+///
+/// Either spelling finds the same unit, and two identifiers that differ only by these
+/// code points cannot both be registered: the second is a [`UnitError::DuplicateName`].
+/// The spelling given at registration is the one [`Display`](std::fmt::Display) prints.
+///
+/// ```
+/// use inchworm_dimensions::DimRegistry;
+/// use inchworm_units::{BaseDef, UnitRegistry};
+///
+/// let mut dims = DimRegistry::new("lengths");
+/// let length = dims.add_base("length", Some("L")).unwrap();
+/// let mut units = UnitRegistry::new("si", dims);
+/// units.add_prefix("micro", "\u{3BC}", 1e-6).unwrap(); // Greek mu
+/// units.add_base(BaseDef::new("meter", "m", &length).prefixable(true)).unwrap();
+///
+/// // The micro sign finds the same unit as the Greek mu.
+/// assert_eq!(units.get("\u{B5}m"), units.get("\u{3BC}m"));
+/// ```
+///
 /// # Examples
 ///
 /// ```
@@ -230,7 +267,8 @@ impl UnitRegistry {
     }
 
     /// Returns the unit named `name_or_symbol` (`meter` or `m`), or its prefixed form
-    /// (`kilometer` or `km`), or `None`.
+    /// (`kilometer` or `km`), or `None`. Look-alike code points are folded
+    /// (see [`Identifiers`](Self#identifiers)), so `µm` and `μm` find the same unit.
     pub fn get(&self, name_or_symbol: &str) -> Option<Unit> {
         self.resolve_ident(name_or_symbol).ok()
     }
@@ -783,6 +821,8 @@ impl UnitRegistry {
 // ---- parsing and loading ----
 impl UnitRegistry {
     /// Parses a unit expression (e.g., "m / s^2") against this registry's names.
+    ///
+    /// Identifiers are matched as in [`Self::get`], look-alikes folded.
     ///
     /// # Errors
     ///
