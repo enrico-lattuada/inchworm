@@ -34,6 +34,7 @@ mod graph;
 mod linalg;
 mod parser;
 mod pi;
+mod policy;
 mod registry;
 #[cfg(test)]
 mod test_utils;
@@ -50,4 +51,5 @@ pub use exp::Exp;
 pub use form::{Form, Signature};
 pub use parser::is_ident_char;
 pub use pi::{PiAnalysis, PiGroup, PiOptions, PiVariable, buckingham_pi};
+pub use policy::{CompatPolicy, CompatRule};
 pub use registry::DimRegistry;
