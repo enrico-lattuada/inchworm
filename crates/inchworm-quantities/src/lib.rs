@@ -8,6 +8,7 @@
 
 mod error;
 mod magnitude;
+mod ops;
 mod quantity;
 #[cfg(test)]
 mod test_utils;

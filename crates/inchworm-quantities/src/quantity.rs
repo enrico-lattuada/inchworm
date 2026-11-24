@@ -29,6 +29,7 @@ impl<M> Quantity<M> {
     }
 }
 
+// ---- conversion ----
 impl<M: Magnitude> Quantity<M> {
     /// `self`'s magnitude converted to `target`.
     fn magnitude_in(&self, target: &Unit) -> Result<M::Output, QuantityError> {
@@ -48,6 +49,7 @@ impl<M: Magnitude> Quantity<M> {
 }
 
 // ---- arithmetics ----
+
 impl<M: Magnitude<Output = M> + std::ops::Add<Output = M> + Clone> Quantity<M> {
     /// Adds `rhs`, converted to `self`'s unit: `1 km + 500 m` is `1.5 km`.
     ///
@@ -190,6 +192,51 @@ impl<M: std::ops::Div<f64, Output = M> + Clone> Quantity<M> {
                 self.magnitude().clone() / divisor,
                 self.unit.clone(),
             )),
+            Unit::Point(point) => Err(QuantityError::ScaledReading {
+                unit: point.to_string(),
+            }),
+        }
+    }
+}
+
+impl<M: Clone> Quantity<M>
+where
+    f64: std::ops::Div<M, Output = M>,
+{
+    /// `numerator / self`: the scalar divided by this quantity, with the unit inverted
+    /// (`3 / 2 s` is `1.5 1/s`). Computed directly, not as `numerator * (1 / self)`, which
+    /// would round twice.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuantityError::Unit`] if `self` is a reading in a point unit (wrapping
+    /// [`NotComposable`](inchworm_units::UnitError::NotComposable)).
+    pub fn try_scalar_div(&self, numerator: f64) -> Result<Self, QuantityError> {
+        let unit = self.unit.recip()?;
+        let magnitude = numerator / self.magnitude.clone();
+        Ok(Self::new(magnitude, unit))
+    }
+
+    /// The reciprocal, `1 / self`: magnitude and unit both inverted (`2 s` -> `0.5 1/s`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuantityError::Unit`] if `self` is a reading in a point unit (wrapping
+    /// [`NotComposable`](inchworm_units::UnitError::NotComposable)).
+    pub fn try_recip(&self) -> Result<Self, QuantityError> {
+        self.try_scalar_div(1.0)
+    }
+}
+
+impl<M: std::ops::Neg<Output = M> + Clone> Quantity<M> {
+    /// The negation, `-self`, keeping the unit: `-(3 m)` is `-3 m`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`QuantityError::ScaledReading`] if `self` is a reading in a point unit.
+    pub fn try_neg(&self) -> Result<Self, QuantityError> {
+        match self.unit() {
+            Unit::Delta(_) => Ok(Self::new(-self.magnitude.clone(), self.unit.clone())),
             Unit::Point(point) => Err(QuantityError::ScaledReading {
                 unit: point.to_string(),
             }),
@@ -495,6 +542,78 @@ mod tests {
             let ureg = test_registry();
             let quantity = Quantity::new(2.0, unit(&ureg, "degC"));
             let err = quantity.try_div_scalar(3.0).unwrap_err();
+            assert!(
+                matches!(err, QuantityError::ScaledReading { .. }),
+                "{err:?}"
+            );
+        }
+    }
+
+    mod try_recip {
+        use super::*;
+
+        #[test]
+        fn inverts_magnitude_and_unit() {
+            let ureg = test_registry();
+            let quantity = Quantity::new(2.0, unit(&ureg, "s"));
+            let recip = quantity.try_recip().unwrap();
+            assert_close(*recip.magnitude(), 0.5);
+            assert_eq!(recip.unit(), &unit(&ureg, "1/s"));
+        }
+
+        #[test]
+        fn rejects_readings() {
+            let ureg = test_registry();
+            let quantity = Quantity::new(1.0, unit(&ureg, "degC"));
+            let err = quantity.try_recip().unwrap_err();
+            assert!(
+                matches!(err, QuantityError::Unit(UnitError::NotComposable { .. })),
+                "{err:?}"
+            );
+        }
+    }
+
+    mod try_scalar_div {
+        use super::*;
+
+        #[test]
+        fn divides_a_scalar_by_the_quantity() {
+            let ureg = test_registry();
+            let quantity = Quantity::new(2.0, unit(&ureg, "s"));
+            let ratio = quantity.try_scalar_div(3.0).unwrap();
+            assert_close(*ratio.magnitude(), 1.5);
+            assert_eq!(ratio.unit(), &unit(&ureg, "1/s"));
+        }
+
+        #[test]
+        fn rejects_readings() {
+            let ureg = test_registry();
+            let quantity = Quantity::new(1.0, unit(&ureg, "degC"));
+            let err = quantity.try_scalar_div(1.0).unwrap_err();
+            assert!(
+                matches!(err, QuantityError::Unit(UnitError::NotComposable { .. })),
+                "{err:?}"
+            );
+        }
+    }
+
+    mod try_neg {
+        use super::*;
+
+        #[test]
+        fn negates_magnitude() {
+            let ureg = test_registry();
+            let negated = Quantity::new(3.0, unit(&ureg, "m")).try_neg().unwrap();
+            assert_close(*negated.magnitude(), -3.0);
+            assert_eq!(negated.unit(), &unit(&ureg, "m"));
+        }
+
+        #[test]
+        fn rejects_readings() {
+            let ureg = test_registry();
+            let err = Quantity::new(20.0, unit(&ureg, "degC"))
+                .try_neg()
+                .unwrap_err();
             assert!(
                 matches!(err, QuantityError::ScaledReading { .. }),
                 "{err:?}"
