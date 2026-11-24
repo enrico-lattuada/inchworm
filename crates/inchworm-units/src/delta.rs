@@ -4,7 +4,7 @@
 //! its cached [`Dimension`]. A value in it is an amount or a difference, so it
 //! can be multiplied, divided and raised to powers.
 
-use inchworm_dimensions::{Dimension, Exp};
+use inchworm_dimensions::{CompatPolicy, Dimension, Exp};
 use std::fmt;
 
 use crate::{
@@ -304,13 +304,44 @@ impl DeltaUnit {
     /// Returns [`UnitError::IncompatibleDimensions`] if their base signatures differ
     /// (`m → s`).
     /// Returns [`UnitError::PartiallyCompatibleDimensions`] if they share a base signature
-    /// but are different kinds (`N·m` as torque → `J`).
+    /// but are different kinds (`N·m/rad` as torque → `J`); use
+    /// [`converter_to_with`](Self::converter_to_with) to permit such pairs.
     /// Returns [`UnitError::ScaleOutOfRange`] if either unit's scale relative to the base
     /// units overflows or underflows.
     /// Returns [`UnitError::ConversionOutOfRange`] if the conversion factor or offset is
     /// not representable.
     pub fn converter_to(&self, target: &Self) -> Result<Converter, UnitError> {
-        converter_between(Endpoint::of_delta(self), Endpoint::of_delta(target))
+        converter_between(
+            Endpoint::of_delta(self),
+            Endpoint::of_delta(target),
+            &CompatPolicy::strict(),
+        )
+    }
+
+    /// Builds a reusable [`Converter`] from readings in `self` to readings in `target`, like
+    /// [`converter_to`](Self::converter_to), but treating partially compatible dimensions as
+    /// compatible when `policy` permits them.
+    ///
+    /// Partially compatible units have the same base signature but differ by a named
+    /// dimensionless kind: `N·m/rad` (torque) and `J` (energy). Under a policy with
+    /// [`CompatRule::Pair`](inchworm_dimensions::CompatRule::Pair) of torque and energy they
+    /// convert as if that kind were absent: the factor is the ratio of the units' scales relative
+    /// to base units, in which the base unit of the kind (the radian) counts as 1. So
+    /// `N·m/rad → J` has factor 1, and `N·m/° → J` has factor 180/π.
+    ///
+    /// [`converter_to`](Self::converter_to) is this method with [`CompatPolicy::strict`].
+    ///
+    /// # Errors
+    ///
+    /// As [`converter_to`](Self::converter_to), except that
+    /// [`UnitError::PartiallyCompatibleDimensions`] is returned only for pairs `policy` does not
+    /// permit.
+    pub fn converter_to_with(
+        &self,
+        target: &Self,
+        policy: &CompatPolicy,
+    ) -> Result<Converter, UnitError> {
+        converter_between(Endpoint::of_delta(self), Endpoint::of_delta(target), policy)
     }
 }
 
@@ -799,6 +830,24 @@ mod tests {
             let km = parse_delta(&ureg, "km");
             let converter = km.converter_to(&m).unwrap();
             assert_eq!(converter.apply(1.0), 1e3);
+        }
+    }
+
+    mod converter_to_with {
+        use crate::test_utils::{assert_close, mks_registry, parse_delta};
+        use inchworm_dimensions::{CompatPolicy, CompatRule};
+
+        #[test]
+        fn converts_a_permitted_pair() {
+            let ureg = mks_registry();
+            let joule_per_rad = parse_delta(&ureg, "J / rad");
+            let joule = parse_delta(&ureg, "J");
+            let policy = CompatPolicy::strict().allow(CompatRule::Pair(
+                joule_per_rad.dimension().clone(),
+                joule.dimension().clone(),
+            ));
+            let converter = joule_per_rad.converter_to_with(&joule, &policy).unwrap();
+            assert_close(converter.apply(1.0), 1.0);
         }
     }
 

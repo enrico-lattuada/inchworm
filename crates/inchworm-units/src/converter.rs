@@ -1,6 +1,6 @@
 //! [`Converter`]: a reusable conversion between two compatible units.
 
-use inchworm_dimensions::Compatibility;
+use inchworm_dimensions::{CompatPolicy, Compatibility};
 use std::fmt;
 
 use crate::{
@@ -98,16 +98,19 @@ impl<'a> Endpoint<'a> {
 pub(crate) fn converter_between(
     from: Endpoint<'_>,
     to: Endpoint<'_>,
+    policy: &CompatPolicy,
 ) -> Result<Converter, UnitError> {
     check_same_registry(from.registry_id, to.registry_id)?;
     let (left, right) = (from.delta.dimension(), to.delta.dimension());
     match left.compatibility(right) {
         Compatibility::Full => {}
         Compatibility::Partial => {
-            return Err(UnitError::PartiallyCompatibleDimensions {
-                left: left.clone(),
-                right: right.clone(),
-            });
+            if !policy.permits(left, right) {
+                return Err(UnitError::PartiallyCompatibleDimensions {
+                    left: left.clone(),
+                    right: right.clone(),
+                });
+            }
         }
         Compatibility::Incompatible => {
             return Err(UnitError::IncompatibleDimensions {
@@ -211,7 +214,7 @@ mod tests {
             DerivedDef, Unit, UnitRegistry,
             test_utils::{assert_close, errors_match, mks_registry},
         };
-        use inchworm_dimensions::DimRegistry;
+        use inchworm_dimensions::{CompatRule, DimRegistry};
 
         #[test]
         fn same_dimension_scales_linearly() {
@@ -332,6 +335,65 @@ mod tests {
                 right: joule.dimension().clone(),
             };
             assert!(errors_match(&actual, &expected));
+        }
+
+        /// A policy permitting torque (`J/rad`) and energy (`J`), built from unit dimensions.
+        fn torque_energy_policy(ureg: &UnitRegistry) -> CompatPolicy {
+            let torque = ureg.parse("J / rad").unwrap().dimension().clone();
+            let energy = ureg.get("J").unwrap().dimension().clone();
+            CompatPolicy::strict().allow(CompatRule::Pair(torque, energy))
+        }
+
+        #[test]
+        fn permitted_pair_converts_with_radian_as_one() {
+            let ureg = mks_registry();
+            let policy = torque_energy_policy(&ureg);
+            let joule = ureg.get("J").unwrap();
+            let cases = [("J / rad", 1.0), ("J / deg", 180.0 / std::f64::consts::PI)];
+            for (from, factor) in cases {
+                let converter = ureg
+                    .parse(from)
+                    .unwrap()
+                    .converter_to_with(&joule, &policy)
+                    .unwrap();
+                assert_close(converter.apply(1.0), factor);
+            }
+        }
+
+        #[test]
+        fn permitted_pair_converts_in_both_directions() {
+            let ureg = mks_registry();
+            let policy = torque_energy_policy(&ureg);
+            let joule = ureg.get("J").unwrap();
+            let joule_per_rad = ureg.parse("J / rad").unwrap();
+            let converter = joule.converter_to_with(&joule_per_rad, &policy).unwrap();
+            assert_close(converter.apply(1.0), 1.0);
+        }
+
+        #[test]
+        fn policy_permits_no_other_pair() {
+            let ureg = mks_registry();
+            let policy = torque_energy_policy(&ureg);
+            let rad_per_s = ureg.parse("rad / s").unwrap();
+            let per_s = ureg.parse("1 / s").unwrap();
+            let actual = rad_per_s.converter_to_with(&per_s, &policy).unwrap_err();
+            assert!(
+                matches!(actual, UnitError::PartiallyCompatibleDimensions { .. }),
+                "{actual:?}"
+            );
+        }
+
+        #[test]
+        fn policy_never_permits_incompatible_dimensions() {
+            let ureg = mks_registry();
+            let policy = CompatPolicy::strict().allow(CompatRule::AllPartial);
+            let m = ureg.get("m").unwrap();
+            let s = ureg.get("s").unwrap();
+            let actual = m.converter_to_with(&s, &policy).unwrap_err();
+            assert!(
+                matches!(actual, UnitError::IncompatibleDimensions { .. }),
+                "{actual:?}"
+            );
         }
 
         #[test]

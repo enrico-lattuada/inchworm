@@ -119,8 +119,9 @@ pub enum UnitError {
     /// `angular_velocity` vs `frequency`). Converting would silently add or drop
     /// that factor, so it is refused.
     #[error(
-        "dimensions `{left}` and `{right}` are only partially compatible: \
-        same base signature, different kinds"
+        "dimensions `{left}` and `{right}` are only partially compatible (same base signature, \
+         different kinds); to convert anyway, pass a `CompatPolicy` that permits them, such as \
+         one with `CompatRule::Pair` of the two"
     )]
     PartiallyCompatibleDimensions { left: Dimension, right: Dimension },
 
