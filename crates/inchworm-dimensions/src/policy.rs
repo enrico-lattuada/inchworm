@@ -59,8 +59,8 @@ pub struct CompatPolicy {
 
 impl CompatPolicy {
     /// The strict policy: no partially compatible pair is permitted.
-    pub fn strict() -> Self {
-        Self::default()
+    pub const fn strict() -> Self {
+        Self { rules: Vec::new() }
     }
 
     /// This policy with `rule` added.
@@ -87,6 +87,20 @@ impl CompatPolicy {
                 CompatRule::Pair(x, y) => (a == x && b == y) || (a == y && b == x),
             }),
         }
+    }
+}
+
+impl From<CompatRule> for CompatPolicy {
+    /// A policy with a single rule `value`.
+    fn from(value: CompatRule) -> Self {
+        Self::strict().allow(value)
+    }
+}
+
+impl Extend<CompatRule> for CompatPolicy {
+    /// Adds the rules, after the existing ones.
+    fn extend<T: IntoIterator<Item = CompatRule>>(&mut self, iter: T) {
+        self.rules.extend(iter);
     }
 }
 
@@ -195,5 +209,28 @@ mod tests {
             .allow(CompatRule::AllPartial)
             .allow(CompatRule::AllPartial);
         assert_eq!(policy.rules().len(), 2);
+    }
+
+    #[test]
+    fn from_rule_makes_a_one_rule_policy() {
+        let rule = CompatRule::AllPartial;
+        let policy: CompatPolicy = rule.into();
+        assert_eq!(policy.rules().len(), 1);
+    }
+
+    #[test]
+    fn extend_appends_rules() {
+        let mut policy = CompatPolicy::strict();
+        let other = CompatPolicy::strict()
+            .allow(CompatRule::AllPartial)
+            .allow(CompatRule::AllPartial);
+        policy.extend(other.rules().iter().cloned());
+        assert_eq!(policy.rules().len(), 2);
+    }
+
+    #[test]
+    fn strict_is_const() {
+        const STRICT: CompatPolicy = CompatPolicy::strict();
+        assert!(STRICT.rules().is_empty());
     }
 }
