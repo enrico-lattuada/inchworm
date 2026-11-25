@@ -1,5 +1,7 @@
 //! Shared test fixtures.
 
+use std::sync::{Mutex, MutexGuard, PoisonError};
+
 use inchworm_dimensions::DimRegistry;
 use inchworm_units::{BaseDef, DerivedDef, PointDef, Unit, UnitRegistry};
 
@@ -7,7 +9,7 @@ use crate::Quantity;
 
 /// A registry built by hand, so it needs no `toml` feature, with:
 /// - prefix `kilo`/`k`;
-/// - base units `meter`/`m` (prefixable), `second`/`s` and `kelvin`/`K`;
+/// - base units `meter`/`m` (prefixable), `second`/`s`, `radian`/`rad`, and `kelvin`/`K`;
 /// - derived unit `delta_degF` (5/9 K);
 /// - point units `degree_Celsius`/`degC` (`K` + 273.15) and
 ///   `degree_Fahrenheit`/`degF` (`delta_degF` + 459.67).
@@ -16,11 +18,16 @@ pub(crate) fn test_registry() -> UnitRegistry {
     let length = dims.add_base("length", None).unwrap();
     let time = dims.add_base("time", None).unwrap();
     let temperature = dims.add_base("temperature", None).unwrap();
+    let plane_angle = dims
+        .add_dimensionless_expr("plane_angle", "length / length")
+        .unwrap();
     let mut ureg = UnitRegistry::new("test-ureg", dims);
     ureg.add_prefix("kilo", "k", 1e3).unwrap();
     ureg.add_base(BaseDef::new("meter", "m", &length).prefixable(true))
         .unwrap();
     ureg.add_base(BaseDef::new("second", "s", &time)).unwrap();
+    ureg.add_base(BaseDef::new("radian", "rad", &plane_angle))
+        .unwrap();
     let kelvin = ureg
         .add_base(BaseDef::new("kelvin", "K", &temperature))
         .unwrap();
@@ -76,6 +83,13 @@ pub(crate) fn assert_quantity_close(actual: &Quantity<f64>, expected: &Quantity<
         expected.unit(),
         expected.unit()
     );
+}
+
+/// Serialises the tests that read or change the global compatibility policy, since tests
+/// run in parallel and share it. Hold the guard for the whole test: `let _lock = lock_global();`.
+pub(crate) fn lock_global() -> MutexGuard<'static, ()> {
+    static GLOBAL_LOCK: Mutex<()> = Mutex::new(());
+    GLOBAL_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 #[cfg(test)]

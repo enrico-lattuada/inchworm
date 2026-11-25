@@ -1,6 +1,7 @@
+use inchworm_dimensions::CompatPolicy;
 use inchworm_units::Unit;
 
-use crate::{error::QuantityError, magnitude::Magnitude};
+use crate::{compat::effective_policy, error::QuantityError, magnitude::Magnitude};
 
 /// A magnitude in a unit: `5 km`, `20 °C`.
 #[derive(Debug, Clone)]
@@ -32,24 +33,49 @@ impl<M> Quantity<M> {
 // ---- conversion ----
 impl<M: Magnitude> Quantity<M> {
     /// `self`'s magnitude converted to `target`.
-    fn magnitude_in(&self, target: &Unit) -> Result<M::Output, QuantityError> {
-        let converter = self.unit.converter_to(target)?;
+    fn magnitude_in(
+        &self,
+        target: &Unit,
+        policy: &CompatPolicy,
+    ) -> Result<M::Output, QuantityError> {
+        let converter = self.unit.converter_to_with(target, policy)?;
         Ok(self.magnitude.convert(converter))
     }
 
     /// This quantity expressed in `target`: `5 km` to `m` is `5000 m`.
+    ///
+    /// Partially compatible units (`rad/s` to `1/s`) convert only if the effective policy
+    /// permits them: the [global policy](crate::set_global_policy) plus any
+    /// [`CompatScope`](crate::CompatScope) active on this thread.
     ///
     /// # Errors
     ///
     /// Returns [`QuantityError::Unit`] wrapping whatever [`Unit::converter_to`] returns,
     /// such as incompatible or partially compatible dimensions.
     pub fn to(&self, target: &Unit) -> Result<Quantity<M::Output>, QuantityError> {
-        Ok(Quantity::new(self.magnitude_in(target)?, target.clone()))
+        self.to_with(target, &effective_policy())
+    }
+
+    /// This quantity expressed in `target`, under `policy` alone: the global policy and any
+    /// active [`CompatScope`](crate::CompatScope) are ignored. For code that must not depend
+    /// on ambient settings, such as a library or an async task.
+    ///
+    /// # Errors
+    ///
+    /// As [`to`](Self::to), with `policy` deciding which partially compatible units convert.
+    pub fn to_with(
+        &self,
+        target: &Unit,
+        policy: &CompatPolicy,
+    ) -> Result<Quantity<M::Output>, QuantityError> {
+        Ok(Quantity::new(
+            self.magnitude_in(target, policy)?,
+            target.clone(),
+        ))
     }
 }
 
 // ---- arithmetics ----
-
 impl<M: Magnitude<Output = M> + std::ops::Add<Output = M> + Clone> Quantity<M> {
     /// Adds `rhs`, converted to `self`'s unit: `1 km + 500 m` is `1.5 km`.
     ///
@@ -61,20 +87,36 @@ impl<M: Magnitude<Output = M> + std::ops::Add<Output = M> + Clone> Quantity<M> {
     /// # Errors
     ///
     /// Returns [`QuantityError::Unit`] if `rhs` cannot be converted to `self`'s unit (or to the
-    /// reading's delta unit), such as for incompatible dimensions (`m + s`).
+    /// reading's delta unit), such as for incompatible dimensions (`m + s`), or partially
+    /// compatible dimensions the effective policy does not permit.
     /// Returns [`QuantityError::ReadingPlusReading`] if both quantities are readings.
     pub fn try_add(&self, rhs: &Self) -> Result<Self, QuantityError> {
+        self.try_add_with(rhs, &effective_policy())
+    }
+
+    /// As [`try_add`](Self::try_add), but under `policy` alone: the global policy and any
+    /// active [`CompatScope`](crate::CompatScope) are ignored. For code that must not depend
+    /// on ambient settings, such as a library or an async task.
+    ///
+    /// # Errors
+    ///
+    /// As [`try_add`](Self::try_add), with `policy` deciding which partially compatible units
+    /// add.
+    /// Returns [`QuantityError::ReadingPlusReading`] if both quantities are readings.
+    pub fn try_add_with(&self, rhs: &Self, policy: &CompatPolicy) -> Result<Self, QuantityError> {
         match (&self.unit, &rhs.unit) {
             (Unit::Delta(_), Unit::Delta(_)) => Ok(Self::new(
-                self.magnitude.clone() + rhs.magnitude_in(self.unit())?,
+                self.magnitude.clone() + rhs.magnitude_in(self.unit(), policy)?,
                 self.unit.clone(),
             )),
             (Unit::Point(point), Unit::Delta(_)) => Ok(Self::new(
-                self.magnitude.clone() + rhs.magnitude_in(&Unit::Delta(point.delta().clone()))?,
+                self.magnitude.clone()
+                    + rhs.magnitude_in(&Unit::Delta(point.delta().clone()), policy)?,
                 self.unit.clone(),
             )),
             (Unit::Delta(_), Unit::Point(point)) => Ok(Self::new(
-                self.magnitude_in(&Unit::Delta(point.delta().clone()))? + rhs.magnitude.clone(),
+                self.magnitude_in(&Unit::Delta(point.delta().clone()), policy)?
+                    + rhs.magnitude.clone(),
                 rhs.unit.clone(),
             )),
             (Unit::Point(_), Unit::Point(_)) => Err(QuantityError::ReadingPlusReading {
@@ -95,17 +137,33 @@ impl<M: Magnitude<Output = M> + std::ops::Sub<Output = M> + Clone> Quantity<M> {
     /// # Errors
     ///
     /// Returns [`QuantityError::Unit`] if `rhs` cannot be converted to `self`'s unit (or to the
-    /// reading's delta unit), such as for incompatible dimensions (`m - s`).
+    /// reading's delta unit), such as for incompatible dimensions (`m - s`), or partially
+    /// compatible dimensions the effective policy does not permit.
     /// Returns [`QuantityError::DifferenceMinusReading`] if `self` is a difference and `rhs` a
     /// reading.
     pub fn try_sub(&self, rhs: &Self) -> Result<Self, QuantityError> {
+        self.try_sub_with(rhs, &effective_policy())
+    }
+
+    /// As [`try_sub`](Self::try_sub), but under `policy` alone: the global policy and any
+    /// active [`CompatScope`](crate::CompatScope) are ignored. For code that must not depend
+    /// on ambient settings, such as a library or an async task.
+    ///
+    /// # Errors
+    ///
+    /// As [`try_sub`](Self::try_sub), with `policy` deciding which partially compatible units
+    /// subtract.
+    /// Returns [`QuantityError::DifferenceMinusReading`] if `self` is a difference and `rhs` a
+    /// reading.
+    pub fn try_sub_with(&self, rhs: &Self, policy: &CompatPolicy) -> Result<Self, QuantityError> {
         match (&self.unit, &rhs.unit) {
             (Unit::Delta(_), Unit::Delta(_)) => Ok(Self::new(
-                self.magnitude.clone() - rhs.magnitude_in(self.unit())?,
+                self.magnitude.clone() - rhs.magnitude_in(self.unit(), policy)?,
                 self.unit.clone(),
             )),
             (Unit::Point(point), Unit::Delta(_)) => Ok(Self::new(
-                self.magnitude.clone() - rhs.magnitude_in(&Unit::Delta(point.delta().clone()))?,
+                self.magnitude.clone()
+                    - rhs.magnitude_in(&Unit::Delta(point.delta().clone()), policy)?,
                 self.unit.clone(),
             )),
             (Unit::Delta(left), Unit::Point(right)) => Err(QuantityError::DifferenceMinusReading {
@@ -115,7 +173,7 @@ impl<M: Magnitude<Output = M> + std::ops::Sub<Output = M> + Clone> Quantity<M> {
             (Unit::Point(point), Unit::Point(_)) => {
                 let unit_out = Unit::Delta(point.delta().clone());
                 Ok(Self::new(
-                    self.magnitude.clone() - rhs.magnitude_in(self.unit())?,
+                    self.magnitude.clone() - rhs.magnitude_in(self.unit(), policy)?,
                     unit_out,
                 ))
             }
@@ -247,7 +305,8 @@ impl<M: std::ops::Neg<Output = M> + Clone> Quantity<M> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{assert_close, test_registry, unit};
+    use crate::test_utils::{assert_close, lock_global, test_registry, unit};
+    use crate::{CompatRule, CompatScope, set_global_policy};
     use inchworm_units::UnitError;
 
     mod new {
@@ -268,6 +327,37 @@ mod tests {
             assert_eq!(length.unit(), &Unit::Delta(meter));
             assert_eq!(*reading.magnitude(), 20.0);
             assert_eq!(reading.unit(), &Unit::Point(celsius));
+        }
+    }
+
+    mod to_with {
+        use super::*;
+
+        #[test]
+        fn converts_under_a_permitting_policy() {
+            let ureg = test_registry();
+            let policy = CompatPolicy::from(CompatRule::AllPartial);
+            let converted = Quantity::new(2.0, unit(&ureg, "rad/s"))
+                .to_with(&unit(&ureg, "1/s"), &policy)
+                .unwrap();
+            assert_close(*converted.magnitude(), 2.0);
+        }
+
+        #[test]
+        fn ignores_the_ambient_policy() {
+            let _lock = lock_global();
+            let ureg = test_registry();
+            let _scope = CompatScope::allow(CompatRule::AllPartial);
+            let err = Quantity::new(2.0, unit(&ureg, "rad/s"))
+                .to_with(&unit(&ureg, "1/s"), &CompatPolicy::strict())
+                .unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    QuantityError::Unit(UnitError::PartiallyCompatibleDimensions { .. })
+                ),
+                "{err:?}"
+            );
         }
     }
 
@@ -311,6 +401,75 @@ mod tests {
                 matches!(
                     err,
                     QuantityError::Unit(UnitError::IncompatibleDimensions { .. })
+                ),
+                "{err:?}"
+            );
+        }
+
+        #[test]
+        fn rejects_partially_compatible_units_by_default() {
+            let _lock = lock_global();
+            let ureg = test_registry();
+            let err = Quantity::new(2.0, unit(&ureg, "rad/s"))
+                .to(&unit(&ureg, "1/s"))
+                .unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    QuantityError::Unit(UnitError::PartiallyCompatibleDimensions { .. })
+                ),
+                "{err:?}"
+            );
+        }
+
+        #[test]
+        fn converts_partially_compatible_units_in_a_scope() {
+            let _lock = lock_global();
+            let ureg = test_registry();
+            let _scope = CompatScope::allow(CompatRule::AllPartial);
+            let converted = Quantity::new(2.0, unit(&ureg, "rad/s"))
+                .to(&unit(&ureg, "1/s"))
+                .unwrap();
+            assert_close(*converted.magnitude(), 2.0);
+        }
+
+        #[test]
+        fn converts_partially_compatible_units_under_the_global_policy() {
+            let _lock = lock_global();
+            let ureg = test_registry();
+            let original = set_global_policy(CompatRule::AllPartial.into());
+            let converted = Quantity::new(2.0, unit(&ureg, "rad/s")).to(&unit(&ureg, "1/s"));
+            set_global_policy(original);
+            assert_close(*converted.unwrap().magnitude(), 2.0);
+        }
+    }
+
+    mod try_add_with {
+        use super::*;
+
+        #[test]
+        fn adds_under_a_permitting_policy() {
+            let ureg = test_registry();
+            let policy = CompatPolicy::from(CompatRule::AllPartial);
+            let a = Quantity::new(2.0, unit(&ureg, "rad/s"));
+            let b = Quantity::new(3.0, unit(&ureg, "1/s"));
+            let sum = a.try_add_with(&b, &policy).unwrap();
+            assert_close(*sum.magnitude(), 5.0);
+            assert_eq!(sum.unit(), a.unit());
+        }
+
+        #[test]
+        fn ignores_the_ambient_policy() {
+            let _lock = lock_global();
+            let ureg = test_registry();
+            let _scope = CompatScope::allow(CompatRule::AllPartial);
+            let a = Quantity::new(2.0, unit(&ureg, "rad/s"));
+            let b = Quantity::new(3.0, unit(&ureg, "1/s"));
+            let err = a.try_add_with(&b, &CompatPolicy::strict()).unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    QuantityError::Unit(UnitError::PartiallyCompatibleDimensions { .. })
                 ),
                 "{err:?}"
             );
@@ -376,6 +535,31 @@ mod tests {
                 ),
                 "{err:?}"
             );
+        }
+
+        #[test]
+        fn adds_partially_compatible_units_in_a_scope() {
+            let _lock = lock_global();
+            let ureg = test_registry();
+            let _scope = CompatScope::allow(CompatRule::AllPartial);
+            let sum =
+                &Quantity::new(2.0, unit(&ureg, "rad/s")) + &Quantity::new(3.0, unit(&ureg, "1/s"));
+            assert_close(*sum.magnitude(), 5.0);
+        }
+    }
+
+    mod try_sub_with {
+        use super::*;
+
+        #[test]
+        fn subtracts_under_a_permitting_policy() {
+            let ureg = test_registry();
+            let policy = CompatPolicy::from(CompatRule::AllPartial);
+            let a = Quantity::new(5.0, unit(&ureg, "rad/s"));
+            let b = Quantity::new(3.0, unit(&ureg, "1/s"));
+            let diff = a.try_sub_with(&b, &policy).unwrap();
+            assert_close(*diff.magnitude(), 2.0);
+            assert_eq!(diff.unit(), a.unit());
         }
     }
 
