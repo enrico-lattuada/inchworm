@@ -867,7 +867,7 @@ mod tests {
         }
 
         #[test]
-        #[should_panic]
+        #[should_panic(expected = "cannot mix dimensions from registry")]
         fn panics_on_cross_registry_mixing() {
             let a = Dimension::new(DimensionData {
                 factors: Form::raw(vec![make_form_entry_in_registry(0, (1, 1), 0)]),
@@ -881,7 +881,7 @@ mod tests {
         }
 
         #[test]
-        #[should_panic]
+        #[should_panic(expected = "exponent arithmetic overflow")]
         fn panics_on_exponent_overflow() {
             let lhs_factors = Form::raw(vec![make_form_entry(0, (i64::MAX, 1))]);
             let lhs = Dimension::new(DimensionData {

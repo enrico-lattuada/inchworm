@@ -14,6 +14,7 @@ macro_rules! impl_quantity_op {
         /// Panics with the error message in the cases where that method returns an error.
         impl<M: $($bounds)+> std::ops::$trait for &Quantity<M> {
             type Output = Quantity<M>;
+            #[track_caller]
             fn $method(self, rhs: &Quantity<M>) -> Self::Output {
                 self.$try_method(rhs).unwrap_or_else(|e| panic!("{e}"))
             }
@@ -22,6 +23,7 @@ macro_rules! impl_quantity_op {
         /// Delegates to the impl for two borrowed quantities; panics under the same conditions.
         impl<M: $($bounds)+> std::ops::$trait for Quantity<M> {
             type Output = Quantity<M>;
+            #[track_caller]
             fn $method(self, rhs: Quantity<M>) -> Self::Output {
                 std::ops::$trait::$method(&self, &rhs)
             }
@@ -30,6 +32,7 @@ macro_rules! impl_quantity_op {
         /// Delegates to the impl for two borrowed quantities; panics under the same conditions.
         impl<M: $($bounds)+> std::ops::$trait<&Quantity<M>> for Quantity<M> {
             type Output = Quantity<M>;
+            #[track_caller]
             fn $method(self, rhs: &Quantity<M>) -> Self::Output {
                 std::ops::$trait::$method(&self, rhs)
             }
@@ -38,6 +41,7 @@ macro_rules! impl_quantity_op {
         /// Delegates to the impl for two borrowed quantities; panics under the same conditions.
         impl<M: $($bounds)+> std::ops::$trait<Quantity<M>> for &Quantity<M> {
             type Output = Quantity<M>;
+            #[track_caller]
             fn $method(self, rhs: Quantity<M>) -> Self::Output {
                 std::ops::$trait::$method(self, &rhs)
             }
@@ -67,6 +71,7 @@ impl_quantity_op!(Div, div, try_div, std::ops::Div<Output = M> + Clone);
 /// Panics with the error message if the quantity is a reading in a point unit.
 impl<M: std::ops::Mul<f64, Output = M> + Clone> std::ops::Mul<f64> for Quantity<M> {
     type Output = Quantity<M>;
+    #[track_caller]
     fn mul(self, rhs: f64) -> Self::Output {
         self.try_mul_scalar(rhs).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -79,6 +84,7 @@ impl<M: std::ops::Mul<f64, Output = M> + Clone> std::ops::Mul<f64> for Quantity<
 /// Panics with the error message if the quantity is a reading in a point unit.
 impl<M: std::ops::Mul<f64, Output = M> + Clone> std::ops::Mul<f64> for &Quantity<M> {
     type Output = Quantity<M>;
+    #[track_caller]
     fn mul(self, rhs: f64) -> Self::Output {
         self.try_mul_scalar(rhs).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -95,6 +101,7 @@ where
     f64: std::ops::Div<M, Output = M>,
 {
     type Output = Quantity<M>;
+    #[track_caller]
     fn div(self, rhs: Quantity<M>) -> Self::Output {
         rhs.try_scalar_div(self).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -111,6 +118,7 @@ where
     f64: std::ops::Div<M, Output = M>,
 {
     type Output = Quantity<M>;
+    #[track_caller]
     fn div(self, rhs: &Quantity<M>) -> Self::Output {
         rhs.try_scalar_div(self).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -123,6 +131,7 @@ where
 /// Panics with the error message if the quantity is a reading in a point unit.
 impl<M: std::ops::Mul<f64, Output = M> + Clone> std::ops::Mul<Quantity<M>> for f64 {
     type Output = Quantity<M>;
+    #[track_caller]
     fn mul(self, rhs: Quantity<M>) -> Self::Output {
         rhs.try_mul_scalar(self).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -135,6 +144,7 @@ impl<M: std::ops::Mul<f64, Output = M> + Clone> std::ops::Mul<Quantity<M>> for f
 /// Panics with the error message if the quantity is a reading in a point unit.
 impl<M: std::ops::Mul<f64, Output = M> + Clone> std::ops::Mul<&Quantity<M>> for f64 {
     type Output = Quantity<M>;
+    #[track_caller]
     fn mul(self, rhs: &Quantity<M>) -> Self::Output {
         rhs.try_mul_scalar(self).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -147,6 +157,7 @@ impl<M: std::ops::Mul<f64, Output = M> + Clone> std::ops::Mul<&Quantity<M>> for 
 /// Panics with the error message if the quantity is a reading in a point unit.
 impl<M: std::ops::Div<f64, Output = M> + Clone> std::ops::Div<f64> for Quantity<M> {
     type Output = Quantity<M>;
+    #[track_caller]
     fn div(self, rhs: f64) -> Self::Output {
         self.try_div_scalar(rhs).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -159,6 +170,7 @@ impl<M: std::ops::Div<f64, Output = M> + Clone> std::ops::Div<f64> for Quantity<
 /// Panics with the error message if the quantity is a reading in a point unit.
 impl<M: std::ops::Div<f64, Output = M> + Clone> std::ops::Div<f64> for &Quantity<M> {
     type Output = Quantity<M>;
+    #[track_caller]
     fn div(self, rhs: f64) -> Self::Output {
         self.try_div_scalar(rhs).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -171,6 +183,7 @@ impl<M: std::ops::Div<f64, Output = M> + Clone> std::ops::Div<f64> for &Quantity
 /// Panics with the error message if the quantity is a reading in a point unit.
 impl<M: std::ops::Neg<Output = M> + Clone> std::ops::Neg for &Quantity<M> {
     type Output = Quantity<M>;
+    #[track_caller]
     fn neg(self) -> Self::Output {
         self.try_neg().unwrap_or_else(|e| panic!("{e}"))
     }
@@ -183,6 +196,7 @@ impl<M: std::ops::Neg<Output = M> + Clone> std::ops::Neg for &Quantity<M> {
 /// Panics with the error message if the quantity is a reading in a point unit.
 impl<M: std::ops::Neg<Output = M> + Clone> std::ops::Neg for Quantity<M> {
     type Output = Quantity<M>;
+    #[track_caller]
     fn neg(self) -> Self::Output {
         self.try_neg().unwrap_or_else(|e| panic!("{e}"))
     }
