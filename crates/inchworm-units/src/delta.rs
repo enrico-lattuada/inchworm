@@ -120,7 +120,7 @@ impl DeltaUnit {
     pub fn recip(&self) -> Result<Self, UnitError> {
         Ok(Self {
             factors: self.factors.recip()?,
-            dimension: self.dimension().recip()?,
+            dimension: self.dimension().try_recip()?,
         })
     }
 
@@ -147,7 +147,7 @@ impl DeltaUnit {
     pub fn pow(&self, e: Exp) -> Result<Self, UnitError> {
         Ok(Self {
             factors: self.factors.pow(e)?,
-            dimension: self.dimension().pow(e)?,
+            dimension: self.dimension().try_pow(e)?,
         })
     }
 }
@@ -453,7 +453,7 @@ mod tests {
             } = m_and_s();
             let m2 = m.try_mul(&m).unwrap();
             assert_eq!(m2.factors().entries(), [(m_atom, Exp::int(2))]);
-            assert_eq!(*m2.dimension(), length.pow(Exp::int(2)).unwrap());
+            assert_eq!(*m2.dimension(), length.try_pow(Exp::int(2)).unwrap());
         }
 
         #[test]
@@ -582,7 +582,7 @@ mod tests {
             );
             assert_eq!(
                 *squared_m_over_s.dimension(),
-                length.try_div(&time).unwrap().pow(Exp::int(2)).unwrap()
+                length.try_div(&time).unwrap().try_pow(Exp::int(2)).unwrap()
             );
         }
     }
@@ -597,7 +597,7 @@ mod tests {
             } = m_and_s();
             let one_over_m = m.recip().unwrap();
             assert_eq!(one_over_m.factors().entries(), [(m_atom, Exp::int(-1))]);
-            assert_eq!(*one_over_m.dimension(), length.recip().unwrap());
+            assert_eq!(*one_over_m.dimension(), length.try_recip().unwrap());
         }
     }
 

@@ -183,7 +183,7 @@ pub(crate) fn build(reg: &DimRegistry, factors: &[(&str, Exp)]) -> Dimension {
     factors
         .iter()
         .fold(Dimension::dimensionless(), |dim, &(name, exp)| {
-            let factor = reg.get(name).unwrap().pow(exp).unwrap();
+            let factor = reg.get(name).unwrap().try_pow(exp).unwrap();
             dim.try_mul(&factor).unwrap()
         })
 }

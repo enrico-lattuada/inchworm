@@ -36,7 +36,7 @@ const MAX_INLINE_FACTORS: usize = 4;
 /// assert!(!length.factors().is_empty());
 /// assert_eq!(length.factors().to_string(), "length");
 ///
-/// let squared = length.pow(Exp::int(2)).unwrap();
+/// let squared = length.pow(Exp::int(2));
 /// assert_eq!(squared.factors().to_string(), "length^2");
 /// ```
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

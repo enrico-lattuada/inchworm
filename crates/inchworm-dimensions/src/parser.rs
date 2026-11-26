@@ -371,7 +371,7 @@ impl<'a> Parser<'a> {
             self.expect_rparen()?;
         }
         let exp = if outer_negative { exp.try_neg()? } else { exp };
-        base.pow(exp)
+        base.try_pow(exp)
     }
 
     fn parse_expr(&mut self) -> Result<Dimension, DimensionError> {

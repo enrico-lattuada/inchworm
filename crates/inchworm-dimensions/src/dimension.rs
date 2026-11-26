@@ -228,7 +228,7 @@ impl Dimension {
     /// Returns [`DimensionError::ExponentOverflow`] if combining a shared atom's exponents overflows.
     /// Returns [`DimensionError::CrossRegistry`] if combining atoms from different registries.
     pub fn try_div(&self, rhs: &Self) -> Result<Self, DimensionError> {
-        self.try_mul(&rhs.recip()?)
+        self.try_mul(&rhs.try_recip()?)
     }
 
     /// Raises `self` to the power of `e`.
@@ -236,7 +236,7 @@ impl Dimension {
     /// # Errors
     ///
     /// Returns [`DimensionError::ExponentOverflow`] if multiplying an atom's exponent by `e` overflows.
-    pub fn pow(&self, e: Exp) -> Result<Self, DimensionError> {
+    pub fn try_pow(&self, e: Exp) -> Result<Self, DimensionError> {
         let factors = self.factors().pow(e)?;
         let signature = Signature(self.signature().0.pow(e)?);
         let canonical = self.canonical_form().pow(e)?;
@@ -247,12 +247,22 @@ impl Dimension {
         }))
     }
 
+    /// Delegates to [`try_pow`](Self::try_pow).
+    ///
+    /// # Panics
+    ///
+    /// Panics with the error message if multiplying an atom's exponent by `e` overflows.
+    #[track_caller]
+    pub fn pow(&self, e: Exp) -> Self {
+        self.try_pow(e).unwrap_or_else(|e| panic!("{e}"))
+    }
+
     /// Computes the reciprocal of `self` by raising it to the power of `-1`.
     ///
     /// # Errors
     ///
     /// Returns [`DimensionError::ExponentOverflow`] if computing the reciprocal of an atom's exponents overflows.
-    pub fn recip(&self) -> Result<Self, DimensionError> {
+    pub fn try_recip(&self) -> Result<Self, DimensionError> {
         let factors = self.factors().recip()?;
         let signature = Signature(self.signature().0.recip()?);
         let canonical = self.canonical_form().recip()?;
@@ -261,6 +271,16 @@ impl Dimension {
             signature,
             canonical,
         }))
+    }
+
+    /// Delegates to [`try_recip`](Self::try_recip).
+    ///
+    /// # Panics
+    ///
+    /// Panics with the error message if negating an atom's exponent overflows.
+    #[track_caller]
+    pub fn recip(&self) -> Self {
+        self.try_recip().unwrap_or_else(|e| panic!("{e}"))
     }
 }
 
@@ -304,14 +324,16 @@ impl Eq for Dimension {}
 /// [`Dimension::try_mul`] returns as errors.
 impl std::ops::Mul for &Dimension {
     type Output = Dimension;
+    #[track_caller]
     fn mul(self, rhs: &Dimension) -> Self::Output {
-        self.try_mul(rhs).expect("dimension multiplication failed")
+        self.try_mul(rhs).unwrap_or_else(|e| panic!("{e}"))
     }
 }
 
 /// Delegates to the `&Dimension * &Dimension` impl; panics under the same conditions.
 impl std::ops::Mul for Dimension {
     type Output = Dimension;
+    #[track_caller]
     fn mul(self, rhs: Dimension) -> Self::Output {
         &self * &rhs
     }
@@ -320,6 +342,7 @@ impl std::ops::Mul for Dimension {
 /// Delegates to the `&Dimension * &Dimension` impl; panics under the same conditions.
 impl std::ops::Mul<&Dimension> for Dimension {
     type Output = Dimension;
+    #[track_caller]
     fn mul(self, rhs: &Dimension) -> Self::Output {
         &self * rhs
     }
@@ -328,6 +351,7 @@ impl std::ops::Mul<&Dimension> for Dimension {
 /// Delegates to the `&Dimension * &Dimension` impl; panics under the same conditions.
 impl std::ops::Mul<Dimension> for &Dimension {
     type Output = Dimension;
+    #[track_caller]
     fn mul(self, rhs: Dimension) -> Self::Output {
         self * &rhs
     }
@@ -341,14 +365,16 @@ impl std::ops::Mul<Dimension> for &Dimension {
 /// [`Dimension::try_div`] returns as errors.
 impl std::ops::Div for &Dimension {
     type Output = Dimension;
+    #[track_caller]
     fn div(self, rhs: &Dimension) -> Self::Output {
-        self.try_div(rhs).expect("dimension division failed")
+        self.try_div(rhs).unwrap_or_else(|e| panic!("{e}"))
     }
 }
 
 /// Delegates to the `&Dimension / &Dimension` impl; panics under the same conditions.
 impl std::ops::Div for Dimension {
     type Output = Dimension;
+    #[track_caller]
     fn div(self, rhs: Dimension) -> Self::Output {
         &self / &rhs
     }
@@ -357,6 +383,7 @@ impl std::ops::Div for Dimension {
 /// Delegates to the `&Dimension / &Dimension` impl; panics under the same conditions.
 impl std::ops::Div<&Dimension> for Dimension {
     type Output = Dimension;
+    #[track_caller]
     fn div(self, rhs: &Dimension) -> Self::Output {
         &self / rhs
     }
@@ -365,6 +392,7 @@ impl std::ops::Div<&Dimension> for Dimension {
 /// Delegates to the `&Dimension / &Dimension` impl; panics under the same conditions.
 impl std::ops::Div<Dimension> for &Dimension {
     type Output = Dimension;
+    #[track_caller]
     fn div(self, rhs: Dimension) -> Self::Output {
         self / &rhs
     }
@@ -481,7 +509,7 @@ mod tests {
         fn single_atom_with_non_unit_exponent_is_not_named() {
             let mut registry = DimRegistry::new("test-reg");
             let length = registry.add_base("length", Some("L")).unwrap();
-            let area = length.pow(Exp::int(2)).unwrap();
+            let area = length.try_pow(Exp::int(2)).unwrap();
             assert!(!area.is_named());
             assert!(area.name().is_none());
             assert!(area.symbol().is_none());
@@ -759,7 +787,7 @@ mod tests {
         }
 
         #[test]
-        #[should_panic]
+        #[should_panic(expected = "cannot mix dimensions from registry")]
         fn panics_on_cross_registry_mixing() {
             let a = Dimension::new(DimensionData {
                 factors: Form::raw(vec![make_form_entry_in_registry(0, (1, 1), 0)]),
@@ -773,7 +801,7 @@ mod tests {
         }
 
         #[test]
-        #[should_panic]
+        #[should_panic(expected = "exponent arithmetic overflow")]
         fn panics_on_exponent_overflow() {
             let lhs_factors = Form::raw(vec![make_form_entry(0, (i64::MAX, 1))]);
             let lhs = Dimension::new(DimensionData {
@@ -869,7 +897,7 @@ mod tests {
         }
     }
 
-    mod pow {
+    mod try_pow {
         use super::*;
 
         #[test]
@@ -888,7 +916,7 @@ mod tests {
                 signature,
                 canonical,
             });
-            assert!(dimension.pow(Exp::ZERO).unwrap().is_dimensionless());
+            assert!(dimension.try_pow(Exp::ZERO).unwrap().is_dimensionless());
         }
 
         #[test]
@@ -908,9 +936,56 @@ mod tests {
                 canonical,
             });
             assert_exactly_eq(
-                &dimension.pow(Exp::int(-1)).unwrap(),
-                &dimension.recip().unwrap(),
+                &dimension.try_pow(Exp::int(-1)).unwrap(),
+                &dimension.try_recip().unwrap(),
             );
+        }
+    }
+
+    mod pow {
+        use super::*;
+
+        fn dimension_with_exponent(num: i64) -> Dimension {
+            Dimension::new(DimensionData {
+                factors: Form::raw(vec![make_form_entry(0, (num, 1))]),
+                ..DimensionData::empty()
+            })
+        }
+
+        #[test]
+        fn matches_try_pow() {
+            let dimension = dimension_with_exponent(3);
+            let e = Exp::new(2, 3).unwrap();
+            assert_exactly_eq(&dimension.pow(e), &dimension.try_pow(e).unwrap());
+        }
+
+        #[test]
+        #[should_panic(expected = "exponent arithmetic overflow")]
+        fn panics_on_exponent_overflow() {
+            let _ = dimension_with_exponent(i64::MAX).pow(Exp::int(2));
+        }
+    }
+
+    mod recip {
+        use super::*;
+
+        fn dimension_with_exponent(num: i64) -> Dimension {
+            Dimension::new(DimensionData {
+                factors: Form::raw(vec![make_form_entry(0, (num, 1))]),
+                ..DimensionData::empty()
+            })
+        }
+
+        #[test]
+        fn matches_try_recip() {
+            let dimension = dimension_with_exponent(3);
+            assert_exactly_eq(&dimension.recip(), &dimension.try_recip().unwrap());
+        }
+
+        #[test]
+        #[should_panic(expected = "exponent arithmetic overflow")]
+        fn panics_on_exponent_overflow() {
+            let _ = dimension_with_exponent(i64::MIN).recip();
         }
     }
 
@@ -930,7 +1005,10 @@ mod tests {
             signature,
             canonical,
         });
-        assert_exactly_eq(&dimension.recip().unwrap().recip().unwrap(), &dimension);
+        assert_exactly_eq(
+            &dimension.try_recip().unwrap().try_recip().unwrap(),
+            &dimension,
+        );
     }
 
     #[test]
@@ -1018,14 +1096,14 @@ mod tests {
             fn recip_is_involution(a in factors()) {
                 let reg = property_registry();
                 let a = build(&reg, &a);
-                assert_exactly_eq(&a.recip().unwrap().recip().unwrap(), &a);
+                assert_exactly_eq(&a.try_recip().unwrap().try_recip().unwrap(), &a);
             }
 
             #[test]
             fn mul_by_recip_is_dimensionless(a in factors()) {
                 let reg = property_registry();
                 let a = build(&reg, &a);
-                let product = a.try_mul(&a.recip().unwrap()).unwrap();
+                let product = a.try_mul(&a.try_recip().unwrap()).unwrap();
                 prop_assert!(product.is_dimensionless());
             }
 
@@ -1033,8 +1111,8 @@ mod tests {
             fn pow_composes(a in factors(), m in exponent(), n in exponent()) {
                 let reg = property_registry();
                 let a = build(&reg, &a);
-                let left = a.pow(m).unwrap().pow(n).unwrap();
-                let right = a.pow(m.try_mul(n).unwrap()).unwrap();
+                let left = a.try_pow(m).unwrap().try_pow(n).unwrap();
+                let right = a.try_pow(m.try_mul(n).unwrap()).unwrap();
                 assert_exactly_eq(&left, &right);
             }
 

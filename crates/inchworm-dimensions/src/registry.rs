@@ -918,7 +918,7 @@ mod tests {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length ^ (1/2)").unwrap();
-            assert_eq!(length.pow(Exp::new(1, 2).unwrap()).unwrap(), parsed);
+            assert_eq!(length.try_pow(Exp::new(1, 2).unwrap()).unwrap(), parsed);
         }
 
         #[test]
@@ -926,7 +926,7 @@ mod tests {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length ^ (-1/2)").unwrap();
-            assert_eq!(length.pow(Exp::new(-1, 2).unwrap()).unwrap(), parsed);
+            assert_eq!(length.try_pow(Exp::new(-1, 2).unwrap()).unwrap(), parsed);
         }
 
         #[test]
@@ -934,7 +934,7 @@ mod tests {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length ^ -(1/2)").unwrap();
-            assert_eq!(length.pow(Exp::new(-1, 2).unwrap()).unwrap(), parsed);
+            assert_eq!(length.try_pow(Exp::new(-1, 2).unwrap()).unwrap(), parsed);
         }
 
         #[test]
@@ -942,7 +942,7 @@ mod tests {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length ^ -(-1/2)").unwrap();
-            assert_eq!(length.pow(Exp::new(1, 2).unwrap()).unwrap(), parsed);
+            assert_eq!(length.try_pow(Exp::new(1, 2).unwrap()).unwrap(), parsed);
         }
 
         #[test]
@@ -950,7 +950,7 @@ mod tests {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length ^ 3").unwrap();
-            assert_eq!(length.pow(Exp::int(3)).unwrap(), parsed);
+            assert_eq!(length.try_pow(Exp::int(3)).unwrap(), parsed);
         }
 
         #[test]
@@ -958,7 +958,7 @@ mod tests {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length ^ (3)").unwrap();
-            assert_eq!(length.pow(Exp::int(3)).unwrap(), parsed);
+            assert_eq!(length.try_pow(Exp::int(3)).unwrap(), parsed);
         }
 
         #[test]
@@ -968,7 +968,7 @@ mod tests {
             let time = registry.add_base("time", Some("T")).unwrap();
             let parsed = registry.parse("(length / time) ^ 2").unwrap();
             assert_eq!(
-                length.try_div(&time).unwrap().pow(Exp::int(2)).unwrap(),
+                length.try_div(&time).unwrap().try_pow(Exp::int(2)).unwrap(),
                 parsed
             );
         }
@@ -994,7 +994,7 @@ mod tests {
             let mut registry = DimRegistry::new("test_reg");
             let length = registry.add_base("length", Some("L")).unwrap();
             let parsed = registry.parse("length^2 / length^2").unwrap();
-            let length_squared = length.pow(Exp::int(2)).unwrap();
+            let length_squared = length.try_pow(Exp::int(2)).unwrap();
             assert_eq!(&length_squared / &length_squared, parsed);
         }
 
@@ -1225,8 +1225,8 @@ mod tests {
             let time = registry.add_base("time", Some("T")).unwrap();
             let mass = registry.add_base("mass", Some("M")).unwrap();
             let definitions = [
-                &length / &time.pow(Exp::int(2)).unwrap(),
-                length.pow(Exp::new(3, 2).unwrap()).unwrap(),
+                &length / &time.try_pow(Exp::int(2)).unwrap(),
+                length.try_pow(Exp::new(3, 2).unwrap()).unwrap(),
                 &length * &time * &mass,
             ];
             for (i, definition) in definitions.iter().enumerate() {
