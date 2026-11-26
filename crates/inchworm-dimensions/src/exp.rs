@@ -1,11 +1,11 @@
 //! Rational exponents ([`Exp`]) with overflow-checked arithmetic.
 //!
-//! Every [`Exp`] is stored in lowest terms with a positive denominator. All
-//! arithmetic (`checked_add`, `checked_mul`, `checked_neg`, `checked_sub`,
-//! `checked_recip`) is fallible, returning
+//! Every [`Exp`] is stored in lowest terms with a positive denominator. Arithmetic comes in
+//! two forms: fallible methods (`try_add`, `try_sub`, `try_mul`, `try_neg`, `try_recip`)
+//! returning
 //! [`DimensionError::ExponentOverflow`](crate::DimensionError::ExponentOverflow)
-//! or [`DimensionError::ZeroDenominator`](crate::DimensionError::ZeroDenominator)
-//! rather than panicking or wrapping.
+//! or [`DimensionError::ZeroDenominator`](crate::DimensionError::ZeroDenominator),
+//! and operators (`+ - *`, unary `-`) that panic on overflow instead of wrapping.
 
 use crate::error::DimensionError;
 
@@ -129,7 +129,7 @@ impl Exp {
         })
     }
 
-    /// Checked exponent addition.
+    /// Adds `rhs` to `self`.
     ///
     /// # Errors
     ///
@@ -142,12 +142,12 @@ impl Exp {
     ///
     /// let exp = Exp::new(1, 4).unwrap();
     /// let rhs = Exp::new(3, 4).unwrap();
-    /// assert_eq!(exp.checked_add(rhs).unwrap(), Exp::int(1));
+    /// assert_eq!(exp.try_add(rhs).unwrap(), Exp::int(1));
     ///
     /// let overflowing_rhs = Exp::new(i64::MAX, 1).unwrap();
-    /// assert!(matches!(exp.checked_add(overflowing_rhs), Err(DimensionError::ExponentOverflow)))
+    /// assert!(matches!(exp.try_add(overflowing_rhs), Err(DimensionError::ExponentOverflow)))
     /// ```
-    pub fn checked_add(self, rhs: Self) -> Result<Self, DimensionError> {
+    pub fn try_add(self, rhs: Self) -> Result<Self, DimensionError> {
         // With self=a/b and rhs=c/d, new_den=b*d and new_num=a*d+c*b
         let new_den = i128::from(self.den) * i128::from(rhs.den);
         let ad = i128::from(self.num) * i128::from(rhs.den);
@@ -156,7 +156,7 @@ impl Exp {
         Self::new_from_i128(new_num, new_den)
     }
 
-    /// Checked exponent multiplication.
+    /// Multiplies `self` by `rhs`.
     ///
     /// # Errors
     ///
@@ -169,43 +169,96 @@ impl Exp {
     ///
     /// let exp = Exp::new(1, 2).unwrap();
     /// let rhs = Exp::new(2, 3).unwrap();
-    /// assert_eq!(exp.checked_mul(rhs).unwrap(), Exp::new(1, 3).unwrap());
+    /// assert_eq!(exp.try_mul(rhs).unwrap(), Exp::new(1, 3).unwrap());
     ///
     /// let overflowing_rhs = Exp::new(1, i64::MAX).unwrap();
-    /// assert!(matches!(exp.checked_mul(overflowing_rhs), Err(DimensionError::ExponentOverflow)))
+    /// assert!(matches!(exp.try_mul(overflowing_rhs), Err(DimensionError::ExponentOverflow)))
     /// ```
-    pub fn checked_mul(self, rhs: Self) -> Result<Self, DimensionError> {
+    pub fn try_mul(self, rhs: Self) -> Result<Self, DimensionError> {
         let new_num = i128::from(self.num) * i128::from(rhs.num);
         let new_den = i128::from(self.den) * i128::from(rhs.den);
         Self::new_from_i128(new_num, new_den)
     }
 
-    /// Checked exponent negation.
+    /// Negates `self`.
     ///
     /// # Errors
     ///
     /// Returns [`DimensionError::ExponentOverflow`] if overflow occurs in `-self`
-    pub fn checked_neg(self) -> Result<Self, DimensionError> {
-        self.checked_mul(Self::int(-1))
+    pub fn try_neg(self) -> Result<Self, DimensionError> {
+        self.try_mul(Self::int(-1))
     }
 
-    /// Checked exponent subtraction.
+    /// Subtracts `rhs` from `self`.
     ///
     /// # Errors
     ///
     /// Returns [`DimensionError::ExponentOverflow`] if overflow occurs in `self - rhs`.
-    pub fn checked_sub(self, rhs: Self) -> Result<Self, DimensionError> {
-        self.checked_add(rhs.checked_neg()?)
+    pub fn try_sub(self, rhs: Self) -> Result<Self, DimensionError> {
+        self.try_add(rhs.try_neg()?)
     }
 
-    /// Checked exponent reciprocal.
+    /// The reciprocal, `1 / self`.
     ///
     /// # Errors
     ///
     /// Returns [`DimensionError::ZeroDenominator`] if the resulting denominator is zero.
     /// Returns [`DimensionError::ExponentOverflow`] if reciprocating would overflow [`i64`].
-    pub fn checked_recip(self) -> Result<Self, DimensionError> {
+    pub fn try_recip(self) -> Result<Self, DimensionError> {
         Self::new(self.den, self.num)
+    }
+}
+
+// ---- operators ----
+/// Delegates to [`Exp::try_add`].
+///
+/// # Panics
+///
+/// Panics with the error message if `self + rhs` overflows.
+impl std::ops::Add for Exp {
+    type Output = Exp;
+    #[track_caller]
+    fn add(self, rhs: Self) -> Self::Output {
+        self.try_add(rhs).unwrap_or_else(|e| panic!("{e}"))
+    }
+}
+
+/// Delegates to [`Exp::try_sub`].
+///
+/// # Panics
+///
+/// Panics with the error message if `self - rhs` overflows.
+impl std::ops::Sub for Exp {
+    type Output = Exp;
+    #[track_caller]
+    fn sub(self, rhs: Self) -> Self::Output {
+        self.try_sub(rhs).unwrap_or_else(|e| panic!("{e}"))
+    }
+}
+
+/// Delegates to [`Exp::try_mul`].
+///
+/// # Panics
+///
+/// Panics with the error message if `self * rhs` overflows.
+impl std::ops::Mul for Exp {
+    type Output = Exp;
+    #[track_caller]
+    fn mul(self, rhs: Self) -> Self::Output {
+        self.try_mul(rhs).unwrap_or_else(|e| panic!("{e}"))
+    }
+}
+
+/// Delegates to [`Exp::try_neg`].
+///
+/// # Panics
+///
+/// Panics with the error message if `-self` overflows.
+impl std::ops::Neg for Exp {
+    type Output = Exp;
+    #[track_caller]
+    fn neg(self) -> Self::Output {
+        self.try_neg().unwrap_or_else(|e| panic!("{e}"))
     }
 }
 
@@ -296,7 +349,7 @@ mod tests {
         #[test]
         fn err_on_exponent_overflow() {
             assert!(errors_match(
-                &Exp::int(i64::MIN).checked_neg().unwrap_err(),
+                &Exp::int(i64::MIN).try_neg().unwrap_err(),
                 &DimensionError::ExponentOverflow
             ));
         }
@@ -343,7 +396,7 @@ mod tests {
         assert_eq!(Exp::new(-3, 4).unwrap().to_f64(), -0.75);
     }
 
-    mod checked_mul {
+    mod try_mul {
         use super::*;
 
         #[test]
@@ -374,7 +427,7 @@ mod tests {
                     num: expected.0,
                     den: expected.1,
                 };
-                assert_eq!(lhs_exp.checked_mul(rhs_exp).unwrap(), expected_exp);
+                assert_eq!(lhs_exp.try_mul(rhs_exp).unwrap(), expected_exp);
             }
         }
 
@@ -400,14 +453,14 @@ mod tests {
                     den: rhs.1,
                 };
                 assert!(errors_match(
-                    &lhs_exp.checked_mul(rhs_exp).unwrap_err(),
+                    &lhs_exp.try_mul(rhs_exp).unwrap_err(),
                     &DimensionError::ExponentOverflow
                 ));
             }
         }
     }
 
-    mod checked_add {
+    mod try_add {
         use super::*;
 
         #[test]
@@ -442,7 +495,7 @@ mod tests {
                     num: expected.0,
                     den: expected.1,
                 };
-                assert_eq!(lhs_exp.checked_add(rhs_exp).unwrap(), expected_exp);
+                assert_eq!(lhs_exp.try_add(rhs_exp).unwrap(), expected_exp);
             }
         }
 
@@ -464,20 +517,20 @@ mod tests {
                     den: rhs.1,
                 };
                 assert!(errors_match(
-                    &lhs_exp.checked_add(rhs_exp).unwrap_err(),
+                    &lhs_exp.try_add(rhs_exp).unwrap_err(),
                     &DimensionError::ExponentOverflow
                 ));
             }
         }
     }
 
-    mod checked_neg {
+    mod try_neg {
         use super::*;
 
         #[test]
         fn basic() {
             let exp = Exp::new(2, 3).unwrap();
-            assert_eq!(exp.checked_neg().unwrap(), Exp { num: -2, den: 3 });
+            assert_eq!(exp.try_neg().unwrap(), Exp { num: -2, den: 3 });
         }
 
         #[test]
@@ -487,54 +540,92 @@ mod tests {
                 den: 1,
             };
             assert!(errors_match(
-                &exp.checked_neg().unwrap_err(),
+                &exp.try_neg().unwrap_err(),
                 &DimensionError::ExponentOverflow
             ));
         }
     }
 
-    mod checked_sub {
+    mod try_sub {
         use super::*;
         use crate::test_utils::errors_match;
 
         #[test]
         fn basic() {
             let exp = Exp::new(2, 3).unwrap();
-            assert_eq!(exp.checked_sub(exp).unwrap(), Exp::ZERO);
+            assert_eq!(exp.try_sub(exp).unwrap(), Exp::ZERO);
         }
 
         #[test]
         fn propagates_exponent_overflow_error() {
             let exp = Exp::int((i64::MAX - 1) / 2 + 1);
-            let err = exp.checked_sub(exp.checked_neg().unwrap()).unwrap_err();
+            let err = exp.try_sub(exp.try_neg().unwrap()).unwrap_err();
             let expected_err = DimensionError::ExponentOverflow;
             assert!(errors_match(&err, &expected_err));
         }
     }
 
-    mod checked_recip {
+    mod try_recip {
         use super::*;
         use crate::test_utils::errors_match;
 
         #[test]
         fn basic() {
             let exp = Exp { num: -1, den: 2 };
-            assert_eq!(exp.checked_recip().unwrap(), Exp { num: -2, den: 1 });
+            assert_eq!(exp.try_recip().unwrap(), Exp { num: -2, den: 1 });
         }
 
         #[test]
         fn propagates_zero_denominator_error() {
             let exp = Exp { num: 0, den: 1 };
-            let err = exp.checked_recip().unwrap_err();
+            let err = exp.try_recip().unwrap_err();
             let expected_err = DimensionError::ZeroDenominator;
             assert!(errors_match(&err, &expected_err))
         }
 
         #[test]
         fn propagates_exponent_overflow_error() {
-            let err = Exp::int(i64::MIN).checked_recip().unwrap_err();
+            let err = Exp::int(i64::MIN).try_recip().unwrap_err();
             let expected_err = DimensionError::ExponentOverflow;
             assert!(errors_match(&err, &expected_err));
+        }
+    }
+
+    mod ops {
+        use super::*;
+
+        #[test]
+        fn operators_match_try_methods() {
+            let a = Exp::new(1, 2).unwrap();
+            let b = Exp::new(2, 3).unwrap();
+            assert_eq!(a + b, a.try_add(b).unwrap());
+            assert_eq!(a - b, a.try_sub(b).unwrap());
+            assert_eq!(a * b, a.try_mul(b).unwrap());
+            assert_eq!(-a, a.try_neg().unwrap());
+        }
+
+        #[test]
+        #[should_panic(expected = "exponent arithmetic overflow")]
+        fn add_panics_on_overflow() {
+            let _ = Exp::int(i64::MAX) + Exp::int(1);
+        }
+
+        #[test]
+        #[should_panic(expected = "exponent arithmetic overflow")]
+        fn sub_panics_on_overflow() {
+            let _ = Exp::int(i64::MIN) - Exp::int(1);
+        }
+
+        #[test]
+        #[should_panic(expected = "exponent arithmetic overflow")]
+        fn mul_panics_on_overflow() {
+            let _ = Exp::int(i64::MAX) * Exp::int(2);
+        }
+
+        #[test]
+        #[should_panic(expected = "exponent arithmetic overflow")]
+        fn neg_panics_on_overflow() {
+            let _ = -Exp::int(i64::MIN);
         }
     }
 }

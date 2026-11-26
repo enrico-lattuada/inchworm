@@ -1034,7 +1034,7 @@ mod tests {
                 let reg = property_registry();
                 let a = build(&reg, &a);
                 let left = a.pow(m).unwrap().pow(n).unwrap();
-                let right = a.pow(m.checked_mul(n).unwrap()).unwrap();
+                let right = a.pow(m.try_mul(n).unwrap()).unwrap();
                 assert_exactly_eq(&left, &right);
             }
 

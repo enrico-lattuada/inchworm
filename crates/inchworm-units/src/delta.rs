@@ -918,7 +918,7 @@ mod tests {
                 let ureg = mks_registry();
                 let unit_a = build(&ureg, &a);
                 let left = unit_a.pow(m).unwrap().pow(n).unwrap();
-                let right = unit_a.pow(m.checked_mul(n).unwrap()).unwrap();
+                let right = unit_a.pow(m.try_mul(n).unwrap()).unwrap();
                 prop_assert_eq!(left, right);
             }
 

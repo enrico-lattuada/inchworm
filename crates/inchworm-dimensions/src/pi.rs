@@ -77,7 +77,7 @@ fn normalize(exponents: Vec<Exp>) -> Result<Vec<Exp>, DimensionError> {
     // Scale the exponents by lcm
     let scaled = exponents
         .into_iter()
-        .map(|e| e.checked_mul(lcm))
+        .map(|e| e.try_mul(lcm))
         .collect::<Result<Vec<_>, _>>()?;
     // If the first non-zero entry is negative, negate all elements
     let negate = scaled
@@ -89,7 +89,7 @@ fn normalize(exponents: Vec<Exp>) -> Result<Vec<Exp>, DimensionError> {
     if negate {
         scaled
             .into_iter()
-            .map(Exp::checked_neg)
+            .map(Exp::try_neg)
             .collect::<Result<Vec<_>, _>>()
     } else {
         Ok(scaled)

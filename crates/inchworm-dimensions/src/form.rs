@@ -105,7 +105,7 @@ impl Form {
                     j += 1;
                 }
                 Ordering::Equal => {
-                    let exp_sum = exp_a.checked_add(*exp_b)?;
+                    let exp_sum = exp_a.try_add(*exp_b)?;
                     if !exp_sum.is_zero() {
                         entries.push((id_a.clone(), exp_sum));
                     }
@@ -127,7 +127,7 @@ impl Form {
         let mut entries = SmallVec::new();
         if !e.is_zero() {
             for (atom_data, exp) in self.entries.iter() {
-                let exp_times_e = exp.checked_mul(e)?;
+                let exp_times_e = exp.try_mul(e)?;
                 entries.push((atom_data.clone(), exp_times_e));
             }
         }
@@ -142,7 +142,7 @@ impl Form {
     pub(crate) fn recip(&self) -> Result<Self, DimensionError> {
         let mut entries = SmallVec::new();
         for (atom_data, entry) in self.entries.iter() {
-            entries.push((atom_data.clone(), entry.checked_neg()?));
+            entries.push((atom_data.clone(), entry.try_neg()?));
         }
         Ok(Self { entries })
     }

@@ -526,11 +526,7 @@ impl<'a> Parser<'a> {
         if parenthesized {
             self.expect_rparen()?;
         }
-        let exp = if outer_negative {
-            exp.checked_neg()?
-        } else {
-            exp
-        };
+        let exp = if outer_negative { exp.try_neg()? } else { exp };
         base.pow(exp)
     }
 

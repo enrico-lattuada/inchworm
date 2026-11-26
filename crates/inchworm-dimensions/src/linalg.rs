@@ -121,9 +121,9 @@ impl RatMatrix {
                 // Swap rows
                 self.swap_rows(row, pivot_row);
                 // Normalize row
-                let pivot_recip = self[(pivot_row, col)].checked_recip()?;
+                let pivot_recip = self[(pivot_row, col)].try_recip()?;
                 for c in col..self.cols {
-                    self[(pivot_row, c)] = self[(pivot_row, c)].checked_mul(pivot_recip)?;
+                    self[(pivot_row, c)] = self[(pivot_row, c)].try_mul(pivot_recip)?;
                 }
                 // Eliminate
                 for r in (0..self.rows).filter(|&r| r != pivot_row) {
@@ -133,7 +133,7 @@ impl RatMatrix {
                     }
                     for c in col..self.cols {
                         self[(r, c)] =
-                            self[(r, c)].checked_sub(factor.checked_mul(self[(pivot_row, c)])?)?;
+                            self[(r, c)].try_sub(factor.try_mul(self[(pivot_row, c)])?)?;
                     }
                 }
                 pivot_cols.push(col);
@@ -170,7 +170,7 @@ impl RatMatrix {
                 .enumerate()
                 .filter_map(|(i, pc)| pc.map(|pc| (i, pc)))
             {
-                basis_vector[pc] = self[(row, fc)].checked_neg()?;
+                basis_vector[pc] = self[(row, fc)].try_neg()?;
             }
             nullspace.push(basis_vector);
         }

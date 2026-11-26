@@ -93,7 +93,7 @@ impl UnitForm {
                     j += 1;
                 }
                 Ordering::Equal => {
-                    let exp_sum = exp_a.checked_add(*exp_b)?;
+                    let exp_sum = exp_a.try_add(*exp_b)?;
                     if !exp_sum.is_zero() {
                         entries.push((id_a.clone(), exp_sum));
                     }
@@ -119,7 +119,7 @@ impl UnitForm {
         }
         let mut entries = SmallVec::new();
         for (atom_data, exp) in self.entries() {
-            let exp_times_e = exp.checked_mul(e)?;
+            let exp_times_e = exp.try_mul(e)?;
             entries.push((atom_data.clone(), exp_times_e));
         }
         Ok(Self { entries })
@@ -135,7 +135,7 @@ impl UnitForm {
     pub(crate) fn recip(&self) -> Result<Self, UnitError> {
         let mut entries = SmallVec::new();
         for (atom_data, exp) in self.entries() {
-            entries.push((atom_data.clone(), exp.checked_neg()?));
+            entries.push((atom_data.clone(), exp.try_neg()?));
         }
         Ok(Self { entries })
     }
