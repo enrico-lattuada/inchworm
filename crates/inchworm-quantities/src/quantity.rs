@@ -270,7 +270,7 @@ where
     /// Returns [`QuantityError::Unit`] if `self` is a reading in a point unit (wrapping
     /// [`NotComposable`](inchworm_units::UnitError::NotComposable)).
     pub fn try_scalar_div(&self, numerator: f64) -> Result<Self, QuantityError> {
-        let unit = self.unit.recip()?;
+        let unit = self.unit.try_recip()?;
         let magnitude = numerator / self.magnitude.clone();
         Ok(Self::new(magnitude, unit))
     }

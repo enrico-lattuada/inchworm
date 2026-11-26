@@ -42,8 +42,8 @@ fn mks() -> UnitRegistry {
         .unwrap();
     ureg.add_derived(DerivedDef::new("hour", "h", &s).scale(3600.0))
         .unwrap();
-    let m2 = m.pow(Exp::int(2)).unwrap();
-    let s2 = s.pow(Exp::int(2)).unwrap();
+    let m2 = m.try_pow(Exp::int(2)).unwrap();
+    let s2 = s.try_pow(Exp::int(2)).unwrap();
     let joule_def = kg.try_mul(&m2).unwrap().try_div(&s2).unwrap();
     ureg.add_derived(DerivedDef::new("joule", "J", &joule_def).prefixable(true))
         .unwrap();

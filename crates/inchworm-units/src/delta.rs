@@ -117,11 +117,20 @@ impl DeltaUnit {
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if computing the reciprocal of an atom's exponents overflows.
-    pub fn recip(&self) -> Result<Self, UnitError> {
+    pub fn try_recip(&self) -> Result<Self, UnitError> {
         Ok(Self {
             factors: self.factors.recip()?,
             dimension: self.dimension().try_recip()?,
         })
+    }
+
+    /// Delegates to [`try_recip`](Self::try_recip).
+    ///
+    /// # Panics
+    ///
+    /// Panics with the error message if negating an atom's exponent overflows.
+    pub fn recip(&self) -> Self {
+        self.try_recip().unwrap_or_else(|e| panic!("{e}"))
     }
 
     /// Divides `self` by `rhs`.
@@ -133,7 +142,7 @@ impl DeltaUnit {
     /// if combining exponents overflows.
     /// Returns [`UnitError::CrossRegistry`] if `self` and `rhs` were built by different unit registries.
     pub fn try_div(&self, rhs: &Self) -> Result<Self, UnitError> {
-        self.try_mul(&rhs.recip()?)
+        self.try_mul(&rhs.try_recip()?)
     }
 
     /// Raises `self` to the power of `e`;
@@ -144,11 +153,20 @@ impl DeltaUnit {
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if multiplying an atom's exponent by `e` overflows.
-    pub fn pow(&self, e: Exp) -> Result<Self, UnitError> {
+    pub fn try_pow(&self, e: Exp) -> Result<Self, UnitError> {
         Ok(Self {
             factors: self.factors.pow(e)?,
             dimension: self.dimension().try_pow(e)?,
         })
+    }
+
+    /// Delegates to [`try_pow`](Self::try_pow).
+    ///
+    /// # Panics
+    ///
+    /// Panics with the error message if multiplying an atom's exponent by `e` overflows.
+    pub fn pow(&self, e: Exp) -> Self {
+        self.try_pow(e).unwrap_or_else(|e| panic!("{e}"))
     }
 }
 
@@ -177,14 +195,16 @@ fn expand_atom_base(atom: &UnitAtom) -> DeltaUnit {
 /// [`DeltaUnit::try_mul`] returns as errors.
 impl std::ops::Mul for &DeltaUnit {
     type Output = DeltaUnit;
+    #[track_caller]
     fn mul(self, rhs: &DeltaUnit) -> Self::Output {
-        self.try_mul(rhs).expect("unit multiplication failed")
+        self.try_mul(rhs).unwrap_or_else(|e| panic!("{e}"))
     }
 }
 
 /// Delegates to the `&DeltaUnit * &DeltaUnit` impl; panics under the same conditions.
 impl std::ops::Mul for DeltaUnit {
     type Output = DeltaUnit;
+    #[track_caller]
     fn mul(self, rhs: DeltaUnit) -> Self::Output {
         &self * &rhs
     }
@@ -193,6 +213,7 @@ impl std::ops::Mul for DeltaUnit {
 /// Delegates to the `&DeltaUnit * &DeltaUnit` impl; panics under the same conditions.
 impl std::ops::Mul<&DeltaUnit> for DeltaUnit {
     type Output = DeltaUnit;
+    #[track_caller]
     fn mul(self, rhs: &DeltaUnit) -> Self::Output {
         &self * rhs
     }
@@ -201,6 +222,7 @@ impl std::ops::Mul<&DeltaUnit> for DeltaUnit {
 /// Delegates to the `&DeltaUnit * &DeltaUnit` impl; panics under the same conditions.
 impl std::ops::Mul<DeltaUnit> for &DeltaUnit {
     type Output = DeltaUnit;
+    #[track_caller]
     fn mul(self, rhs: DeltaUnit) -> Self::Output {
         self * &rhs
     }
@@ -214,14 +236,16 @@ impl std::ops::Mul<DeltaUnit> for &DeltaUnit {
 /// [`DeltaUnit::try_div`] returns as errors.
 impl std::ops::Div for &DeltaUnit {
     type Output = DeltaUnit;
+    #[track_caller]
     fn div(self, rhs: &DeltaUnit) -> Self::Output {
-        self.try_div(rhs).expect("unit division failed")
+        self.try_div(rhs).unwrap_or_else(|e| panic!("{e}"))
     }
 }
 
 /// Delegates to the `&DeltaUnit / &DeltaUnit` impl; panics under the same conditions.
 impl std::ops::Div for DeltaUnit {
     type Output = DeltaUnit;
+    #[track_caller]
     fn div(self, rhs: DeltaUnit) -> Self::Output {
         &self / &rhs
     }
@@ -230,6 +254,7 @@ impl std::ops::Div for DeltaUnit {
 /// Delegates to the `&DeltaUnit / &DeltaUnit` impl; panics under the same conditions.
 impl std::ops::Div<&DeltaUnit> for DeltaUnit {
     type Output = DeltaUnit;
+    #[track_caller]
     fn div(self, rhs: &DeltaUnit) -> Self::Output {
         &self / rhs
     }
@@ -238,6 +263,7 @@ impl std::ops::Div<&DeltaUnit> for DeltaUnit {
 /// Delegates to the `&DeltaUnit / &DeltaUnit` impl; panics under the same conditions.
 impl std::ops::Div<DeltaUnit> for &DeltaUnit {
     type Output = DeltaUnit;
+    #[track_caller]
     fn div(self, rhs: DeltaUnit) -> Self::Output {
         self / &rhs
     }
@@ -275,7 +301,7 @@ impl DeltaUnit {
             .entries()
             .iter()
             .try_fold(DeltaUnit::dimensionless(), |base, (atom, exp)| {
-                base.try_mul(&expand_atom_base(atom).pow(*exp)?)
+                base.try_mul(&expand_atom_base(atom).try_pow(*exp)?)
             })
     }
 
@@ -494,7 +520,7 @@ mod tests {
         }
 
         #[test]
-        #[should_panic(expected = "unit multiplication failed")]
+        #[should_panic(expected = "cannot mix units from registry")]
         fn panics_on_cross_registry() {
             let (m, s) = units_from_two_registries();
             let _ = &m * &s;
@@ -548,20 +574,20 @@ mod tests {
         }
 
         #[test]
-        #[should_panic(expected = "unit division failed")]
+        #[should_panic(expected = "cannot mix units from registry")]
         fn panics_on_cross_registry() {
             let (m, s) = units_from_two_registries();
             let _ = &m / &s;
         }
     }
 
-    mod pow {
+    mod try_pow {
         use super::*;
 
         #[test]
         fn zero_gives_dimensionless() {
             let m = m_and_s().m;
-            assert_eq!(m.pow(Exp::ZERO).unwrap(), DeltaUnit::dimensionless());
+            assert_eq!(m.try_pow(Exp::ZERO).unwrap(), DeltaUnit::dimensionless());
         }
 
         #[test]
@@ -575,7 +601,7 @@ mod tests {
                 time,
             } = m_and_s();
             let m_over_s = m.try_div(&s).unwrap();
-            let squared_m_over_s = m_over_s.pow(Exp::int(2)).unwrap();
+            let squared_m_over_s = m_over_s.try_pow(Exp::int(2)).unwrap();
             assert_eq!(
                 squared_m_over_s.factors().entries(),
                 [(m_atom, Exp::int(2)), (s_atom, Exp::int(-2))]
@@ -587,7 +613,7 @@ mod tests {
         }
     }
 
-    mod recip {
+    mod try_recip {
         use super::*;
 
         #[test]
@@ -595,9 +621,48 @@ mod tests {
             let MAndS {
                 m, m_atom, length, ..
             } = m_and_s();
-            let one_over_m = m.recip().unwrap();
+            let one_over_m = m.try_recip().unwrap();
             assert_eq!(one_over_m.factors().entries(), [(m_atom, Exp::int(-1))]);
             assert_eq!(*one_over_m.dimension(), length.try_recip().unwrap());
+        }
+    }
+
+    mod pow {
+        use super::*;
+
+        #[test]
+        fn matches_try_pow() {
+            let MAndS { m, s, .. } = m_and_s();
+            let m_over_s = m.try_div(&s).unwrap();
+            let e = Exp::new(2, 3).unwrap();
+            assert_eq!(m_over_s.pow(e), m_over_s.try_pow(e).unwrap());
+        }
+
+        #[test]
+        #[should_panic(expected = "exponent arithmetic overflow")]
+        fn panics_on_exponent_overflow() {
+            let m = m_and_s().m;
+            let huge = m.try_pow(Exp::int(i64::MAX)).unwrap();
+            let _ = huge.pow(Exp::int(2));
+        }
+    }
+
+    mod recip {
+        use super::*;
+
+        #[test]
+        fn matches_try_recip() {
+            let MAndS { m, s, .. } = m_and_s();
+            let m_over_s = m.try_div(&s).unwrap();
+            assert_eq!(m_over_s.recip(), m_over_s.try_recip().unwrap());
+        }
+
+        #[test]
+        #[should_panic(expected = "exponent arithmetic overflow")]
+        fn panics_on_exponent_overflow() {
+            let m = m_and_s().m;
+            let tiny = m.try_pow(Exp::int(i64::MIN)).unwrap();
+            let _ = tiny.recip();
         }
     }
 
@@ -666,7 +731,7 @@ mod tests {
         fn raises_factor_scale_to_exponent() {
             let Mks { m, registry_id, .. } = mks();
             let km = derive(registry_id, "km", &m, 1e3);
-            let km2 = km.pow(Exp::int(2)).unwrap();
+            let km2 = km.try_pow(Exp::int(2)).unwrap();
             assert_scale_close(km2.scale().unwrap().value(), 1e6);
         }
 
@@ -674,7 +739,7 @@ mod tests {
         fn rejects_out_of_range_product() {
             let Mks { m, registry_id, .. } = mks();
             let huge = derive(registry_id, "huge", &m, 1e200);
-            let squared = huge.pow(Exp::int(2)).unwrap();
+            let squared = huge.try_pow(Exp::int(2)).unwrap();
             let actual = squared.scale().unwrap_err();
             let expected = UnitError::ScaleOutOfRange {
                 unit: squared.to_string(),
@@ -725,10 +790,10 @@ mod tests {
         fn exponent_applies_to_scale_and_base() {
             let Mks { m, registry_id, .. } = mks();
             let km = derive(registry_id, "km", &m, 1e3);
-            let km2 = km.pow(Exp::int(2)).unwrap();
+            let km2 = km.try_pow(Exp::int(2)).unwrap();
             let (scale, base) = km2.to_base().unwrap();
             assert_scale_close(scale, 1e6);
-            assert_eq!(base, m.pow(Exp::int(2)).unwrap());
+            assert_eq!(base, m.try_pow(Exp::int(2)).unwrap());
         }
 
         #[test]
@@ -768,7 +833,7 @@ mod tests {
             let newton_def = kg
                 .try_mul(&m)
                 .unwrap()
-                .try_div(&s.pow(Exp::int(2)).unwrap())
+                .try_div(&s.try_pow(Exp::int(2)).unwrap())
                 .unwrap();
             let newton = derive(registry_id, "N", &newton_def, 1.0);
             let joule_def = newton_def.try_mul(&m).unwrap();
@@ -797,7 +862,7 @@ mod tests {
         fn rejects_out_of_range_product_scale() {
             let Mks { m, registry_id, .. } = mks();
             let huge = derive(registry_id, "huge", &m, 1e200);
-            let squared = huge.pow(Exp::int(2)).unwrap();
+            let squared = huge.try_pow(Exp::int(2)).unwrap();
             let actual = squared.to_base().unwrap_err();
             let expected = UnitError::ScaleOutOfRange {
                 unit: squared.to_string(),
@@ -813,7 +878,7 @@ mod tests {
         fn delegates_to_factors() {
             let MAndS { m, s, .. } = m_and_s();
             let m_over_s = m.try_div(&s).unwrap();
-            let squared_m_over_s = m_over_s.pow(Exp::int(2)).unwrap();
+            let squared_m_over_s = m_over_s.try_pow(Exp::int(2)).unwrap();
             let factors = squared_m_over_s.factors();
             assert_eq!(format!("{squared_m_over_s}"), format!("{factors}"));
             assert_eq!(format!("{squared_m_over_s:#}"), format!("{factors:#}"));
@@ -890,7 +955,7 @@ mod tests {
             fn recip_is_involution(a in factors()) {
                 let ureg = mks_registry();
                 let unit_a = build(&ureg, &a);
-                let left = unit_a.recip().unwrap().recip().unwrap();
+                let left = unit_a.try_recip().unwrap().try_recip().unwrap();
                 prop_assert_eq!(left, unit_a);
             }
 
@@ -899,7 +964,7 @@ mod tests {
                 let ureg = mks_registry();
                 let unit_a = build(&ureg, &a);
                 let one = DeltaUnit::dimensionless();
-                let left = unit_a.try_mul(&unit_a.recip().unwrap()).unwrap();
+                let left = unit_a.try_mul(&unit_a.try_recip().unwrap()).unwrap();
                 prop_assert_eq!(left, one);
             }
 
@@ -909,7 +974,7 @@ mod tests {
                 let unit_a = build(&ureg, &a);
                 let unit_b = build(&ureg, &b);
                 let left = unit_a.try_div(&unit_b).unwrap();
-                let right = unit_a.try_mul(&unit_b.recip().unwrap()).unwrap();
+                let right = unit_a.try_mul(&unit_b.try_recip().unwrap()).unwrap();
                 prop_assert_eq!(left, right);
             }
 
@@ -917,8 +982,8 @@ mod tests {
             fn pow_composes(a in factors(), m in exponent(), n in exponent()) {
                 let ureg = mks_registry();
                 let unit_a = build(&ureg, &a);
-                let left = unit_a.pow(m).unwrap().pow(n).unwrap();
-                let right = unit_a.pow(m.try_mul(n).unwrap()).unwrap();
+                let left = unit_a.try_pow(m).unwrap().try_pow(n).unwrap();
+                let right = unit_a.try_pow(m.try_mul(n).unwrap()).unwrap();
                 prop_assert_eq!(left, right);
             }
 
@@ -927,8 +992,8 @@ mod tests {
                 let ureg = mks_registry();
                 let unit_a = build(&ureg, &a);
                 let unit_b = build(&ureg, &b);
-                let left = unit_a.try_mul(&unit_b).unwrap().pow(n).unwrap();
-                let right = unit_a.pow(n).unwrap().try_mul(&unit_b.pow(n).unwrap()).unwrap();
+                let left = unit_a.try_mul(&unit_b).unwrap().try_pow(n).unwrap();
+                let right = unit_a.try_pow(n).unwrap().try_mul(&unit_b.try_pow(n).unwrap()).unwrap();
                 prop_assert_eq!(left, right);
             }
 

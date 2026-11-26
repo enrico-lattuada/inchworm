@@ -81,7 +81,7 @@ impl UnitExpression {
     /// Raises both the factor and the unit to `exp`: `(2 m)^2` is `4 m²`.
     fn pow(self, exp: Exp) -> Result<Self, UnitError> {
         let factor = self.factor.powf(exp.to_f64());
-        let unit = self.unit.pow(exp)?;
+        let unit = self.unit.try_pow(exp)?;
         Ok(Self { factor, unit })
     }
 
@@ -585,8 +585,8 @@ mod tests {
         let m = ureg.get("m").unwrap();
         let s = ureg.get("s").unwrap();
         let kg = ureg.get("kg").unwrap();
-        let m2 = m.pow(Exp::int(2)).unwrap();
-        let s2 = s.pow(Exp::int(2)).unwrap();
+        let m2 = m.try_pow(Exp::int(2)).unwrap();
+        let s2 = s.try_pow(Exp::int(2)).unwrap();
         let kg_m2_over_s2 = kg.try_mul(&m2).unwrap().try_div(&s2).unwrap();
         assert_eq!(ureg.parse("kg*m^2/s^2").unwrap(), kg_m2_over_s2);
     }
@@ -667,7 +667,7 @@ mod tests {
     fn fractional_exponent() {
         let ureg = mks_registry();
         let m = ureg.get("m").unwrap();
-        let sqrt_m = m.pow(Exp::new(1, 2).unwrap()).unwrap();
+        let sqrt_m = m.try_pow(Exp::new(1, 2).unwrap()).unwrap();
         assert_eq!(ureg.parse("m^(1/2)").unwrap(), sqrt_m);
     }
 
@@ -675,7 +675,7 @@ mod tests {
     fn one_is_dimensionless() {
         let ureg = mks_registry();
         let s = ureg.get("s").unwrap();
-        let s_recip = s.recip().unwrap();
+        let s_recip = s.try_recip().unwrap();
         assert_eq!(
             ureg.parse("1").unwrap(),
             Unit::Delta(DeltaUnit::dimensionless())
@@ -756,10 +756,10 @@ mod tests {
         let kg = ureg.get("kg").unwrap();
         let kelvin = ureg.get("K").unwrap();
         let joule = ureg.get("J").unwrap();
-        let s_recip = s.recip().unwrap();
-        let sqrt_m = m.pow(Exp::new(1, 2).unwrap()).unwrap();
-        let m2 = m.pow(Exp::int(2)).unwrap();
-        let s2 = s.pow(Exp::int(2)).unwrap();
+        let s_recip = s.try_recip().unwrap();
+        let sqrt_m = m.try_pow(Exp::new(1, 2).unwrap()).unwrap();
+        let m2 = m.try_pow(Exp::int(2)).unwrap();
+        let s2 = s.try_pow(Exp::int(2)).unwrap();
         let heat_capacity_unit = kg
             .try_mul(&m2)
             .unwrap()

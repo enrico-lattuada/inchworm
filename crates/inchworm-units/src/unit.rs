@@ -74,15 +74,18 @@ impl Unit {
 
     /// Returns the reciprocal of `self`.
     ///
+    /// There is no panicking form, unlike [`DeltaUnit::recip`]: a point unit makes this fail
+    /// on ordinary input, so the caller must handle the error.
+    ///
     /// # Errors
     ///
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if computing the reciprocal of an atom's exponents overflows.
     /// Returns [`UnitError::NotComposable`] if `self` is [`Self::Point`] unit.
-    pub fn recip(&self) -> Result<Self, UnitError> {
+    pub fn try_recip(&self) -> Result<Self, UnitError> {
         match self {
-            Self::Delta(delta) => delta.recip().map(Self::Delta),
+            Self::Delta(delta) => delta.try_recip().map(Self::Delta),
             Self::Point(point) => Err(not_composable(point)),
         }
     }
@@ -105,15 +108,18 @@ impl Unit {
 
     /// Raises `self` to the power of `e`.
     ///
+    /// There is no panicking form, unlike [`DeltaUnit::pow`]: a point unit makes this fail
+    /// on ordinary input, so the caller must handle the error.
+    ///
     /// # Errors
     ///
     /// Returns [`UnitError::Dimension`] wrapping
     /// [`ExponentOverflow`](inchworm_dimensions::DimensionError::ExponentOverflow)
     /// if multiplying an atom's exponent by `e` overflows.
     /// Returns [`UnitError::NotComposable`] if `self` is [`Self::Point`] unit.
-    pub fn pow(&self, e: Exp) -> Result<Self, UnitError> {
+    pub fn try_pow(&self, e: Exp) -> Result<Self, UnitError> {
         match self {
-            Self::Delta(delta) => delta.pow(e).map(Self::Delta),
+            Self::Delta(delta) => delta.try_pow(e).map(Self::Delta),
             Self::Point(point) => Err(not_composable(point)),
         }
     }
@@ -277,22 +283,22 @@ mod tests {
         }
     }
 
-    mod recip {
+    mod try_recip {
         use super::*;
 
         #[test]
         fn delta_delegates_to_delta_unit() {
             let Units { kelvin, .. } = units();
             assert_eq!(
-                Unit::Delta(kelvin.recip().unwrap()),
-                Unit::Delta(kelvin).recip().unwrap()
+                Unit::Delta(kelvin.try_recip().unwrap()),
+                Unit::Delta(kelvin).try_recip().unwrap()
             );
         }
 
         #[test]
         fn point_is_not_composable() {
             let Units { celsius, .. } = units();
-            let actual = Unit::Point(celsius.clone()).recip().unwrap_err();
+            let actual = Unit::Point(celsius.clone()).try_recip().unwrap_err();
             let expected = UnitError::NotComposable {
                 name: celsius.name().into(),
             };
@@ -329,15 +335,15 @@ mod tests {
         }
     }
 
-    mod pow {
+    mod try_pow {
         use super::*;
 
         #[test]
         fn delta_delegates_to_delta_unit() {
             let Units { kelvin, .. } = units();
             assert_eq!(
-                Unit::Delta(kelvin.pow(Exp::int(2)).unwrap()),
-                Unit::Delta(kelvin).pow(Exp::int(2)).unwrap()
+                Unit::Delta(kelvin.try_pow(Exp::int(2)).unwrap()),
+                Unit::Delta(kelvin).try_pow(Exp::int(2)).unwrap()
             );
         }
 
@@ -349,7 +355,7 @@ mod tests {
                 name: celsius.name().into(),
             };
             for exp in [Exp::ONE, Exp::ZERO] {
-                let actual = celsius_unit.pow(exp).unwrap_err();
+                let actual = celsius_unit.try_pow(exp).unwrap_err();
                 assert!(errors_match(&actual, &expected))
             }
         }

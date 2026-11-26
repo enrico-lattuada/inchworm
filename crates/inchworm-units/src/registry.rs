@@ -2196,7 +2196,7 @@ mod tests {
                 let mut ureg = UnitRegistry::new("test-ureg", dims);
                 let unit = ureg.add_base(BaseDef::new("unit", &symbol, &dimension)).unwrap();
                 prop_assert_eq!(ureg.parse(&symbol).unwrap(), Unit::Delta(unit.clone()));
-                let powered = unit.pow(e).unwrap();
+                let powered = unit.try_pow(e).unwrap();
                 let plain = powered.to_string();
                 let pretty = format!("{powered:#}");
                 prop_assert_eq!(ureg.parse(&plain).unwrap(), Unit::Delta(powered.clone()));
