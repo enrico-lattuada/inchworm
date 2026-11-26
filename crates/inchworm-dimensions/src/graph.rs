@@ -6,8 +6,6 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use crate::DimensionError;
-
 /// Returns the names in the graph in topological order.
 ///
 /// Each entry in the graph represents the dependencies of a name from its definition.
@@ -18,12 +16,9 @@ use crate::DimensionError;
 ///
 /// # Errors
 ///
-/// Returns [`DimensionError::CyclicDefinition`] if cycles in the definitions are detected.
-/// The error will contain the names involved in the cycle, including those blocked by the cycle,
-/// alphabetically sorted.
-pub(crate) fn topological_order(
-    graph: &HashMap<String, Vec<String>>,
-) -> Result<Vec<String>, DimensionError> {
+/// Returns the names involved in a cycle, including those blocked by it, alphabetically
+/// sorted, if the definitions contain a cycle. Callers wrap them in their own error.
+pub fn topological_order(graph: &HashMap<String, Vec<String>>) -> Result<Vec<String>, Vec<String>> {
     // Deduplicate the references in the dependencies, so they each count as 1
     let deduped_graph: HashMap<String, HashSet<String>> = graph
         .iter()
@@ -71,9 +66,7 @@ pub(crate) fn topological_order(
             .map(|(name, _)| name.clone())
             .collect();
         cyclic_def_names.sort_unstable();
-        return Err(DimensionError::CyclicDefinition {
-            names: cyclic_def_names,
-        });
+        return Err(cyclic_def_names);
     }
     Ok(output)
 }
@@ -81,7 +74,6 @@ pub(crate) fn topological_order(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::errors_match;
 
     mod topological_order {
         use super::*;
@@ -153,11 +145,8 @@ mod tests {
             let mut graph: HashMap<String, Vec<String>> = HashMap::new();
             graph.insert("B".into(), vec!["A".into()]);
             graph.insert("A".into(), vec!["B".into()]);
-            let err = topological_order(&graph);
-            let expected = DimensionError::CyclicDefinition {
-                names: vec!["A".into(), "B".into()],
-            };
-            assert!(errors_match(&err.unwrap_err(), &expected));
+            let names = topological_order(&graph).unwrap_err();
+            assert_eq!(names, ["A", "B"]);
         }
 
         #[test]
@@ -166,11 +155,8 @@ mod tests {
             graph.insert("B".into(), vec!["A".into()]);
             graph.insert("A".into(), vec!["B".into()]);
             graph.insert("C".into(), vec!["A".into()]);
-            let err = topological_order(&graph);
-            let expected = DimensionError::CyclicDefinition {
-                names: vec!["A".into(), "B".into(), "C".into()],
-            };
-            assert!(errors_match(&err.unwrap_err(), &expected));
+            let names = topological_order(&graph).unwrap_err();
+            assert_eq!(names, ["A", "B", "C"]);
         }
 
         #[test]

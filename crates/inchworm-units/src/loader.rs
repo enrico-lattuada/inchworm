@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use inchworm_dimensions::__private::topological_order;
 use inchworm_dimensions::{DimRegistry, DimensionError};
 
 use crate::{
-    BaseDef, DerivedDef, PointDef, Unit, UnitError, UnitRegistry, fold::lookup_key,
-    graph::topological_order, parse::idents,
+    BaseDef, DerivedDef, PointDef, Unit, UnitError, UnitRegistry, fold::lookup_key, parse::idents,
 };
 
 pub(crate) const SUPPORTED_SCHEMA: u32 = 1;
@@ -250,7 +250,8 @@ pub(crate) fn load_registry(src: &str, dims: DimRegistry) -> Result<UnitRegistry
             (name.to_string(), deps)
         })
         .collect();
-    for name in topological_order(&graph)? {
+    let order = topological_order(&graph).map_err(|names| UnitError::CyclicDefinition { names })?;
+    for name in order {
         match pending[name.as_str()] {
             Pending::Derived(entry) => {
                 ureg.add_derived(derived_def(&name, entry))?;

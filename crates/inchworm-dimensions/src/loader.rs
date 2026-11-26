@@ -142,7 +142,8 @@ fn load_entries(registry: &mut DimRegistry, file: DimFile) -> Result<(), Dimensi
         };
         dep_graph.insert(name.clone(), definition);
     }
-    let sorted_dependencies = topological_order(&dep_graph)?;
+    let sorted_dependencies = topological_order(&dep_graph)
+        .map_err(|names| DimensionError::CyclicDefinition { names })?;
     for name in sorted_dependencies {
         match def_entries
             .get(&name)

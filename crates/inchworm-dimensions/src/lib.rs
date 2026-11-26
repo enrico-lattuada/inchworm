@@ -53,3 +53,11 @@ pub use parser::is_ident_char;
 pub use pi::{PiAnalysis, PiGroup, PiOptions, PiVariable, buckingham_pi};
 pub use policy::{CompatPolicy, CompatRule};
 pub use registry::DimRegistry;
+
+/// Not public API: items shared with the other inchworm crates. They may change in any
+/// release, so the other crates depend on this one at an exact version.
+#[doc(hidden)]
+#[cfg(feature = "toml")]
+pub mod __private {
+    pub use crate::graph::topological_order;
+}
